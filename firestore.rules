@@ -604,7 +604,7 @@ service cloud.firestore {
          && resource.data.expiresAt != null
          && request.time >= resource.data.expiresAt;
      }
-     match /friendCallRequests/{requestId} {
+      match /friendCallRequests/{requestId} {
        allow read: if request.auth != null
          && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid);
        allow create: if request.auth != null
@@ -618,8 +618,78 @@ service cloud.firestore {
          && (request.resource.data.status == 'accepted' || request.resource.data.status == 'declined');
        allow delete: if request.auth != null
          && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid);
-     }
-     match /tetrisLobby/{lobbyId} {
+       }
+      function isBrickBreakerParticipant(data) {
+        return request.auth != null && (
+          (data.keys().hasAny(['host']) && data.host == request.auth.uid)
+          || (data.keys().hasAny(['guest']) && data.guest == request.auth.uid)
+        );
+      }
+      function hasValidBrickBreakerRoom(data) {
+        return data.keys().hasAll(['host', 'guest', 'mode', 'seed', 'round', 'startAt', 'status', 'aborted', 'createdAt'])
+          && data.host == request.auth.uid
+          && data.guest == ''
+          && data.mode in ['classic', 'items']
+          && data.seed is number && data.seed >= 1 && data.seed <= 1000000
+          && data.round == 1
+          && data.startAt == 0
+          && data.status == 'waiting'
+          && data.aborted == false;
+      }
+      function canUpdateBrickBreakerRoom() {
+        return request.auth != null
+          && (isBrickBreakerParticipant(resource.data) || isBrickBreakerParticipant(request.resource.data))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'guest', 'hostReady', 'guestReady', 'mode', 'seed', 'round', 'startAt', 'status', 'aborted',
+            'betAmount', 'hostBetReady', 'guestBetReady', 'createdAt'
+          ])
+          && (
+            (
+              request.resource.data.status == resource.data.status
+              && request.resource.data.status == 'waiting'
+              && (!request.resource.data.keys().hasAny(['guest']) || resource.data.guest == '' || request.resource.data.guest == resource.data.guest)
+            )
+            || (request.resource.data.status == 'closed' && request.resource.data.aborted == true)
+          );
+      }
+      match /brickBreakerQueue/{userId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+          && userId == request.auth.uid
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.status == 'waiting';
+        allow update: if request.auth != null && (
+          userId == request.auth.uid
+          || (resource.data.status == 'waiting' && request.resource.data.status == 'matched' && request.resource.data.matchedBy == request.auth.uid)
+        );
+        allow delete: if request.auth != null && userId == request.auth.uid;
+      }
+      match /brickBreakerRooms/{roomId} {
+        allow read: if isBrickBreakerParticipant(resource.data);
+        allow create: if hasValidBrickBreakerRoom(request.resource.data);
+        allow update: if (
+          request.auth != null
+          && request.resource.data.guest != ''
+          && resource.data.guest == ''
+          && request.resource.data.guest == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['guest'])
+        ) || canUpdateBrickBreakerRoom();
+        allow delete: if isBrickBreakerParticipant(resource.data);
+      }
+      match /brickBreakerRooms/{roomId}/signals/{signalId} {
+        allow read: if request.auth != null
+          && isBrickBreakerParticipant(get(/databases/$(database)/documents/brickBreakerRooms/$(roomId)).data);
+        allow create: if request.auth != null
+          && isBrickBreakerParticipant(get(/databases/$(database)/documents/brickBreakerRooms/$(roomId)).data)
+          && request.resource.data.actor == request.auth.uid;
+        allow update, delete: if false;
+      }
+      match /brickBreakerRooms/{roomId}/results/{resultId} {
+        allow read: if request.auth != null
+          && isBrickBreakerParticipant(get(/databases/$(database)/documents/brickBreakerRooms/$(roomId)).data);
+        allow create, update, delete: if false;
+      }
+      match /tetrisLobby/{lobbyId} {
       allow read, create, update: if request.auth != null;
       allow delete: if false;
     }

@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createDocument, getSessionToken } from '@/lib/firebase';
+import { createDocument, getFreshSessionToken } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import type { CountryRoute, RegionalCategory } from '@/lib/regionRoutes';
 
 export default function RegionalPostComposer({ country, category, label }: { country: CountryRoute; category: RegionalCategory; label: string }) {
   const user = useGlobalStore((state) => state.user);
+  const setSelectedCountry = useGlobalStore((state) => state.setSelectedCountry);
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -17,14 +19,16 @@ export default function RegionalPostComposer({ country, category, label }: { cou
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (category === 'directory') return;
+    if (saving) return;
     if (!user) return setError('로그인 후 글을 작성할 수 있습니다.');
-    const token = getSessionToken();
-    if (!token) return setError('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
     if (title.trim().length < 4 || body.trim().length < 10) return setError('제목은 4자 이상, 내용은 10자 이상 입력해주세요.');
     setSaving(true);
     setError('');
     try {
-      const collection = category === 'jobs' ? 'jobs' : 'posts';
+      const token = await getFreshSessionToken();
+      if (!token) return setError('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
+       const collection = category === 'jobs' ? 'jobs' : category === 'market' ? 'marketItems' : 'posts';
       await createDocument(collection, crypto.randomUUID(), {
         title: title.trim(),
         body: body.trim(),
@@ -49,7 +53,9 @@ export default function RegionalPostComposer({ country, category, label }: { cou
     }
   };
 
-  if (!open) return <button type="button" onClick={() => user ? setOpen(true) : setError('로그인 후 글을 작성할 수 있습니다.')} className="rounded-xl bg-teal-300 px-4 py-2.5 text-xs font-black text-slate-950 hover:bg-teal-200">{user ? `${label} 글쓰기` : '로그인 후 글쓰기'}</button>;
+  if (!user) return <Link href="/login" className="inline-block rounded-xl bg-teal-300 px-4 py-2.5 text-xs font-black text-slate-950 hover:bg-teal-200">로그인 후 글쓰기</Link>;
+  if (category === 'directory') return <Link href="/directory?register=1" onClick={() => setSelectedCountry(country.id)} className="inline-block rounded-xl bg-teal-300 px-4 py-2.5 text-xs font-black text-slate-950 hover:bg-teal-200">Google Maps 연결 후 업체 등록</Link>;
+  if (!open) return <button type="button" onClick={() => { setError(''); setOpen(true); }} className="rounded-xl bg-teal-300 px-4 py-2.5 text-xs font-black text-slate-950 hover:bg-teal-200">{label} 글쓰기</button>;
 
   return (
     <form onSubmit={submit} className="mt-5 rounded-2xl border border-teal-300/20 bg-teal-300/[.06] p-4 sm:p-5">

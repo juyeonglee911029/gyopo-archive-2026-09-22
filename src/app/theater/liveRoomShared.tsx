@@ -2,9 +2,89 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { MessageCircle, Send } from 'lucide-react';
-import { getDocument, getSessionToken, mergeDocument, type PortalUser } from '@/lib/firebase';
+import { getDocument, getFreshSessionToken, getSessionToken, isMasterUser, mergeDocument, type PortalUser } from '@/lib/firebase';
 
-export type LiveRoom = { id: string; roomNumber: number; title?: string; category?: string; hostId?: string | null; hostName?: string | null; hostImage?: string | null; status?: 'offline' | 'live'; viewers?: number; thumbnail?: string | null; sessionId?: string | null; updatedAt?: string };
+export type LiveRoom = { id: string; roomNumber: number; title?: string; category?: string; hostId?: string | null; hostName?: string | null; hostImage?: string | null; status?: 'offline' | 'live'; viewers?: number; thumbnail?: string | null; sessionId?: string | null; updatedAt?: string; startedAt?: string | null; endedAt?: string | null };
+export const defaultRoomTitle = (room: string | number) => `ROOM ${Number(String(room).match(/\d+$/)?.[0] || 1)}`;
+export const limitRoomTitle = (value: string) => Array.from(value).slice(0, 10).join('');
+
+// CAS prevents a late heartbeat/title/stop from modifying a successor session.
+export async function writeLiveRoom(roomId: string, user: PortalUser, sessionId: string | null, action: 'start' | 'update' | 'stop' | 'reset', data: Record<string, string | number | null> = {}) {
+  if (!/^live-room-(0[1-9]|[12]\d|30)$/.test(roomId)) throw new Error('Invalid room.');
+  const token = await getFreshSessionToken();
+  if (!token) throw new Error('Login required.');
+  if (Object.keys(data).some((key) => !['title', 'category', 'quality', 'thumbnail', 'viewers'].includes(key))) throw new Error('Unsupported room update.');
+  if ('title' in data) data = { ...data, title: limitRoomTitle(String(data.title || '').trim()) || defaultRoomTitle(roomId) };
+  const name = `projects/gyopo-live-portal-506019/databases/(default)/documents/liveRooms/${roomId}`;
+  const base = 'https://firestore.googleapis.com/v1/';
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+  const response = await fetch(base + name, { headers, cache: 'no-store' });
+  if (!response.ok && response.status !== 404) throw new Error('Room read failed.');
+  const current = response.ok ? await response.json() : null;
+  const fields = current?.fields || {};
+  const host = fields.hostId?.stringValue;
+  const existingSession = fields.sessionId?.stringValue;
+  if (action === 'reset') {
+    if (!isMasterUser(user)) throw new Error('Master required.');
+  } else if (action === 'start') {
+    const lastSeen = Date.parse(fields.updatedAt?.timestampValue || '');
+    if (!sessionId || (fields.status?.stringValue === 'live' && (!Number.isFinite(lastSeen) || Date.now() - lastSeen <= 20_000))) throw new Error('Room is already live.');
+  } else if (host !== user.id || !sessionId || existingSession !== sessionId || fields.status?.stringValue !== 'live') {
+    throw new Error('Only the current broadcast host may update this room.');
+  }
+  const stopping = action === 'stop' || action === 'reset';
+  const number = Number(roomId.slice(-2));
+  const patch = stopping
+    ? { title: defaultRoomTitle(number), roomNumber: number, status: 'offline', hostId: null, hostName: null, hostImage: null, sessionId: null, viewers: 0, thumbnail: null, startedAt: null }
+    : action === 'start'
+      ? { ...data, roomNumber: number, status: 'live', hostId: user.id, hostName: user.name, hostImage: user.image || null, sessionId, viewers: 0, endedAt: null }
+      : data;
+  const encoded = Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, value === null ? { nullValue: null } : typeof value === 'number' ? { integerValue: String(value) } : { stringValue: value }]));
+  const timestamps = ['updatedAt', ...(action === 'start' ? ['startedAt'] : stopping ? ['endedAt'] : [])];
+  const committed = await fetch(`${base}projects/gyopo-live-portal-506019/databases/(default)/documents:commit`, {
+    method: 'POST', headers, body: JSON.stringify({ writes: [{ update: { name, fields: encoded }, updateMask: { fieldPaths: Object.keys(patch) }, currentDocument: current ? { updateTime: current.updateTime } : { exists: false }, updateTransforms: timestamps.map((fieldPath) => ({ fieldPath, setToServerValue: 'REQUEST_TIME' })) }] }),
+  });
+  if (!committed.ok) {
+    const failure = await committed.json().catch(() => null);
+    if (attempt < 2 && ([409, 412].includes(committed.status) || ['ABORTED', 'FAILED_PRECONDITION'].includes(failure?.error?.status))) continue;
+    throw new Error('Room changed or permission denied. Please retry.');
+  }
+  const result = await committed.json();
+  return result.commitTime as string;
+  }
+  throw new Error('Room changed. Please retry.');
+}
+
+export function LiveElapsed({ startedAt }: { startedAt?: string | null }) {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => { setNow(Date.now()); const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, [startedAt]);
+  const start = Date.parse(startedAt || '');
+  const seconds = now !== null && Number.isFinite(start) ? Math.max(0, Math.floor((now - start) / 1000)) : 0;
+  return <span aria-label="방송 경과 시간">{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</span>;
+}
+
+export function FloatingRoomTitle({ room, onRoomChange }: { room: LiveRoom; onRoomChange: (room: LiveRoom) => void }) {
+  const onChangeRef = useRef(onRoomChange);
+  useEffect(() => { onChangeRef.current = onRoomChange; }, [onRoomChange]);
+  useEffect(() => {
+    let active = true;
+    let busy = false;
+    const load = async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      try {
+        const next = await getDocument<LiveRoom>('liveRooms', room.id, getSessionToken());
+        if (active) onChangeRef.current(next ? { ...next, title: next.status === 'live' ? next.title : defaultRoomTitle(room.id) } : { id: room.id, roomNumber: room.roomNumber, status: 'offline', title: defaultRoomTitle(room.id), sessionId: null, hostId: null });
+      } catch { /* Keep the last confirmed room during a transient read failure. */ }
+      finally { busy = false; }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 1500);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [room.id, room.roomNumber]);
+  return <>{room.title || defaultRoomTitle(room.id)}{room.status === 'live' && <> · <LiveElapsed startedAt={room.startedAt} /></>}</>;
+}
 export type LiveMessage = { id: string; roomId: string; sessionId?: string; authorId: string; user: string; text: string; createdAt: string };
 type ViewerSignal = { id: string; roomId: string; sessionId?: string; viewerId: string; hostId: string; status: 'offer' | 'answer' | 'connected' | 'ended'; offer?: string; answer?: string; updatedAt?: string };
 
@@ -26,7 +106,7 @@ const waitForIce = (peer: RTCPeerConnection) => new Promise<void>((resolve) => {
 
 export function LiveRoomPlayer({ room, user, compact = false }: { room: LiveRoom; user: PortalUser | null; compact?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const viewerIdRef = useRef(`viewer-${user?.id || 'guest'}-${room.id}-${Math.random().toString(36).slice(2)}`);
+  const viewerIdRef = useRef('');
   const [status, setStatus] = useState('시청 연결 준비 중');
   const [needsPlay, setNeedsPlay] = useState(false);
   const [muted, setMuted] = useState(true);

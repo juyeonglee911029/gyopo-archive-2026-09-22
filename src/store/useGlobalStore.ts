@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { getSessionToken, saveProfile, type PortalUser } from '@/lib/firebase';
-import { REGIONS } from '@/lib/regions';
 
 export type Transaction = {
   id: string;
@@ -12,17 +11,6 @@ export type Transaction = {
 };
 
 export type PortalLanguage = 'ko' | 'en';
-
-function storedLanguage(): PortalLanguage {
-  if (typeof window === 'undefined') return 'ko';
-  return window.localStorage.getItem('gyopo-language') === 'en' ? 'en' : 'ko';
-}
-
-function storedCountry(): string {
-  if (typeof window === 'undefined') return 'Global';
-  const value = window.localStorage.getItem('gyopo-country');
-  return value && REGIONS.some((region) => region.id === value) ? value : 'Global';
-}
 
 interface GlobalState {
   selectedCountry: string;
@@ -42,14 +30,15 @@ interface GlobalState {
 }
 
 export const useGlobalStore = create<GlobalState>((set) => ({
-  selectedCountry: storedCountry(),
+  // Keep the server and first client snapshot identical; AppRuntime restores preferences.
+  selectedCountry: 'Global',
   setSelectedCountry: (country) => {
-    if (typeof window !== 'undefined') window.localStorage.setItem('gyopo-country', country);
+    try { if (typeof window !== 'undefined') window.localStorage.setItem('gyopo-country', country); } catch { /* Storage is optional. */ }
     set({ selectedCountry: country });
   },
-  language: storedLanguage(),
+  language: 'ko',
   setLanguage: (language) => {
-    if (typeof window !== 'undefined') window.localStorage.setItem('gyopo-language', language);
+    try { if (typeof window !== 'undefined') window.localStorage.setItem('gyopo-language', language); } catch { /* Storage is optional. */ }
     set({ language });
   },
   darkMode: true,

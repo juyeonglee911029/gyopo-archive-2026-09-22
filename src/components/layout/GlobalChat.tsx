@@ -28,6 +28,7 @@ export default function GlobalChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
+  const [memberCount, setMemberCount] = useState<number | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [desktopMaximized, setDesktopMaximized] = useState(false);
@@ -84,10 +85,16 @@ export default function GlobalChat() {
       try {
         const response = await fetch('/api/online-count', { cache: 'no-store' });
         if (!response.ok) throw new Error('Online count unavailable');
-        const data = await response.json() as { count?: number };
-        if (active) setOnlineCount(typeof data.count === 'number' && Number.isSafeInteger(data.count) && data.count >= 0 ? data.count : null);
+        const data = await response.json() as { count?: number; memberCount?: number | null };
+        if (active) {
+          setOnlineCount(typeof data.count === 'number' && Number.isSafeInteger(data.count) && data.count >= 0 ? data.count : null);
+          setMemberCount(typeof data.memberCount === 'number' && Number.isSafeInteger(data.memberCount) && data.memberCount >= 0 ? data.memberCount : null);
+        }
       } catch {
-        if (active) setOnlineCount(null);
+        if (active) {
+          setOnlineCount(null);
+          setMemberCount(null);
+        }
       }
     };
     void loadCount();
@@ -166,7 +173,7 @@ export default function GlobalChat() {
              </div>
            <div className="global-lounge-online flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-300/15 bg-emerald-300/10 px-2 py-1 text-xs font-bold text-emerald-300">
            <Users size={12} />
-            <span>{onlineCount === null ? (language === 'ko' ? '접속 수 확인 불가' : 'Online count unavailable') : language === 'ko' ? `${onlineCount}명 접속중` : `${onlineCount} online`}</span>
+             <span>{onlineCount === null ? (language === 'ko' ? '접속 수 확인 불가' : 'Online count unavailable') : language === 'ko' ? `${onlineCount}명 접속중${memberCount === null ? '' : ` · 회원 ${memberCount}명`}` : `${onlineCount} online${memberCount === null ? '' : ` · ${memberCount} members`}`}</span>
          </div>
          </div>
        </div>
@@ -213,10 +220,10 @@ export default function GlobalChat() {
         )}
       </div>
     </aside>
-        <button onClick={() => setDesktopLounge(!desktopOpen)} aria-label={desktopOpen ? '글로벌 라운지 최소화' : '글로벌 라운지 최대화'} title={desktopOpen ? '라운지 최소화' : '라운지 최대화'} className={`fixed bottom-5 z-[250] hidden h-9 w-9 place-items-center rounded-xl border border-cyan-200/15 bg-[#10182b]/52 text-white shadow-2xl backdrop-blur-xl transition-all lg:grid ${desktopOpen ? 'right-[23rem]' : 'right-5'}`}>
+         <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setDesktopLounge(!desktopOpen); }} aria-label={desktopOpen ? '글로벌 라운지 최소화' : '글로벌 라운지 최대화'} title={desktopOpen ? '라운지 최소화' : '라운지 최대화'} className={`fixed bottom-5 z-[250] hidden h-9 w-9 place-items-center rounded-xl border border-cyan-200/15 bg-[#10182b]/52 text-white shadow-2xl backdrop-blur-xl transition-all lg:grid ${desktopOpen ? 'right-[23rem]' : 'right-5'}`}>
           {desktopOpen ? <PanelRightClose size={15} className="text-teal-300" /> : <PanelRightOpen size={15} className="text-teal-300" />}
        </button>
-      <div className="fixed bottom-3 left-3 right-3 z-40 lg:hidden">
+      <div className="global-mobile-lounge fixed bottom-3 left-3 right-3 z-40 lg:hidden">
        {mobileOpen && <div className="mb-2 overflow-hidden rounded-2xl border border-white/10 bg-white/10 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#10182b]/48">
         <div className="flex max-h-56 flex-col gap-2 overflow-y-auto p-3">
            {messages.length === 0 && <div className="lounge-empty-mark" aria-hidden="true"><MessageCircle size={16} /></div>}
@@ -225,7 +232,7 @@ export default function GlobalChat() {
          </div>
          {user ? <form onSubmit={handleSend} className="flex gap-2 border-t border-slate-200 p-2 dark:border-white/10"><input value={input} onChange={(event) => setInput(event.target.value)} placeholder="라운지에 메시지..." className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none dark:border-white/10 dark:bg-black/20" /><button type="button" onClick={() => fileInputRef.current?.click()} aria-label="사진 첨부" className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-slate-800 text-white"><ImagePlus size={14} /></button><button className="rounded-xl bg-blue-600 px-3 text-xs font-black text-white">전송</button></form> : <p className="border-t border-slate-200 p-3 text-center text-xs text-slate-500 dark:border-white/10">로그인 후 채팅에 참여하세요.</p>}
       </div>}
-         <button onClick={() => setMobileOpen((open) => !open)} aria-label={mobileOpen ? '실시간 라운지 최소화' : '실시간 라운지 최대화'} className="ml-auto grid h-10 w-10 place-items-center rounded-xl border border-cyan-200/15 bg-[#10182b]/52 text-white shadow-xl backdrop-blur"><MessageCircle size={17} className="text-teal-300" /></button>
+          <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setMobileOpen((open) => !open); }} aria-label={mobileOpen ? '실시간 라운지 최소화' : '실시간 라운지 최대화'} className="ml-auto grid h-10 w-10 place-items-center rounded-xl border border-cyan-200/15 bg-[#10182b]/52 text-white shadow-xl backdrop-blur"><MessageCircle size={17} className="text-teal-300" /></button>
     </div>
     </>
   );

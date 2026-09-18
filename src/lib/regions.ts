@@ -1,4 +1,6 @@
-export const REGIONS = [
+import { COUNTRY_LOCATIONS } from './locations';
+
+const LEGACY_REGIONS = [
   { id: 'Global', label: '전체 지역', short: '전체', flag: '🌐' },
   { id: 'SouthKorea', label: '대한민국', short: '한국', flag: '🇰🇷' },
   { id: 'USA', label: '미국 전체', short: '미국', flag: '🇺🇸' },
@@ -33,6 +35,12 @@ export const REGIONS = [
   { id: 'Philippines', label: '필리핀', short: '필리핀', flag: '🇵🇭' },
 ] as const;
 
+export const REGIONS = [
+  ...LEGACY_REGIONS,
+  ...COUNTRY_LOCATIONS.filter((country) => !LEGACY_REGIONS.some((region) => region.id === country.id))
+    .map((country) => ({ id: country.id, label: country.label, short: country.label, flag: country.flag })),
+];
+
 export type RegionId = (typeof REGIONS)[number]['id'];
 
 const REGION_BY_COUNTRY_CODE: Record<string, RegionId> = {
@@ -44,7 +52,8 @@ const REGION_BY_COUNTRY_CODE: Record<string, RegionId> = {
 };
 
 export function regionForCountryCode(code: string): RegionId | undefined {
-  return REGION_BY_COUNTRY_CODE[code.trim().toUpperCase()];
+  const normalized = code.trim().toUpperCase();
+  return REGION_BY_COUNTRY_CODE[normalized] || COUNTRY_LOCATIONS.find((country) => country.isoAlpha2 === normalized)?.id;
 }
 
 export async function detectRegionFromIp(): Promise<RegionId | undefined> {

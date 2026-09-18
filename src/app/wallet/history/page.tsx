@@ -8,13 +8,14 @@ import { useGlobalStore } from '@/store/useGlobalStore';
 import '@/styles/call-ui.css';
 
 type LedgerRow = WalletLedgerEntry & { id: string };
-type HistoryFilter = 'ALL' | 'DEPOSIT' | 'TRANSFER' | 'WITHDRAWAL' | 'FEE';
+type HistoryFilter = 'ALL' | 'DEPOSIT' | 'TRANSFER' | 'WITHDRAWAL' | 'GAME' | 'FEE';
 
 const filters: Array<{ id: HistoryFilter; label: string }> = [
   { id: 'ALL', label: '전체' },
   { id: 'DEPOSIT', label: '입금' },
   { id: 'TRANSFER', label: '내부 송금' },
   { id: 'WITHDRAWAL', label: '차감' },
+  { id: 'GAME', label: '게임' },
   { id: 'FEE', label: '수수료' },
 ];
 
@@ -23,6 +24,7 @@ function kindOf(row: LedgerRow): Exclude<HistoryFilter, 'ALL'> {
   if (row.type === 'INTERNAL_TRANSFER') return 'TRANSFER';
   if (row.type === 'ONCHAIN_SEND') return 'WITHDRAWAL';
   if (row.type === 'WITHDRAWAL') return 'WITHDRAWAL';
+  if (row.type === 'GAME_STAKE' || row.type === 'GAME_PAYOUT' || row.type === 'GAME_REFUND') return 'GAME';
   return 'FEE';
 }
 

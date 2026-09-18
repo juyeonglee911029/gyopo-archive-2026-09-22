@@ -40,8 +40,6 @@ export type ExposureRow = {
   position: number;
 };
 
-const GOOGLE_ADS_VERSION = process.env.GOOGLE_ADS_API_VERSION?.trim() || 'v18';
-
 function numberValue(value: unknown): number {
   const number = Number(value || 0);
   return Number.isFinite(number) ? number : 0;
@@ -49,6 +47,11 @@ function numberValue(value: unknown): number {
 
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+function googleAdsApiVersion(): string {
+  const version = process.env.GOOGLE_ADS_API_VERSION?.trim() || '';
+  return /^v[1-9]\d{1,2}$/.test(version) ? version : '';
 }
 
 export function keywordDateRange(days: number) {
@@ -196,9 +199,11 @@ export function searchConsoleConfigured(): boolean {
 }
 
 export function googleAdsConfigured(): boolean {
+  const version = googleAdsApiVersion();
   return Boolean(
     process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim()
     && process.env.GOOGLE_ADS_CUSTOMER_ID?.trim()
+    && version
     && (process.env.GOOGLE_ADS_ACCESS_TOKEN?.trim() || (
       process.env.GOOGLE_ADS_REFRESH_TOKEN?.trim()
       && process.env.GOOGLE_ADS_CLIENT_ID?.trim()
@@ -264,9 +269,9 @@ export async function loadExposureRows(days: number, previous = false): Promise<
 
 type AdsPayload = Array<{ results?: Array<{ adGroupCriterion?: { keyword?: { text?: string } }; metrics?: { clicks?: string | number; impressions?: string | number; ctr?: number; averageCpcMicros?: string | number } }> }>;
 
-async function fetchGoogleAdsRows(accessToken: string, developerToken: string, customerId: string, startDate: string, endDate: string): Promise<GoldenKeywordRow[]> {
+async function fetchGoogleAdsRows(accessToken: string, developerToken: string, customerId: string, version: string, startDate: string, endDate: string): Promise<GoldenKeywordRow[]> {
   const query = `SELECT ad_group_criterion.keyword.text, metrics.clicks, metrics.impressions, metrics.ctr, metrics.average_cpc_micros FROM keyword_view WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' AND ad_group_criterion.status = 'ENABLED'`;
-  const endpoint = `https://googleads.googleapis.com/${GOOGLE_ADS_VERSION}/customers/${customerId.replace(/-/g, '')}/googleAds:searchStream`;
+  const endpoint = `https://googleads.googleapis.com/${version}/customers/${customerId.replace(/-/g, '')}/googleAds:searchStream`;
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { authorization: `Bearer ${accessToken}`, 'developer-token': developerToken, 'content-type': 'application/json' },
@@ -303,16 +308,19 @@ export async function loadGoldenKeywordRows(days: number): Promise<{ rows: Golde
   const { startDate, endDate } = keywordDateRange(days);
   const siteUrl = process.env.GOOGLE_SEARCH_CONSOLE_SITE_URL?.trim() || 'https://gyopo.kr/';
   const searchConsoleToken = searchConsoleConfigured() ? await searchConsoleAccessToken().catch(() => '') : '';
-  const adsDeveloperToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
-  const adsCustomerId = process.env.GOOGLE_ADS_CUSTOMER_ID?.trim();
+  const adsDeveloperToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim() || '';
+  const adsCustomerId = process.env.GOOGLE_ADS_CUSTOMER_ID?.trim() || '';
+  const adsVersion = googleAdsApiVersion();
   const adsAccessConfigured = Boolean(process.env.GOOGLE_ADS_ACCESS_TOKEN?.trim() || (process.env.GOOGLE_ADS_REFRESH_TOKEN?.trim() && process.env.GOOGLE_ADS_CLIENT_ID?.trim() && process.env.GOOGLE_ADS_CLIENT_SECRET?.trim()));
+  const adsConfigured = Boolean(adsDeveloperToken && adsCustomerId && adsVersion && adsAccessConfigured);
   const sources: KeywordSourceReport = {
     searchConsole: searchConsoleToken ? 'connected' : searchConsoleConfigured() ? 'error' : 'not_configured',
-    googleAds: adsDeveloperToken && adsCustomerId && adsAccessConfigured ? 'connected' : 'not_configured',
+    googleAds: adsConfigured ? 'connected' : 'not_configured',
   };
+  if (!adsConfigured && (adsDeveloperToken || adsCustomerId || adsAccessConfigured)) sources.googleAdsMessage = 'Google Ads Developer Token·Customer ID·API version·OAuth 연결을 모두 설정해야 합니다.';
   const results = await Promise.allSettled([
     searchConsoleToken ? fetchSearchConsoleRows(searchConsoleToken, siteUrl, startDate, endDate) : Promise.resolve([]),
-    adsDeveloperToken && adsCustomerId && adsAccessConfigured ? googleAdsAccessToken().then((token) => token ? fetchGoogleAdsRows(token, adsDeveloperToken, adsCustomerId, startDate, endDate) : []) : Promise.resolve([]),
+    adsConfigured ? googleAdsAccessToken().then((token) => token ? fetchGoogleAdsRows(token, adsDeveloperToken, adsCustomerId, adsVersion, startDate, endDate) : []) : Promise.resolve([]),
   ]);
   const searchConsoleRows = results[0].status === 'fulfilled' ? results[0].value : [];
   const adsRows = results[1].status === 'fulfilled' ? results[1].value : [];

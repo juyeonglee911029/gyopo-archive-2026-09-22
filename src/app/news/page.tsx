@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Clock3, Newspaper, Radio, ShieldCheck } from 'lucide-react';
+import { Clock3, Radio, ShieldCheck } from 'lucide-react';
+import { RouteErrorState, RouteSkeleton, useRouteReadiness } from '@/components/layout/RouteExperience';
+import { withRouteTimeout } from '@/lib/routeExperience';
 import { listDocuments } from '@/lib/firebase';
 import { regionLabel } from '@/lib/regions';
 import { CONTENT_SOURCES, sourceItemId } from '@/lib/contentSources';
@@ -37,54 +39,62 @@ function isNewsEntry(entry: SnapshotItem, source: Snapshot) {
 }
 
 async function loadStoredSources() {
-  const [rows, posts] = await Promise.all([
-    listDocuments<Omit<Snapshot, 'id'>>('contentSnapshots').catch(() => []),
-    listDocuments<Snapshot>('posts').catch(() => []),
+  const results = await Promise.allSettled([
+    listDocuments<Omit<Snapshot, 'id'>>('contentSnapshots'),
+    listDocuments<Snapshot>('posts'),
   ]);
+  const rows = results[0].status === 'fulfilled' ? results[0].value : [];
+  const posts = results[1].status === 'fulfilled' ? results[1].value : [];
   const knownSources = new Set(rows.map((row) => row.sourceId));
   const fallbackRows = posts.filter((post) => post.sourceSnapshot && post.sourceId && !knownSources.has(post.sourceId));
-  return [...rows, ...fallbackRows].sort((a, b) => new Date(b.fetchedAt || '').getTime() - new Date(a.fetchedAt || '').getTime());
+  return { items: [...rows, ...fallbackRows].sort((a, b) => new Date(b.fetchedAt || '').getTime() - new Date(a.fetchedAt || '').getTime()), partial: results.some((result) => result.status === 'rejected') };
 }
 
 export default function NewsPage() {
   const selectedCountry = useGlobalStore((state) => state.selectedCountry);
   const [items, setItems] = useState<Snapshot[]>([]);
   const [liveSources, setLiveSources] = useState<Snapshot[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setLoading] = useState(true);
+  const [loadedCountry, setLoadedCountry] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const loadRequest = useRef(0);
+  const loading = isLoading || loadedCountry !== selectedCountry;
+  useRouteReadiness(loading, Boolean(loadError));
 
   const load = async () => {
+    const request = ++loadRequest.current;
     setLoading(true);
-    setItems(await loadStoredSources());
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    let active = true;
-    void loadStoredSources().then((nextItems) => {
-      if (!active) return;
-      setItems(nextItems);
-      setLoading(false);
-    });
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    const loadLive = async () => {
+    setLoadError('');
+    try {
+      const result = await withRouteTimeout((async () => {
       const sources = CONTENT_SOURCES.filter((source) => source.autoImport && source.categories.includes('news') && (selectedCountry === 'Global' || source.region === selectedCountry || source.region === 'Global'));
-      const direct = await Promise.all(sources.slice(0, 24).map(async (source) => {
-        const response = await fetch(`/api/content/preview?source=${encodeURIComponent(source.id)}`).catch(() => null);
-        return response?.ok ? response.json() as Promise<Snapshot> : null;
-      }));
-      const regionalResponse = await fetch(`/api/content/preview?region=${encodeURIComponent(selectedCountry)}`).catch(() => null);
-      const regional = regionalResponse?.ok ? await regionalResponse.json() as Snapshot : null;
+      const urls = [...sources.slice(0, 24).map((source) => `/api/content/preview?source=${encodeURIComponent(source.id)}`), `/api/content/preview?region=${encodeURIComponent(selectedCountry)}`];
+      const [stored, live] = await Promise.all([loadStoredSources(), Promise.allSettled(urls.map(async (url) => {
+        const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+        if (!response.ok) throw new Error('News source unavailable');
+        const snapshot = await response.json() as Snapshot;
+        if (!snapshot || (!Array.isArray(snapshot.items) && !Array.isArray(snapshot.sections))) throw new Error('Invalid news source');
+        return snapshot;
+      }))]);
       // Keep empty live responses so stale Firestore snapshots cannot reappear.
-      const next = [...direct.filter((snapshot): snapshot is Snapshot => Boolean(snapshot)), ...(regional ? [regional] : [])]
-        .map((snapshot) => ({ ...snapshot, id: snapshot.id || snapshot.sourceId }));
-      if (active) setLiveSources(next);
-    };
-    void loadLive();
-    return () => { active = false; };
+      const next = live.flatMap((entry) => entry.status === 'fulfilled' ? [{ ...entry.value, id: entry.value.id || entry.value.sourceId }] : []);
+      return { stored, next, partial: stored.partial || live.some((entry) => entry.status === 'rejected') };
+      })());
+      if (request !== loadRequest.current) return;
+      setItems(result.stored.items);
+      setLiveSources(result.next);
+      if (result.partial) setLoadError('일부 뉴스 출처를 불러오지 못했습니다. 확인된 기사만 표시합니다.');
+    } catch {
+      if (request === loadRequest.current) setLoadError('뉴스를 불러오지 못했습니다. 연결을 확인하고 다시 시도해주세요.');
+    } finally {
+      if (request === loadRequest.current) { setLoadedCountry(selectedCountry); setLoading(false); }
+    }
+  };
+  const loadEffect = useEffectEvent(load);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadEffect(), 0);
+    return () => { window.clearTimeout(timer); loadRequest.current++; };
   }, [selectedCountry]);
 
   const liveIds = new Set(liveSources.map((item) => item.sourceId));
@@ -121,8 +131,9 @@ export default function NewsPage() {
 
       <main className="category-shell mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-4 flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-teal-300">Latest stories</p><h2 className="mt-1 text-lg font-black text-white">최신 소식 <span className="text-slate-500">{stories.length}</span></h2></div><span className="text-xs text-slate-500">행을 클릭하면 원문을 확인합니다</span></div>
-        {loading && stories.length === 0 && <div className="rounded-2xl border border-dashed border-white/15 p-10 text-center text-sm font-bold text-slate-500">확인된 출처를 불러오는 중입니다...</div>}
-        {!loading && stories.length === 0 && <div className="rounded-2xl border border-dashed border-white/15 p-10 text-center text-sm font-bold text-slate-500"><Newspaper size={26} className="mx-auto mb-3 text-slate-600" />선택한 지역의 뉴스가 없습니다.</div>}
+        {loading && <RouteSkeleton label="뉴스 출처와 최신 기사를 불러오는 중입니다." />}
+        {!loading && loadError && <RouteErrorState message={loadError} onRetry={() => void load()} />}
+        {!loading && !loadError && stories.length === 0 && <div className="ui-state route-state">선택한 지역의 뉴스가 없습니다.</div>}
         {stories.length > 0 && <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[.045]">
           <div className="hidden grid-cols-[100px_minmax(0,1fr)_160px_110px] gap-4 border-b border-white/10 px-4 py-3 text-[10px] font-black uppercase tracking-[.14em] text-slate-500 md:grid"><span>분류</span><span>제목</span><span>출처</span><span>업데이트</span></div>
           <div className="divide-y divide-white/7">{stories.map((story) => <Link key={`${story.source.sourceId}-${story.category}-${story.entry.url}`} href={contentHref(story.source.sourceId, story.category, story.entry)} className="grid gap-2 px-4 py-3 transition hover:bg-white/[.05] md:grid-cols-[100px_minmax(0,1fr)_160px_110px] md:items-center md:gap-4"><div className="flex items-center gap-2 text-[10px] font-black"><span className="rounded-full bg-teal-300/10 px-2 py-1 text-teal-200">{story.categoryLabel}</span><span className="text-slate-500 md:hidden">{regionLabel(story.source.region)}</span></div><div className="min-w-0"><h3 className="truncate text-sm font-bold text-white">{story.entry.title}</h3><p className="mt-1 line-clamp-1 text-xs text-slate-400">{story.entry.description || story.entry.body || '원문에서 자세한 내용을 확인하세요.'}</p></div><div className="flex min-w-0 items-center gap-1.5 text-xs text-slate-300"><span className="truncate">{story.source.sourceName}</span>{story.source.verified && <ShieldCheck size={12} className="shrink-0 text-emerald-300" />}</div><div className="flex items-center gap-1.5 text-[11px] text-slate-500"><Clock3 size={12} />{formatStoryDate(story.entry.publishedAt || story.source.fetchedAt)}</div></Link>)}</div>

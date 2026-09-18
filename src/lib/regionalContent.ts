@@ -1,5 +1,7 @@
 import 'server-only';
+import { normalizeEditorial, type EditorialContent } from './editorialContent';
 import { cache } from 'react';
+import { isPublicArticle, publicArticleCategory } from './publicArticle';
 import { cityRegionalPostHref, countryForRegion, getCityRoute, getCountryRoute, isRegionalPostId, regionalPostHref, REGIONAL_CATEGORIES, COUNTRY_LIFE_CATEGORIES, type CityRoute, type CountryRoute, type RegionalCategory } from './regionRoutes';
 
 // The same public project as firebase.ts; no user token or admin credentials are used.
@@ -29,13 +31,14 @@ export type RegionalPost = {
   sourceName?: string;
   sourceBacked: boolean;
   images: string[];
+  editorial: EditorialContent;
   facts: Array<{ label: string; value: string }>;
 };
 
 type FirestoreValue = { stringValue?: string; timestampValue?: string; booleanValue?: boolean; integerValue?: string; doubleValue?: number; arrayValue?: { values?: FirestoreValue[] }; mapValue?: { fields?: Record<string, FirestoreValue> } };
 type FirestoreDocument = { name: string; fields?: Record<string, FirestoreValue>; updateTime?: string };
 export type RegionalListing = { status: 'ok' | 'unavailable'; posts: RegionalPost[]; nextCursor?: string };
-export type RegionalDetail = { status: 'ok'; post: RegionalPost } | { status: 'not-found' | 'unavailable' };
+export type RegionalDetail = { status: 'ok'; post: RegionalPost } | { status: 'redirect'; href: string } | { status: 'not-found' | 'unavailable' };
 export type RegionalSearchMatch = {
   id: string;
   href: string;
@@ -78,32 +81,19 @@ function date(value: unknown): string | undefined {
 export function regionalPostFromRecord(collection: PublicCollection, id: string, record: Record<string, unknown>): RegionalPost | null {
   const country = countryForRegion(text(record.country));
   const title = text(record.title) || text(record.name);
-  if (!country || !title || !isRegionalPostId(id) || record.sourceSnapshot || record.deleted === true || record.isPublic === false || record.expiresAt) return null;
-  if (['draft', 'private', 'deleted', 'hidden', 'pending'].includes(text(record.status).toLowerCase())) return null;
-  let category: RegionalCategory;
-  if (collection === 'jobs') category = 'jobs';
-  else if (collection === 'directories') category = record.type === 'food' || record.sourceCategory === 'food' ? 'food' : 'directory';
-  else if (collection === 'marketItems') category = 'market';
-  else if (record.type === 'housing') category = 'housing';
-  else if (record.type === 'news' || record.sourceCategory === 'news') category = 'news';
-  else if (record.type === 'immigration' || record.sourceCategory === 'immigration') category = 'immigration';
-  else if (record.type === 'education' || record.sourceCategory === 'education') category = 'education';
-  else if (record.type === 'cars' || record.sourceCategory === 'cars') category = 'cars';
-  else if (record.type === 'tax-finance' || record.sourceCategory === 'tax-finance') category = 'tax-finance';
-  else if (record.type === 'food' || record.sourceCategory === 'food') category = 'food';
-  else if (record.type === 'safety' || record.sourceCategory === 'safety') category = 'safety';
-  else if (record.type === 'freeboard' || record.sourceCategory === 'freeboard') category = 'freeboard';
-  else if (['general', 'notice', 'community'].includes(text(record.type)) || record.sourceCategory === 'community') category = 'community';
-  else return null;
-  if (text(record.sourceCategory) && record.sourceCategory !== category) return null;
+  if (!country || !title || !isRegionalPostId(id) || !isPublicArticle(record)) return null;
+  const category = publicArticleCategory(collection, record);
+  if (!category) return null;
 
   const sourceBacked = Boolean(record.sourceUrl || record.sourceId || record.sourceContentId || id.startsWith('source-'));
   const sourceUrl = publicHttpUrl(record.sourceUrl);
   if (sourceBacked) {
     if (!sourceUrl) return null;
     const url = new URL(sourceUrl);
+    let pathname: string;
+    try { pathname = decodeURI(url.pathname); } catch { return null; }
     // Homepage/board imports are not individual articles. Company homepages can be directory entries.
-    if (category !== 'directory' && !url.search && /^\/(?:news|jobs|community|market|businesses|board|게시판|구인구직)?\/?$/i.test(decodeURI(url.pathname))) return null;
+    if (category !== 'directory' && !(collection === 'directories' && category === 'food') && !url.search && /^\/(?:news|jobs|community|market|businesses|board|게시판|구인구직)?\/?$/i.test(pathname)) return null;
   }
   const facts = [
     ['회사', record.company], ['지역', record.location], ['급여', record.salary],
@@ -117,12 +107,13 @@ export function regionalPostFromRecord(collection: PublicCollection, id: string,
     city: text(record.city) || text(record.citySlug) || text(record.cityName) || text(record.locationCity) || undefined,
     body: text(record.body) || text(record.desc) || text(record.description),
     description: text(record.description),
-    author: text(record.author) || undefined,
+    author: text(record.author) || text(record.authorName) || undefined,
     authorId: text(record.authorId) || undefined,
     createdAt: date(record.createdAt),
     updatedAt: date(record.updatedAt),
     sourceBacked, sourceUrl, sourceName: text(record.sourceName) || undefined,
     images: [...new Set(images)].slice(0, 12), facts,
+    editorial: normalizeEditorial(record.editorial),
   };
 }
 
@@ -143,28 +134,15 @@ function collectionFor(category: RegionalCategory): PublicCollection {
   return category === 'jobs' ? 'jobs' : category === 'directory' ? 'directories' : category === 'market' ? 'marketItems' : 'posts';
 }
 
-const POST_TYPES: Partial<Record<RegionalCategory, string[]>> = {
-  housing: ['housing'],
-  immigration: ['immigration'],
-  education: ['education'],
-  cars: ['cars'],
-  'tax-finance': ['tax-finance'],
-  food: ['food'],
-  safety: ['safety'],
-  freeboard: ['freeboard'],
-  community: ['general', 'notice', 'community'],
-  news: ['news'],
-};
-
 function fieldFilter(fieldPath: string, values: readonly string[]) {
   return { fieldFilter: { field: { fieldPath }, op: values.length === 1 ? 'EQUAL' : 'IN', value: values.length === 1 ? { stringValue: values[0] } : { arrayValue: { values: values.map((stringValue) => ({ stringValue })) } } } };
 }
 
 async function readBatch(collection: PublicCollection, country?: CountryRoute, category?: RegionalCategory, cursor = '') {
   const filters: unknown[] = country ? [fieldFilter('country', country.aliases)] : [];
-  if (collection === 'posts' && category) {
-    const types = POST_TYPES[category] || [category];
-    filters.push({ compositeFilter: { op: 'OR', filters: [fieldFilter('type', types), fieldFilter('sourceCategory', [category])] } });
+  // Community includes untyped legacy posts. IN + OR must not exceed Firestore's 30 disjunctions.
+  if (collection === 'posts' && category && category !== 'community' && (country?.aliases.length || 1) * 2 <= 30) {
+    filters.push({ compositeFilter: { op: 'OR', filters: [fieldFilter('type', [category]), fieldFilter('sourceCategory', [category])] } });
   }
   const response = await fetch(`${FIRESTORE_URL}:runQuery`, {
     method: 'POST',
@@ -235,15 +213,24 @@ export const getRegionalPost = cache(async (slug: string, category: RegionalCate
   const country = getCountryRoute(slug);
   const city = citySlug ? getCityRoute(slug, citySlug) : undefined;
   if (!country || !isRegionalPostId(id) || (citySlug && !city)) return { status: 'not-found' };
-  const collection = collectionFor(category);
+  // Both storage paths are shipped: regional food posts use posts; businesses use directories.
+  const collections: PublicCollection[] = category === 'directory' ? ['directories', 'posts'] : category === 'food' ? ['posts', 'directories'] : [collectionFor(category)];
   try {
-    const response = await fetch(`${FIRESTORE_URL}/${collection}/${encodeURIComponent(id)}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
-    if (response.status === 404) return { status: 'not-found' };
-    if (!response.ok) throw new Error(`Public content read failed (${response.status})`);
-    const post = fromDocument(collection, await response.json() as FirestoreDocument);
-    return post && post.country.slug === country.slug && postMatchesCategory(post, category) && (!city || postMatchesCity(post, city)) ? { status: 'ok', post } : { status: 'not-found' };
+    for (const collection of collections) {
+      const response = await fetch(`${FIRESTORE_URL}/${collection}/${encodeURIComponent(id)}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+      if (response.status === 404) continue;
+      if (!response.ok) throw new Error(`Public content read failed (${response.status})`);
+      const document = await response.json() as FirestoreDocument;
+      if (document.name !== `${DOCUMENT_ROOT}/${collection}/${id}` || !document.fields) throw new Error('Invalid public content response');
+      const post = fromDocument(collection, document);
+      if (!post || post.country.slug !== country.slug || (city && !postMatchesCity(post, city))) continue;
+      if (postMatchesCategory(post, category)) return { status: 'ok', post };
+      // The community hub historically linked every non-news posts record as /community/:id.
+      if (category === 'community' && post.category !== 'news') return { status: 'redirect', href: city ? cityRegionalPostHref(city, post.category, post.id) : regionalPostHref(country, post.category, post.id) };
+    }
+    return { status: 'not-found' };
   } catch (error) {
-    console.warn('[regional-content]', collection, error instanceof Error ? error.message : 'Read unavailable');
+    console.warn('[regional-content]', collections.join(','), error instanceof Error ? error.message : 'Read unavailable');
     return { status: 'unavailable' };
   }
 });

@@ -28,6 +28,10 @@ export function emitMusicPlayerEvent(detail: { player: 'top' | 'video' | 'radio'
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('gyopo-music-player', { detail }));
 }
 
+export function emitBackgroundMusicEvent(muted: boolean) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('gyopo-background-music', { detail: { muted } }));
+}
+
 export const MUSIC_TRACKS: MusicTrack[] = [
   { id: 'like-jennie', title: 'like JENNIE', artist: 'JENNIE', videoId: 'JSFG-IE8n_c', keywords: ['JENNIE', '제니', 'like JENNIE', 'BLACKPINK'], thumbnail: 'https://i.ytimg.com/vi/JSFG-IE8n_c/hqdefault.jpg' },
   { id: 'earthquake', title: 'earthquake', artist: 'JISOO', videoId: '2V6lvCUPT8I', keywords: ['JISOO', '지수', 'earthquake', 'AMORTAGE'], thumbnail: 'https://i.ytimg.com/vi/2V6lvCUPT8I/hqdefault.jpg' },
@@ -47,4 +51,34 @@ export function searchMusicTracks(query: string): MusicTrack[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return MUSIC_TRACKS;
   return MUSIC_TRACKS.filter((track) => `${track.title} ${track.artist} ${track.keywords.join(' ')}`.toLowerCase().includes(normalized));
+}
+
+export function readMusicVolume(value: string | null): number {
+  const volume = value === null || !value.trim() ? NaN : Number(value);
+  return Number.isFinite(volume) ? Math.min(100, Math.max(0, volume)) : 70;
+}
+
+export function normalizeMusicFavorites(value: unknown): MusicTrack[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.filter((item): item is MusicTrack => {
+    if (!item || typeof item.id !== 'string' || typeof item.videoId !== 'string' ||
+      typeof item.title !== 'string' || typeof item.artist !== 'string' || !Array.isArray(item.keywords) || seen.has(item.videoId)) return false;
+    seen.add(item.videoId);
+    return true;
+  });
+}
+
+export function musicPopoverPosition(anchor: { left: number; top: number; bottom: number }, viewport: { left: number; top: number; width: number; height: number }, desiredWidth: number) {
+  const margin = 12;
+  const width = Math.max(0, Math.min(desiredWidth, viewport.width - margin * 2));
+  const left = Math.max(viewport.left + margin, Math.min(anchor.left, viewport.left + viewport.width - width - margin));
+  const bottom = viewport.top + viewport.height - margin;
+  const anchorTop = Math.max(viewport.top + margin, Math.min(anchor.top, bottom));
+  const anchorBottom = Math.max(viewport.top + margin, Math.min(anchor.bottom, bottom));
+  const below = bottom - anchorBottom - 8;
+  const above = anchorTop - viewport.top - margin - 8;
+  const maxHeight = Math.max(0, Math.min(420, below < 180 && above > below ? above : below));
+  const top = below < 180 && above > below ? anchorTop - 8 - maxHeight : Math.max(viewport.top + margin, Math.min(bottom, anchorBottom + 8));
+  return { left, top, width, maxHeight };
 }

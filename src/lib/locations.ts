@@ -23,13 +23,14 @@ export type CountryLocation = {
   primaryPortal?: string;
 };
 
-const CORE_COUNTRY_SLUGS = ['us', 'cn', 'jp', 'ca', 'vn', 'uz', 'au', 'kz', 'ru', 'ph', 'cy', 'mt', 'lv', 'ro', 'pl', 'ae', 'pt', 'nl', 'bg', 'it', 'es', 'fi', 'uk'] as const;
+const CORE_COUNTRY_SLUGS = ['us', 'kr', 'cn', 'jp', 'ca', 'vn', 'uz', 'au', 'kz', 'ru', 'ph', 'cy', 'mt', 'lv', 'ro', 'pl', 'ae', 'pt', 'nl', 'bg', 'it', 'es', 'fi', 'uk'] as const;
 const SOUTH_AMERICA_COUNTRY_SLUGS = ['br', 'ar', 'bo', 'cl', 'co', 'ec', 'gy', 'py', 'pe', 'sr', 'uy', 've'] as const;
 const EUROPE_COUNTRY_SLUGS = ['al', 'ad', 'at', 'by', 'be', 'ba', 'bg', 'hr', 'cy', 'cz', 'dk', 'ee', 'fi', 'fr', 'de', 'gr', 'hu', 'is', 'ie', 'it', 'lv', 'li', 'lt', 'lu', 'mt', 'md', 'mc', 'me', 'nl', 'mk', 'no', 'pl', 'pt', 'ro', 'sm', 'rs', 'sk', 'si', 'es', 'se', 'ch', 'ua', 'uk', 'va', 'ru'] as const;
 
 export const PUBLIC_COUNTRY_SLUGS = [...new Set([...CORE_COUNTRY_SLUGS, ...SOUTH_AMERICA_COUNTRY_SLUGS, ...EUROPE_COUNTRY_SLUGS])] as readonly string[];
 
 export const CITY_SLUGS_BY_COUNTRY: Readonly<Record<string, readonly string[]>> = {
+  kr: ['seoul', 'busan', 'incheon', 'daegu', 'daejeon', 'gwangju', 'ulsan', 'jeju'],
   br: ['sao-paulo', 'rio-de-janeiro', 'brasilia', 'curitiba', 'campinas', 'belo-horizonte', 'porto-alegre', 'manaus', 'salvador', 'recife'],
   ar: ['buenos-aires', 'cordoba', 'rosario'],
   bo: ['santa-cruz-de-la-sierra', 'la-paz', 'cochabamba'],
@@ -68,16 +69,16 @@ export const CITY_SLUGS_BY_COUNTRY: Readonly<Record<string, readonly string[]>> 
 };
 
 const COUNTRY_NAMES: Record<string, string> = {
-  us: 'United States', cn: 'China', jp: 'Japan', ca: 'Canada', vn: 'Vietnam', uz: 'Uzbekistan', au: 'Australia', kz: 'Kazakhstan', ru: 'Russia', ph: 'Philippines', cy: 'Cyprus', mt: 'Malta', lv: 'Latvia', ro: 'Romania', pl: 'Poland', ae: 'United Arab Emirates', pt: 'Portugal', nl: 'Netherlands', bg: 'Bulgaria', it: 'Italy', es: 'Spain', fi: 'Finland', uk: 'United Kingdom', br: 'Brazil', ar: 'Argentina', bo: 'Bolivia', cl: 'Chile', co: 'Colombia', ec: 'Ecuador', gy: 'Guyana', py: 'Paraguay', pe: 'Peru', sr: 'Suriname', uy: 'Uruguay', ve: 'Venezuela', al: 'Albania', ad: 'Andorra', at: 'Austria', by: 'Belarus', be: 'Belgium', ba: 'Bosnia and Herzegovina', hr: 'Croatia', cz: 'Czechia', dk: 'Denmark', ee: 'Estonia', fr: 'France', de: 'Germany', gr: 'Greece', hu: 'Hungary', is: 'Iceland', ie: 'Ireland', li: 'Liechtenstein', lt: 'Lithuania', lu: 'Luxembourg', md: 'Moldova', mc: 'Monaco', me: 'Montenegro', mk: 'North Macedonia', no: 'Norway', sm: 'San Marino', rs: 'Serbia', sk: 'Slovakia', si: 'Slovenia', se: 'Sweden', ch: 'Switzerland', ua: 'Ukraine', va: 'Vatican City',
+  us: 'United States', kr: 'South Korea', cn: 'China', jp: 'Japan', ca: 'Canada', vn: 'Vietnam', uz: 'Uzbekistan', au: 'Australia', kz: 'Kazakhstan', ru: 'Russia', ph: 'Philippines', cy: 'Cyprus', mt: 'Malta', lv: 'Latvia', ro: 'Romania', pl: 'Poland', ae: 'United Arab Emirates', pt: 'Portugal', nl: 'Netherlands', bg: 'Bulgaria', it: 'Italy', es: 'Spain', fi: 'Finland', uk: 'United Kingdom', br: 'Brazil', ar: 'Argentina', bo: 'Bolivia', cl: 'Chile', co: 'Colombia', ec: 'Ecuador', gy: 'Guyana', py: 'Paraguay', pe: 'Peru', sr: 'Suriname', uy: 'Uruguay', ve: 'Venezuela', al: 'Albania', ad: 'Andorra', at: 'Austria', by: 'Belarus', be: 'Belgium', ba: 'Bosnia and Herzegovina', hr: 'Croatia', cz: 'Czechia', dk: 'Denmark', ee: 'Estonia', fr: 'France', de: 'Germany', gr: 'Greece', hu: 'Hungary', is: 'Iceland', ie: 'Ireland', li: 'Liechtenstein', lt: 'Lithuania', lu: 'Luxembourg', md: 'Moldova', mc: 'Monaco', me: 'Montenegro', mk: 'North Macedonia', no: 'Norway', sm: 'San Marino', rs: 'Serbia', sk: 'Slovakia', si: 'Slovenia', se: 'Sweden', ch: 'Switzerland', ua: 'Ukraine', va: 'Vatican City',
 };
 
 const COUNTRY_ISO_ALPHA2: Record<string, string> = { ...Object.fromEntries(PUBLIC_COUNTRY_SLUGS.map((slug) => [slug, slug.toUpperCase()])), uk: 'GB' };
 const COUNTRY_REGIONS: Record<string, LocationRegion> = {
   us: 'north-america', ca: 'north-america', br: 'south-america', ar: 'south-america', bo: 'south-america', cl: 'south-america', co: 'south-america', ec: 'south-america', gy: 'south-america', py: 'south-america', pe: 'south-america', sr: 'south-america', uy: 'south-america', ve: 'south-america',
-  cn: 'east-asia', jp: 'east-asia', vn: 'southeast-asia', ph: 'southeast-asia', uz: 'central-asia', kz: 'central-asia', au: 'oceania', ae: 'middle-east',
+  kr: 'east-asia', cn: 'east-asia', jp: 'east-asia', vn: 'southeast-asia', ph: 'southeast-asia', uz: 'central-asia', kz: 'central-asia', au: 'oceania', ae: 'middle-east',
   al: 'europe', ad: 'europe', at: 'europe', by: 'europe', be: 'europe', ba: 'europe', bg: 'europe', hr: 'europe', cy: 'europe', cz: 'europe', dk: 'europe', ee: 'europe', fi: 'europe', fr: 'europe', de: 'europe', gr: 'europe', hu: 'europe', is: 'europe', ie: 'europe', it: 'europe', lv: 'europe', li: 'europe', lt: 'europe', lu: 'europe', mt: 'europe', md: 'europe', mc: 'europe', me: 'europe', nl: 'europe', mk: 'europe', no: 'europe', pl: 'europe', pt: 'europe', ro: 'europe', ru: 'europe', sm: 'europe', rs: 'europe', sk: 'europe', si: 'europe', es: 'europe', se: 'europe', ch: 'europe', ua: 'europe', uk: 'europe', va: 'europe',
 };
-const LEGACY_IDS: Record<string, string> = { us: 'USA', uk: 'UnitedKingdom', ae: 'UAE', br: 'Brazil', ar: 'Argentina', bo: 'Bolivia', cl: 'Chile', co: 'Colombia', py: 'Paraguay', uy: 'Uruguay', pt: 'Portugal', es: 'Spain', nl: 'Netherlands', de: 'Germany', fr: 'France', it: 'Italy', ro: 'Romania', hu: 'Hungary', mt: 'Malta', vn: 'Vietnam', ph: 'Philippines', ca: 'Canada', au: 'Australia', jp: 'Japan', cn: 'China' };
+const LEGACY_IDS: Record<string, string> = { us: 'USA', kr: 'SouthKorea', uk: 'UnitedKingdom', ae: 'UAE', br: 'Brazil', ar: 'Argentina', bo: 'Bolivia', cl: 'Chile', co: 'Colombia', py: 'Paraguay', uy: 'Uruguay', pt: 'Portugal', es: 'Spain', nl: 'Netherlands', de: 'Germany', fr: 'France', it: 'Italy', ro: 'Romania', hu: 'Hungary', mt: 'Malta', vn: 'Vietnam', ph: 'Philippines', ca: 'Canada', au: 'Australia', jp: 'Japan', cn: 'China' };
 
 export const COUNTRY_OVERRIDES = {
   uk: { publicSlug: 'uk', isoAlpha2: 'GB' },

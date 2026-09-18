@@ -20,6 +20,39 @@ export type ContentSource = {
 // Only sources with a public, human-readable origin are listed here.
 // A source is never auto-published until its feed/parser has been reviewed.
 export const CONTENT_SOURCES: ContentSource[] = [
+  // Individual topic URLs verified against official pages on 2026-09-16; never auto-published.
+  { id: 'usagov-guides', region: 'USA', name: 'USAGov', url: 'https://www.usa.gov/', kind: 'government', categories: ['news', 'community'], trust: 'official', autoImport: false, note: '미국 비자·입국·체류·주거·정착 공식 안내 visa immigration housing', crawlPaths: [
+    { category: 'community', label: '관광 방문 비자 B-1 B-2 tourist visitor visa', path: '/tourist-visa' },
+    { category: 'community', label: 'ESTA 무비자 비자면제 여행허가 Visa Waiver Program', path: '/visa-waiver-esta' },
+    { category: 'community', label: '체류 연장 I-539 stay extension', path: '/extend-visa' },
+    { category: 'community', label: '운전 국제운전면허 면허증 IDP driving license', path: '/non-citizen-driving' },
+    { category: 'community', label: '임대 주거 임차인 분쟁 tenant rights housing', path: '/tenant-rights' },
+  ] },
+  { id: 'uscis-guides', region: 'USA', name: 'USCIS', url: 'https://www.uscis.gov/', kind: 'government', categories: ['news', 'community'], trust: 'official', autoImport: false, note: '미국 영주권·체류·주소 변경 공식 안내 green card immigration address', crawlPaths: [
+    { category: 'community', label: '영주권 자격 green card eligibility', path: '/green-card/green-card-eligibility-categories' },
+    { category: 'community', label: '이사 주소 변경 address change AR-11', path: '/addresschange' },
+  ] },
+  { id: 'cbp-guides', region: 'USA', name: 'U.S. Customs and Border Protection', url: 'https://www.cbp.gov/', kind: 'government', categories: ['news', 'community'], trust: 'official', autoImport: false, note: '미국 입출국·I-94·ESTA 공식 안내', crawlPaths: [
+    { category: 'community', label: 'I-94 입출국 기록 체류기간 arrival departure record', path: '/travel/international-visitors/i-94' },
+  ] },
+  { id: 'ssa-guides', region: 'USA', name: 'Social Security Administration', url: 'https://www.ssa.gov/', kind: 'government', categories: ['community'], trust: 'official', autoImport: false, note: '미국 사회보장번호 SSN 공식 안내', crawlPaths: [
+    { category: 'community', label: 'SSN 사회보장번호 신규 영주권자 Social Security immigrant visa', path: '/ssnvisa/Handout_11_1.html' },
+  ] },
+  { id: 'irs-guides', region: 'USA', name: 'Internal Revenue Service', url: 'https://www.irs.gov/', kind: 'government', categories: ['community'], trust: 'official', autoImport: false, note: '미국 세금·ITIN 공식 안내 tax', crawlPaths: [
+    { category: 'community', label: 'ITIN 납세자 식별번호 세금 taxpayer identification tax', path: '/tin/itin/individual-taxpayer-identification-number-itin' },
+  ] },
+  { id: 'healthcare-guides', region: 'USA', name: 'HealthCare.gov', url: 'https://www.healthcare.gov/', kind: 'government', categories: ['community'], trust: 'official', autoImport: false, note: '미국 건강보험 공식 안내 insurance healthcare', crawlPaths: [
+    { category: 'community', label: '건강보험 의료보험 이민자 Marketplace Medicaid CHIP health insurance', path: '/immigrants/lawfully-present-immigrants/' },
+  ] },
+  { id: 'bea-guides', region: 'USA', name: 'Bureau of Economic Analysis', url: 'https://www.bea.gov/', kind: 'government', categories: ['news', 'community'], trust: 'official', autoImport: false, note: '미국 물가·지역 가격지수 통계 prices cost of living', crawlPaths: [
+    { category: 'community', label: '물가 생활비 지역 가격지수 RPP regional price parities cost living', path: '/data/prices-inflation/regional-price-parities-state-and-metro-area' },
+  ] },
+  { id: 'nps-guides', region: 'USA', name: 'National Park Service', url: 'https://www.nps.gov/', kind: 'government', categories: ['community'], trust: 'official', autoImport: false, note: '미국 국립공원 여행·예약·안전 공식 안내 travel parks', crawlPaths: [
+    { category: 'community', label: '국립공원 여행 방문 예약 안전 national parks travel visit', path: '/planyourvisit/index.htm' },
+  ] },
+  { id: 'busan-film-festival', region: 'SouthKorea', name: '부산국제영화제 공식 홈페이지', url: 'https://www.biff.kr/', kind: 'association', categories: ['news', 'events'], trust: 'official', autoImport: false, note: '부산국제영화제 공식 일정·상영·예매 안내', crawlPaths: [
+    { category: 'events', label: '부산국제영화제 영화제 일정 상영 시간표 티켓 예매', path: '/pop/20260917_1400/schedule_kor.asp' },
+  ] },
   { id: 'korea-net', region: 'Global', name: 'Korea.net · KOCIS', url: 'https://www.korea.net/', kind: 'government', categories: ['news', 'events'], trust: 'official', autoImport: false, note: '대한민국 문화체육관광부 해외홍보 포털' },
   { id: 'korea-herald', region: 'Global', name: 'The Korea Herald', url: 'https://www.koreaherald.com/', kind: 'news', categories: ['news'], trust: 'verified', autoImport: false, note: '영문 한국 뉴스 매체' },
   { id: 'kafla', region: 'USA-LA', name: 'Korean American Federation of Los Angeles', url: 'https://kafla.info/', kind: 'association', categories: ['news', 'directory', 'events'], trust: 'official', autoImport: false, note: 'LA 한인회 공식 사이트' },

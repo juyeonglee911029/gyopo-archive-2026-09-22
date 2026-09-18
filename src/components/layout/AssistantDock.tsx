@@ -1,7 +1,6 @@
 'use client';
 
-import { type FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react';
-import { useEffectEvent } from 'react';
+import { type FormEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { GripHorizontal, Minus, Send, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -27,6 +26,7 @@ function parseMatches(value: unknown): AssistantSearchMatch[] {
 
 export default function AssistantDock() {
   const pathname = usePathname();
+  const isSearchPage = pathname === '/assistant' || pathname === '/apps/ai-search' || pathname === '/search';
   const panelRef = useRef<HTMLElement>(null);
   const dragRef = useRef<{ offsetX: number; offsetY: number; width: number; height: number } | null>(null);
   const [open, setOpen] = useState(false);
@@ -36,6 +36,30 @@ export default function AssistantDock() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const selectedCountry = useGlobalStore((state) => state.selectedCountry);
+
+  const askQuestion = useCallback(async (question: string) => {
+    const trimmed = question.trim();
+    if (!trimmed || loading) return;
+    const next = [...messages, { role: 'user' as const, content: trimmed }];
+    setMessages(next);
+    setInput('');
+    setLoading(true);
+    try {
+      const token = await getFreshSessionToken();
+      if (!token) {
+        setMessages((current) => [...current, { role: 'assistant', content: 'AI 답변을 받으려면 먼저 로그인해주세요.' }]);
+        return;
+      }
+      const response = await fetch('/api/assistant', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ messages: next, region: selectedCountry }) });
+      const data = await response.json() as { answer?: string; error?: string; matches?: unknown };
+      const matches = parseMatches(data.matches);
+      setMessages((current) => [...current, { role: 'assistant', content: data.answer || data.error || '답변을 가져오지 못했습니다.', matches }]);
+    } catch {
+      setMessages((current) => [...current, { role: 'assistant', content: 'AI 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.' }]);
+    } finally {
+      setLoading(false);
+    }
+  }, [loading, messages, selectedCountry]);
 
   useEffect(() => {
     try {
@@ -47,14 +71,14 @@ export default function AssistantDock() {
   }, []);
 
   useEffect(() => {
-    if (pathname === '/assistant' || pathname === '/apps/ai-search') {
+    if (isSearchPage) {
       setOpen(false);
       setMinimized(false);
     }
-  }, [pathname]);
+  }, [isSearchPage]);
 
   useEffect(() => {
-    if (pathname === '/assistant' || pathname === '/apps/ai-search') return;
+    if (isSearchPage) return;
     const openAssistant = () => {
       setOpen((value) => !value);
       setMinimized(false);
@@ -74,7 +98,7 @@ export default function AssistantDock() {
       window.removeEventListener('gyopo-assistant-open', openAssistant);
       window.removeEventListener('gyopo-assistant-query', openAssistantWithQuery);
     };
-  }, [pathname]);
+  }, [isSearchPage, askQuestion]);
 
   useEffect(() => {
     if (!open) return;
@@ -129,36 +153,12 @@ export default function AssistantDock() {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
-  const askQuestion = useEffectEvent(async (question: string) => {
-    const trimmed = question.trim();
-    if (!trimmed || loading) return;
-    const next = [...messages, { role: 'user' as const, content: trimmed }];
-    setMessages(next);
-    setInput('');
-    setLoading(true);
-    try {
-       const token = await getFreshSessionToken();
-      if (!token) {
-        setMessages((current) => [...current, { role: 'assistant', content: 'AI 답변을 받으려면 먼저 로그인해주세요.' }]);
-        return;
-      }
-      const response = await fetch('/api/assistant', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ messages: next, region: selectedCountry }) });
-      const data = await response.json() as { answer?: string; error?: string; matches?: unknown };
-      const matches = parseMatches(data.matches);
-      setMessages((current) => [...current, { role: 'assistant', content: data.answer || data.error || '답변을 가져오지 못했습니다.', matches }]);
-    } catch {
-      setMessages((current) => [...current, { role: 'assistant', content: 'AI 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.' }]);
-    } finally {
-      setLoading(false);
-    }
-  });
-
   const ask = (event: FormEvent) => {
     event.preventDefault();
     void askQuestion(input);
   };
 
-  if (!open || pathname === '/assistant' || pathname === '/apps/ai-search') return null;
+  if (!open || isSearchPage) return null;
 
   if (minimized) {
     return <button type="button" className="assistant-dock-tab" style={positionStyle} onClick={() => setMinimized(false)} aria-label="GYOPO AI 다시 열기"><Sparkles size={14} /><span>AI</span></button>;

@@ -9,6 +9,7 @@ const apps = [
   { href: '/apps/ai-search', label: 'AI 생활 검색', english: 'AI Search', detail: '해외 생활 정보를 질문하고 필요한 다음 행동을 찾습니다.', icon: Bot, tone: 'text-cyan-200 bg-cyan-300/10' },
   { href: '/apps/random-chat', label: '랜덤 화상채팅', english: 'Random Video', detail: '안전 운영 기준을 지키며 다른 교민과 1:1로 연결합니다.', icon: Video, tone: 'text-emerald-200 bg-emerald-300/10' },
   { href: '/games', label: '테트리스 아레나', english: 'Tetris Arena', detail: '설치 없이 방을 만들고 실시간으로 대결합니다.', icon: Gamepad2, tone: 'text-amber-200 bg-amber-300/10' },
+  { href: '/games/brick-breaker', label: '배드볼 벽돌깨기', english: 'Badball Brick Breaker', detail: '무료 연습과 초대 코드 기반 2인 대전을 즐깁니다.', icon: Gamepad2, tone: 'text-lime-200 bg-lime-300/10' },
   { href: '/music', label: 'Music Video', english: 'Music', detail: 'YouTube 뮤직비디오를 검색하고 즐겨찾기합니다.', icon: Headphones, tone: 'text-rose-200 bg-rose-300/10' },
   { href: '/webrtc', label: '라이브 영상', english: 'Live Video', detail: '친구·교민과 영상으로 대화하고 연결합니다.', icon: MessageCircle, tone: 'text-violet-200 bg-violet-300/10' },
   { href: '/theater', label: 'GYOPO 라이브', english: 'Live Room', detail: '라이브 룸과 방송 콘텐츠를 둘러봅니다.', icon: Video, tone: 'text-sky-200 bg-sky-300/10' },

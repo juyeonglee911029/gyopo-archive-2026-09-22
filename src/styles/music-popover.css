@@ -1,0 +1,2 @@
+.music-player-shell { position: relative; z-index: 20; min-width: 0; }
+.music-player-results, .music-favorites-popover { z-index: 30; }

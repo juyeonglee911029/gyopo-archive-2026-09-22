@@ -1,0 +1,23 @@
+:root {
+  --font-sans: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", ui-sans-serif, system-ui, sans-serif;
+  --font-display: Manrope, "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
+  --glass-white: rgba(255, 255, 255, .06);
+}
+
+body { font-family: var(--font-sans); }
+.font-display { font-family: var(--font-display); }
+.portal-chrome { position: relative; z-index: 10; }
+.portal-frame, .portal-frame > main { min-width: 0; background: transparent; }
+.footer-link { display: inline-flex; align-items: center; border: 1px solid transparent; padding: .35rem .45rem; color: #94a3b8; text-decoration: none; }
+.footer-link:hover { color: #a5f3fc; }
+.header-action, .header-menu-button, .translate-control, .usdt-balance { border-radius: .7rem; }
+#global-lounge { z-index: 250; }
+.global-live-room-link { color: #fb7185 !important; }
+.global-live-room-link:hover, .global-live-room-link.is-active { color: #fecdd3 !important; background: rgba(244, 63, 94, .14) !important; }
+.global-live-room-link svg { color: #fb7185; }
+.global-live-room-dot { display: inline-block; width: .45rem; height: .45rem; margin-left: auto; border-radius: 999px; background: #ef4444; box-shadow: 0 0 0 .18rem rgba(239, 68, 68, .13), 0 0 .8rem rgba(239, 68, 68, .95); animation: global-live-pulse 1.4s ease-in-out infinite; }
+@keyframes global-live-pulse { 0%, 100% { opacity: .58; transform: scale(.82); } 50% { opacity: 1; transform: scale(1.12); } }
+
+@media (max-width: 767px) {
+  body:has(.tetris-focused-page), body:has(.badball-shell) { background: #070b17; }
+}

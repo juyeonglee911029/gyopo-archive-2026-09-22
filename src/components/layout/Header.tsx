@@ -1,1 +1,1 @@
-export { default } from './Header.legacy';
+export { default, TranslateMenu } from './Header.legacy';

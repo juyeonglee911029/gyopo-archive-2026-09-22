@@ -1,15 +1,24 @@
 'use client';
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { usePathname } from 'next/navigation';
+import { Suspense, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { completeProfileOnboarding, createDocument, deleteDocument, getSessionToken, getStoredSession, hasCompletedProfile, isMasterUser, mergeDocument, queryDocumentsWhere, recordVisit, refreshStoredUser, saveProfile, type Gender } from '@/lib/firebase';
 import { detectRegionFromIp, REGIONS } from '@/lib/regions';
+import { getCountryRoute } from '@/lib/regionRoutes';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { trackGrowth } from '@/lib/growthTracking';
+import { startSerialPoll } from '@/lib/rtcSignaling';
 import StartupExperience from '@/components/layout/StartupExperience';
-import { LiveRoomPlayer, RoomChatPanel, type LiveRoom } from '@/app/theater/liveRoomShared';
+import { FloatingRoomTitle, LiveRoomPlayer, RoomChatPanel, type LiveRoom } from '@/app/theater/liveRoomShared';
 
 type FloatingLiveMessage = { id: string; roomId: string; sessionId?: string; authorId: string; user: string; text: string; createdAt: string };
+
+function FloatingRoomLayer({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  if (/^\/(master|admin)(\/|$)/.test(pathname) || searchParams.get('compact') === '1' || searchParams.get('embed') === '1') return null;
+  return children;
+}
 
 function resizeProfileImage(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) return Promise.reject(new Error('이미지 파일만 선택해주세요.'));
@@ -44,6 +53,7 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   const selectedCountry = useGlobalStore((state) => state.selectedCountry);
   const pathname = usePathname();
   const [sessionChecked, setSessionChecked] = useState(false);
+  const [regionReady, setRegionReady] = useState(false);
   const [gender, setGender] = useState<Gender | ''>('');
   const [country, setCountry] = useState('');
   const [age, setAge] = useState('');
@@ -70,56 +80,94 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   }, [setDarkMode]);
 
   useEffect(() => {
-    const savedCountry = window.localStorage.getItem('gyopo-country');
-    if (savedCountry && REGIONS.some((region) => region.id === savedCountry)) return;
+    let savedCountry: string | null = null;
+    try {
+      savedCountry = window.localStorage.getItem('gyopo-country');
+      useGlobalStore.setState({ language: window.localStorage.getItem('gyopo-language') === 'en' ? 'en' : 'ko' });
+    } catch { /* Storage is optional. */ }
+    if (savedCountry && REGIONS.some((region) => region.id === savedCountry)) {
+      useGlobalStore.setState({ selectedCountry: savedCountry });
+      setRegionReady(true);
+      return;
+    }
     let active = true;
     void detectRegionFromIp().then((region) => {
-      if (active && region && !window.localStorage.getItem('gyopo-country')) setSelectedCountry(region);
+      if (!active || !region || useGlobalStore.getState().selectedCountry !== 'Global') return;
+      try { if (window.localStorage.getItem('gyopo-country')) return; } catch { /* Storage is optional. */ }
+      setSelectedCountry(region);
+    }).catch(() => {
+      // An unavailable IP lookup leaves the actual Global default usable.
+    }).finally(() => {
+      if (active) setRegionReady(true);
     });
     return () => { active = false; };
   }, [setSelectedCountry]);
 
   useEffect(() => {
+    const routeCountry = getCountryRoute(pathname.split('/')[1] || '');
+    if (routeCountry && !routeCountry.regionIds.includes(useGlobalStore.getState().selectedCountry)) {
+      setSelectedCountry(routeCountry.id);
+    }
+  }, [pathname, setSelectedCountry]);
+
+  useEffect(() => {
     document.documentElement.dataset.theme = 'dark';
     document.documentElement.style.colorScheme = 'dark';
-    window.localStorage.setItem('gyopo-dark-mode', '1');
+    try { window.localStorage.setItem('gyopo-dark-mode', '1'); } catch { /* Storage is optional. */ }
   }, [darkMode]);
 
   useEffect(() => {
     let active = true;
+    let refreshing = false;
+    let refreshPending = false;
+    let revision = 0;
     const hydrate = async () => {
+      if (refreshing) { refreshPending = true; return; }
+      refreshing = true;
+      const currentRevision = revision;
       const savedSession = getStoredSession();
-      const savedUser = savedSession?.user || null;
-      if (savedUser) setUser(savedUser);
-      const refreshedUser = await refreshStoredUser();
-      if (active) {
-        setUser(savedSession ? refreshedUser : null);
-        setSessionChecked(true);
+      try {
+        const refreshedUser = await refreshStoredUser();
+        if (active && currentRevision === revision && ((!refreshedUser && !getStoredSession()) || getStoredSession()?.user.id === savedSession?.user.id)) {
+          setUser(refreshedUser);
+        }
+      } finally {
+        refreshing = false;
+        if (active) {
+          setSessionChecked(true);
+          if (refreshPending) { refreshPending = false; void hydrate().catch(() => undefined); }
+        }
       }
     };
-    void hydrate();
-    const beat = () => recordVisit(getStoredSession()?.user || user || null);
+    const onStorage = (event: StorageEvent) => {
+      if (event.storageArea !== window.localStorage || (event.key !== null && event.key !== 'gyopo-auth-session')) return;
+      // Profile-only writes from another tab/frame must not trigger a read/write echo.
+      if (event.oldValue && event.newValue) {
+        try {
+          const before = JSON.parse(event.oldValue);
+          const after = JSON.parse(event.newValue);
+          if (before.idToken === after.idToken && before.refreshToken === after.refreshToken && before.user?.id === after.user?.id) return;
+        } catch { /* Revalidate malformed or replaced sessions. */ }
+      }
+      revision += 1;
+      if (!getStoredSession()) setUser(null);
+      void hydrate().catch(() => undefined);
+    };
+    const stopRefresh = startSerialPoll(hydrate, 15_000);
+    const beat = () => { void recordVisit(getStoredSession()?.user || useGlobalStore.getState().user || null).catch(() => undefined); };
     void beat();
     const heartbeat = window.setInterval(() => {
       void beat();
     }, 10_000);
     window.addEventListener('focus', beat);
-    window.addEventListener('storage', hydrate);
+    window.addEventListener('storage', onStorage);
     return () => {
       active = false;
+      stopRefresh();
       window.clearInterval(heartbeat);
       window.removeEventListener('focus', beat);
-      window.removeEventListener('storage', hydrate);
+      window.removeEventListener('storage', onStorage);
     };
-  }, [setUser, user?.id]);
-
-  useEffect(() => {
-    const refresh = async () => {
-      const refreshedUser = await refreshStoredUser();
-      if (refreshedUser) setUser(refreshedUser);
-    };
-    const timer = window.setInterval(() => void refresh(), 15_000);
-    return () => window.clearInterval(timer);
   }, [setUser]);
 
   useEffect(() => {
@@ -314,12 +362,14 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
 
   return (
     <>
-      <StartupExperience ready={sessionChecked}>{children}</StartupExperience>
+      <StartupExperience sessionChecked={sessionChecked} regionReady={regionReady}>{children}</StartupExperience>
+       <Suspense fallback={null}><FloatingRoomLayer>
        {floatingRoom && user && <div className={`global-live-room-window ${floatingMinimized ? 'is-minimized' : ''}`} style={{ transform: `translate(${floatingOffset.x}px, ${floatingOffset.y}px)` }}>
-        <header className="global-live-room-header" onPointerDown={startFloatingDrag} onPointerMove={moveFloatingDrag} onPointerUp={stopFloatingDrag} onPointerCancel={stopFloatingDrag}><div className="min-w-0 flex-1 truncate text-left text-xs font-black"><span className="mr-1 text-rose-300">●</span>{floatingRoom.title || 'LIVE ROOM'}</div><div className="flex gap-1"><button type="button" onPointerDown={(event) => event.stopPropagation()} aria-label={floatingMinimized ? '라이브 창 복원' : '라이브 창 최소화'} onClick={() => setFloatingMinimized((value) => !value)} className="live-room-icon-button">{floatingMinimized ? '□' : '−'}</button><button type="button" onPointerDown={(event) => event.stopPropagation()} aria-label={isMasterUser(user) ? 'Master 방 종료 및 초기화' : '라이브 창 닫기'} onClick={() => isMasterUser(user) ? void resetFloatingRoom() : closeFloatingRoom()} className="live-room-icon-button">×</button></div></header>
+        <header className="global-live-room-header" onPointerDown={startFloatingDrag} onPointerMove={moveFloatingDrag} onPointerUp={stopFloatingDrag} onPointerCancel={stopFloatingDrag}><div className="min-w-0 flex-1 truncate text-left text-xs font-black"><span className="mr-1 text-rose-300">●</span><FloatingRoomTitle room={floatingRoom} onRoomChange={setFloatingRoom} /></div><div className="flex gap-1"><button type="button" onPointerDown={(event) => event.stopPropagation()} aria-label={floatingMinimized ? '라이브 창 복원' : '라이브 창 최소화'} onClick={() => setFloatingMinimized((value) => !value)} className="live-room-icon-button">{floatingMinimized ? '□' : '−'}</button><button type="button" onPointerDown={(event) => event.stopPropagation()} aria-label={isMasterUser(user) ? 'Master 방 종료 및 초기화' : '라이브 창 닫기'} onClick={() => isMasterUser(user) ? void resetFloatingRoom() : closeFloatingRoom()} className="live-room-icon-button">×</button></div></header>
           {floatingMinimized ? <div className="global-live-room-mini-video" role="button" tabIndex={0} aria-label="최소화된 LIVE ROOM 열기" onClick={() => setFloatingMinimized(false)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setFloatingMinimized(false); }}><LiveRoomPlayer room={floatingRoom} user={user} compact /></div> : <div className="global-live-room-body"><LiveRoomPlayer room={floatingRoom} user={user} /><RoomChatPanel room={floatingRoom} user={user} messages={floatingMessages} message={floatingInput} onMessageChange={setFloatingInput} onSubmit={sendFloatingMessage} /></div>}
        </div>}
-       {floatingRoom && floatingMinimized && <button type="button" className="global-live-room-restore" onClick={() => setFloatingMinimized(false)} aria-label="최소화된 LIVE ROOM 열기">LIVE ROOM</button>}
+       {floatingRoom && user && floatingMinimized && <button type="button" className="global-live-room-restore" onClick={() => setFloatingMinimized(false)} aria-label="최소화된 LIVE ROOM 열기">LIVE ROOM</button>}
+       </FloatingRoomLayer></Suspense>
        <dialog ref={dialogRef} onCancel={(event) => event.preventDefault()} className="m-auto w-[calc(100%-2rem)] max-w-lg overflow-hidden rounded-[2rem] border border-white/10 bg-[#10182b] p-0 text-white shadow-2xl backdrop:bg-[#050812]/90">
          {onboardingRequired ? (
            <form onSubmit={saveOnboarding} className="p-6 md:p-8">

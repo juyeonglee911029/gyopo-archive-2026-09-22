@@ -6,7 +6,7 @@ import { cityRegionalPostHref, countriesForRegion, getCityRoute, publicServiceSl
 export const runtime = 'edge';
 
 const routes = [
-  '/', '/regions', '/jobs', '/life', '/community', '/apps', '/apps/ai-search', '/apps/tetris', '/apps/random-chat',
+  '/', '/regions', '/jobs', '/life', '/community', '/apps', '/apps/ai-search', '/apps/tetris', '/apps/random-chat', '/games', '/games/brick-breaker',
   '/music', '/theater', '/news', '/directory', '/market', '/blog', '/help', '/ads', '/pricing', '/refund', '/privacy', '/terms',
 ];
 

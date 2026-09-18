@@ -1,7 +1,9 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import PostActions from '@/components/posts/PostActions';
 import PostComments from '@/components/posts/PostComments';
+import EditorialBlocks from '@/components/posts/EditorialBlocks';
+import { EmptyState, ErrorState, PageContainer, PageHeader } from '@/components/ui/Primitives';
 import { getCityOverview, getCountryOverview, getRegionalListing, getRegionalPost, isIndexableRegionalPost, type RegionalListing } from '@/lib/regionalContent';
 import { cityHref, cityRegionalPostHref, getCityRoute, getCountryRoute, getPublicServiceRoute, getRegionalCategory, isRegionalPostId, PUBLIC_SERVICE_ROUTES, regionalPostHref, serviceHref, type CityRoute, type CountryRoute, type PublicServiceRoute, type RegionalCategory } from '@/lib/regionRoutes';
 import { canonicalUrl, pageMetadata, seoExcerpt, serializeJsonLd } from '@/lib/seo';
@@ -112,6 +114,7 @@ export async function generateMetadata(props: Props) {
     const title = route.kind === 'city-category' ? `${route.city.label} ${route.category.label}` : `${route.country.label} ${route.category.label}`;
     return pageMetadata(title, `${title}: ${route.category.description}. 공개된 게시글의 내용을 확인하세요.`, path, !route.after && route.listing.status === 'ok' && route.listing.posts.some(isIndexableRegionalPost));
   }
+  if (route.result.status === 'redirect') redirect(route.result.href);
   const title = route.result.status === 'ok' ? route.result.post.title : `${route.country.label} ${route.category.label}`;
   const description = route.result.status === 'ok' ? seoExcerpt(route.result.post.body || route.result.post.description || title) : `${title} 게시글`;
   const path = route.kind === 'city-detail' ? cityRegionalPostHref(route.city, route.category.slug, route.id) : regionalPostHref(route.country, route.category.slug, route.id);
@@ -120,18 +123,17 @@ export async function generateMetadata(props: Props) {
 
 function CityPage({ city }: { city: CityRoute }) {
   return (
-    <div className="category-page mx-auto max-w-5xl px-4 py-8 text-slate-100 sm:px-6">
-      <header className="category-header"><div className="category-heading">
-      <Link href="/regions" className="text-sm font-bold text-teal-200">지역 탐색 / Regions</Link>
-        <p className="text-xs font-bold uppercase tracking-widest text-teal-200">{city.country.flag} {city.country.english} / {city.english}</p>
-        <h1 className="mt-3 text-4xl font-black sm:text-5xl">{city.label} 한인 생활</h1>
-        <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">{city.country.label} {city.label}에 거주하거나 방문하는 교민을 위한 지역별 게시판입니다. 필요한 분야를 골라 구인구직, 주거, 커뮤니티와 생활 서비스를 확인하세요.</p>
-      </div></header>
+    <PageContainer className="category-page mx-auto max-w-5xl px-4 py-8 text-slate-100 sm:px-6">
+      <PageHeader
+        breadcrumb={<><Link href="/regions" className="text-sm font-bold text-teal-200">지역 탐색 / Regions</Link><span className="text-xs font-bold uppercase tracking-widest text-teal-200">{city.country.flag} {city.country.english} / {city.english}</span></>}
+        title={`${city.label} 한인 생활`}
+        subtitle={`${city.country.label} ${city.label}에 거주하거나 방문하는 교민을 위한 지역별 게시판입니다. 필요한 분야를 골라 구인구직, 주거, 커뮤니티와 생활 서비스를 확인하세요.`}
+      />
       <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {PUBLIC_SERVICE_ROUTES.map((service) => <Link key={service.slug} href={serviceHref(city.country, service.slug, city)} className="rounded-2xl border border-white/10 bg-white/[.045] p-5 transition hover:border-teal-300/30 hover:bg-teal-300/[.06]"><h2 className="font-black text-white">{service.label}</h2><p className="mt-2 text-xs leading-5 text-slate-400">{service.description}</p><span className="mt-5 block text-xs font-black text-teal-200">게시판 보기 →</span></Link>)}
       </div>
       <Link href={`/${city.country.slug}`} className="mt-8 inline-flex text-sm font-bold text-slate-400 hover:text-white">{city.country.label} 국가 전체 게시판 보기 →</Link>
-    </div>
+    </PageContainer>
   );
 }
 
@@ -140,22 +142,23 @@ function CategoryPage({ country, city, category, service, listing, after }: { co
   const path = service ? serviceHref(country, service.slug, city) : city ? cityHref(city, categorySlug) : `/${country.slug}/${categorySlug}`;
   const heading = city ? `${city.label} ${service?.label || category.label}` : `${country.label} ${service?.label || category.label}`;
   return (
-    <div className="category-page mx-auto max-w-5xl px-4 py-8 text-slate-100 sm:px-6">
-       <header className="category-header"><div className="category-heading">
-        <Link href={city ? cityHref(city) : `/${country.slug}`} className="text-sm font-bold text-teal-200">{city ? `${city.label} 한인 생활` : `${country.label} 한인 커뮤니티`}</Link>
-       <h1 className="text-3xl font-black sm:text-4xl">{heading}</h1>
-        <p className="mt-4 text-sm leading-7 text-slate-300">{city ? `${city.label}에서 확인할 수 있는 공개 게시글과 생활 정보를 살펴보세요.` : `${country.label} 지역의 ${service?.description || category.description}를 확인하세요.`}</p>
-       </div>{!city && !service && ['jobs', 'community', 'housing'].includes(categorySlug) && <RegionalPostComposer country={country} category={categorySlug} label={category.label} />}</header>
-       {!city && !service && <RegionalNavigation country={country} current={categorySlug} />}
-      {listing.status === 'unavailable' ? <div role="status" className="rounded-xl border border-amber-300/20 p-6 text-amber-100"><h2 className="font-bold">게시글을 불러오지 못했습니다</h2><p className="mt-2 text-sm">현재 공개 데이터에 연결할 수 없습니다. 잠시 후 다시 확인해주세요.</p></div>
+    <PageContainer className="category-page mx-auto max-w-5xl px-4 py-8 text-slate-100 sm:px-6">
+      <PageHeader
+        breadcrumb={<Link href={city ? cityHref(city) : `/${country.slug}`} className="text-sm font-bold text-teal-200">{city ? `${city.label} 한인 생활` : `${country.label} 한인 커뮤니티`}</Link>}
+        title={heading}
+        subtitle={city ? `${city.label}에서 확인할 수 있는 공개 게시글과 생활 정보를 살펴보세요.` : `${country.label} 지역의 ${service?.description || category.description}를 확인하세요.`}
+        actions={!city ? <RegionalPostComposer country={country} category={categorySlug} label={category.label} /> : undefined}
+      />
+      {!city && !service && <RegionalNavigation country={country} current={categorySlug} />}
+      {listing.status === 'unavailable' ? <ErrorState title="게시글을 불러오지 못했습니다" description="현재 공개 데이터에 연결할 수 없습니다. 잠시 후 다시 확인해주세요." />
         : listing.posts.length ? <RegionalPostList posts={listing.posts} basePath={path} />
-          : <div className="rounded-xl border border-dashed border-white/15 p-8 text-slate-300"><h2 className="font-bold">{after || listing.nextCursor ? '이 목록 구간에 표시할 게시글이 없습니다' : '아직 공개된 게시글이 없습니다'}</h2><p className="mt-2 text-sm">다른 분야의 지역 게시판도 살펴보세요.</p></div>}
+          : <EmptyState title={after || listing.nextCursor ? '이 목록 구간에 표시할 게시글이 없습니다' : '아직 공개된 게시글이 없습니다'} description="다른 분야의 지역 게시판도 살펴보세요." />}
       <nav aria-label="게시글 목록 이동" className="mt-6 flex gap-5 text-sm font-bold text-teal-200">
         {after && <Link href={path}>첫 목록</Link>}
         {listing.nextCursor && <Link href={`${path}?after=${encodeURIComponent(listing.nextCursor)}`} rel="next">다음 목록</Link>}
       </nav>
       {listing.posts.length > 0 && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd({ '@context': 'https://schema.org', '@type': 'CollectionPage', name: heading, url: canonicalUrl(path), mainEntity: { '@type': 'ItemList', itemListElement: listing.posts.map((post, index) => ({ '@type': 'ListItem', position: index + 1, name: post.title, url: canonicalUrl(`${path}/${encodeURIComponent(post.id)}`) })) } }) }} />}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -168,18 +171,16 @@ function ServicePage({ country, city, service, category, listing, after }: { cou
   const path = serviceHref(country, service.slug, city);
   const heading = city ? `${city.label} ${service.label}` : `${country.label} ${service.label}`;
   return (
-    <div className="category-page mx-auto max-w-5xl px-4 py-8 text-slate-100 sm:px-6">
-      <header className="category-header"><div className="category-heading">
-      <Link href={city ? cityHref(city) : `/${country.slug}`} className="text-sm font-bold text-teal-200">{city ? `${city.label} 한인 생활` : `${country.label} 한인 커뮤니티`}</Link>
-        <p className="text-xs font-bold uppercase tracking-widest text-teal-200">{path}</p>
-        <h1 className="mt-3 text-3xl font-black sm:text-4xl">{heading}</h1>
-        <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">{service.description}</p>
-      </div></header>
-      <div className="mt-8 rounded-xl border border-dashed border-white/15 p-8 text-slate-300">
-        <h2 className="font-bold">아직 공개된 정보가 없습니다</h2>
-        <p className="mt-2 text-sm">확인된 공개 데이터가 준비되면 이 지역에 표시됩니다.</p>
+    <PageContainer className="category-page mx-auto max-w-5xl px-4 py-8 text-slate-100 sm:px-6">
+      <PageHeader
+        breadcrumb={<><Link href={city ? cityHref(city) : `/${country.slug}`} className="text-sm font-bold text-teal-200">{city ? `${city.label} 한인 생활` : `${country.label} 한인 커뮤니티`}</Link><span className="text-xs font-bold uppercase tracking-widest text-teal-200">{path}</span></>}
+        title={heading}
+        subtitle={service.description}
+      />
+      <div className="mt-8">
+        <EmptyState title="아직 공개된 정보가 없습니다" description="확인된 공개 데이터가 준비되면 이 지역에 표시됩니다." />
       </div>
-    </div>
+    </PageContainer>
   );
 }
 
@@ -187,23 +188,25 @@ function DetailPage({ country, city, category, result }: { country: CountryRoute
   const categorySlug = categoryOrNotFound(category);
   if (result.status !== 'ok') {
     if (result.status === 'not-found') notFound();
-    return <div className="mx-auto max-w-3xl px-4 py-20 text-center text-amber-100">게시글을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>;
+    if (result.status === 'redirect') redirect(result.href);
+    return <PageContainer className="mx-auto max-w-3xl px-4 py-20 text-center text-amber-100"><ErrorState title="게시글을 불러오지 못했습니다. 잠시 후 다시 시도해주세요." /></PageContainer>;
   }
   const post = result.post;
   const path = city ? cityRegionalPostHref(city, categorySlug, post.id) : regionalPostHref(country, categorySlug, post.id);
   const backHref = city ? cityHref(city, categorySlug) : `/${country.slug}/${categorySlug}`;
   const threadKey = post.sourceBacked ? postThreadKey('source', post.id) : postThreadKey(post.collection, post.id);
   return (
-    <article className="mx-auto max-w-4xl px-4 py-8 text-slate-100 sm:px-6">
+    <article className="public-article mx-auto max-w-4xl px-4 py-8 text-slate-100 sm:px-6">
       <Link href={backHref} className="text-sm font-bold text-teal-200">← {city ? `${city.label} ${category.label}` : `${country.label} ${category.label}`}</Link>
-      <div className="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-[#10182b]">
+      <div className="article-mosaic mt-5 overflow-hidden">
         {post.images[0] && <img src={post.images[0]} alt={post.title} className="max-h-[34rem] w-full bg-black/20 object-contain" />}
         <div className="p-6 sm:p-9">
-          <div className="flex flex-wrap gap-2 text-xs text-slate-400"><span>{country.flag} {city ? city.label : country.label}</span><span>{category.label}</span>{post.sourceName && <span>출처: {post.sourceName}</span>}{post.createdAt && <time dateTime={post.createdAt}>{post.createdAt.slice(0, 10)}</time>}</div>
+          <div className="flex flex-wrap gap-2 text-xs text-slate-400"><span>{country.flag} {city ? city.label : country.label}</span><span>{category.label}</span>{post.author && <span>작성자: {post.author}</span>}{post.sourceName && <span>출처: {post.sourceName}</span>}{post.createdAt && <time dateTime={post.createdAt}>{post.createdAt.slice(0, 10)}</time>}</div>
           <h1 className="mt-4 break-words text-3xl font-black leading-tight sm:text-4xl">{post.title}</h1>
-          {post.facts.length > 0 && <dl className="mt-6 grid gap-2 rounded-xl bg-white/[.04] p-4 text-sm sm:grid-cols-2">{post.facts.map((fact) => <div key={fact.label}><dt className="inline text-slate-500">{fact.label}: </dt><dd className="inline font-bold text-slate-200">{fact.value}</dd></div>)}</dl>}
-          {post.description && post.description !== post.body && <p className="mt-6 rounded-xl bg-teal-300/[.06] p-4 text-sm leading-7 text-teal-50">{post.description}</p>}
+          {post.facts.length > 0 && <dl className="article-mosaic-tile mt-6 grid gap-2 p-4 text-sm sm:grid-cols-2">{post.facts.map((fact) => <div key={fact.label}><dt className="inline text-slate-400">{fact.label}: </dt><dd className="inline font-bold text-slate-200">{fact.value}</dd></div>)}</dl>}
+          {post.description && post.description !== post.body && <p className="article-mosaic-tile mt-6 p-4 text-sm leading-7 text-teal-50">{post.description}</p>}
           <div className="mt-8 whitespace-pre-wrap break-words text-[17px] leading-8 text-slate-200">{post.body || '상세 본문이 제공되지 않은 게시글입니다.'}</div>
+          <EditorialBlocks value={post.editorial} />
           {post.sourceUrl && <a href={post.sourceUrl} target="_blank" rel="noreferrer" className="mt-7 inline-block text-sm font-bold text-teal-200">원문 출처 열기 ↗</a>}
         </div>
       </div>
@@ -217,7 +220,30 @@ function DetailPage({ country, city, category, result }: { country: CountryRoute
 export default async function CountrySegmentsPage(props: Props) {
   const route = await resolveRoute(props);
   if (route.kind === 'country') {
-    return <div className="category-page mx-auto max-w-5xl px-4 py-8 text-slate-100 sm:px-6"><header className="category-header"><div className="category-heading"><Link href="/regions" className="text-sm font-bold text-teal-200">지역 탐색 / Regions</Link><p className="text-xs font-bold uppercase tracking-widest text-teal-200">{route.country.english} / GYOPO</p><h1 className="mt-3 text-3xl font-black sm:text-4xl">{route.country.label} 한인 커뮤니티</h1><p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">{route.country.label} 교민의 생활 이야기와 공개 게시글을 분야별로 살펴보세요.</p></div></header><RegionalNavigation country={route.country} /><div className="space-y-10">{route.overview.map(({ category, listing }) => <section key={category.slug}><div className="mb-3 flex flex-wrap items-baseline justify-between gap-3"><h2 className="text-xl font-bold"><Link href={`/${route.country.slug}/${category.slug}`} className="hover:text-teal-200">{route.country.label} {category.label}</Link></h2><Link href={`/${route.country.slug}/${category.slug}`} className="text-sm text-teal-200">게시판 보기</Link></div><p className="mb-4 text-sm text-slate-400">{category.description}</p>{listing.status === 'unavailable' ? <p role="status" className="text-sm text-amber-200">게시글을 불러오지 못했습니다.</p> : listing.posts.length ? <RegionalPostList posts={listing.posts} /> : <p className="rounded-xl border border-dashed border-white/15 p-5 text-sm text-slate-400">아직 이 지역에 공개된 게시글이 없습니다.</p>}</section>)}</div></div>;
+    return (
+      <PageContainer className="category-page mx-auto max-w-5xl px-4 py-8 text-slate-100 sm:px-6">
+        <PageHeader
+          breadcrumb={<><Link href="/regions" className="text-sm font-bold text-teal-200">지역 탐색 / Regions</Link><span className="text-xs font-bold uppercase tracking-widest text-teal-200">{route.country.english} / GYOPO</span></>}
+          title={`${route.country.label} 한인 커뮤니티`}
+          subtitle={`${route.country.label} 교민의 생활 이야기와 공개 게시글을 분야별로 살펴보세요.`}
+        />
+        <RegionalNavigation country={route.country} />
+        <div className="space-y-10">
+          {route.overview.map(({ category, listing }) => (
+            <section key={category.slug}>
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
+                <h2 className="text-xl font-bold"><Link href={`/${route.country.slug}/${category.slug}`} className="hover:text-teal-200">{route.country.label} {category.label}</Link></h2>
+                <Link href={`/${route.country.slug}/${category.slug}`} className="text-sm text-teal-200">게시판 보기</Link>
+              </div>
+              <p className="mb-4 text-sm text-slate-400">{category.description}</p>
+              {listing.status === 'unavailable' ? <ErrorState title="게시글을 불러오지 못했습니다." />
+                : listing.posts.length ? <RegionalPostList posts={listing.posts} />
+                  : <EmptyState title="아직 이 지역에 공개된 게시글이 없습니다." />}
+            </section>
+          ))}
+        </div>
+      </PageContainer>
+    );
   }
   if (route.kind === 'city') return <CityPage city={route.city} />;
   if (route.kind === 'service') return <ServicePage country={route.country} service={route.service} category={route.category} listing={route.listing} after={route.after} />;

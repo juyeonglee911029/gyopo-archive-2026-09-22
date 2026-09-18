@@ -36,6 +36,7 @@ export const REGIONAL_CATEGORIES = [
   { slug: 'safety', label: '사건·안전', description: '지역 안전 소식과 도움 요청' },
   { slug: 'freeboard', label: '자유게시판', description: '자유롭게 나누는 지역 이야기' },
   { slug: 'news', label: '뉴스', description: '지역 소식과 교민 뉴스' },
+  { slug: 'events', label: '이벤트', description: '지역 행사와 모임 정보' },
   { slug: 'directory', label: '업소록', description: '한인 업체와 지역 서비스 소개' },
   { slug: 'market', label: '장터', description: '교민들의 중고 물품과 거래 정보' },
 ] as const;
@@ -58,7 +59,7 @@ export const PUBLIC_SERVICE_ROUTES: readonly PublicServiceRoute[] = [
   { slug: 'market', label: '장터', description: '교민들의 중고 물품과 거래 정보', category: 'market', aliases: ['market'] },
   { slug: 'community', label: '커뮤니티', description: '교민이 나누는 생활 질문과 이야기', category: 'community', aliases: ['community'] },
   { slug: 'news', label: '뉴스', description: '지역 소식과 교민 뉴스', category: 'news', aliases: ['news'] },
-  { slug: 'events', label: '이벤트', description: '지역 행사와 모임 정보', aliases: ['events', 'event'] },
+  { slug: 'events', label: '이벤트', description: '지역 행사와 모임 정보', category: 'events', aliases: ['events', 'event'] },
 ];
 
 const COUNTRY_LIFE_CATEGORY_ORDER = ['immigration', 'jobs', 'housing', 'education', 'cars', 'tax-finance', 'food', 'safety', 'freeboard'] as const;
@@ -151,15 +152,16 @@ export function cityHref(city: CityRoute, category?: RegionalCategory): string {
 }
 
 export function isRegionalPostId(id: string): boolean {
-  return /^[a-zA-Z0-9_-]{1,200}$/.test(id);
+  return Boolean(id) && id !== '.' && id !== '..' && !/^__.*__$/.test(id)
+    && !/[\/\u0000-\u001f\u007f]/.test(id) && new TextEncoder().encode(id).length <= 1500;
 }
 
 export function regionalPostHref(country: CountryRoute, category: RegionalCategory, id: string): string {
   if (!isRegionalPostId(id)) throw new Error('Invalid regional post ID');
-  return `/${country.slug}/${publicServiceSlugForCategory(category)}/${encodeURIComponent(id)}`;
+  return `/${country.slug}/${category === 'food' ? 'food' : publicServiceSlugForCategory(category)}/${encodeURIComponent(id)}`;
 }
 
 export function cityRegionalPostHref(city: CityRoute, category: RegionalCategory, id: string): string {
   if (!isRegionalPostId(id)) throw new Error('Invalid regional post ID');
-  return `${serviceHref(city.country, publicServiceSlugForCategory(category) as PublicServiceSlug, city)}/${encodeURIComponent(id)}`;
+  return `/${city.country.slug}/${city.slug}/${category === 'food' ? 'food' : publicServiceSlugForCategory(category)}/${encodeURIComponent(id)}`;
 }

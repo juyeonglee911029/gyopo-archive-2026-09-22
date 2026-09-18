@@ -33,11 +33,13 @@ export async function requirePaddleUser(request: Request): Promise<{ userId: str
 export async function paddleRequest(path: string, options: RequestInit = {}): Promise<Response> {
   const apiKey = process.env.PADDLE_API_KEY?.trim();
   if (!apiKey) throw new PaddleConfigurationError('Paddle API 키가 배포 환경에 설정되지 않았습니다.');
+  const baseUrl = (process.env.PADDLE_API_BASE_URL?.trim() || 'https://api.paddle.com').replace(/\/$/, '');
+  if (!/^https:\/\/(?:sandbox\.)?api\.paddle\.com$/.test(baseUrl)) throw new PaddleConfigurationError('Paddle API 주소가 허용된 주소가 아닙니다.');
   const headers = new Headers(options.headers);
   headers.set('authorization', `Bearer ${apiKey}`);
   headers.set('content-type', 'application/json');
   headers.set('paddle-version', '1');
-  return fetch(`https://api.paddle.com${path}`, { ...options, headers });
+  return fetch(`${baseUrl}${path}`, { ...options, headers });
 }
 
 export function amountFromTransaction(transaction: PaddleTransaction): number {

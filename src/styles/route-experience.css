@@ -1,0 +1,2 @@
+.route-state { min-height: 40vh; display: grid; place-items: center; align-content: center; gap: .5rem; padding: 2rem 1rem; text-align: center; }
+.route-state a { color: #67e8f9; }

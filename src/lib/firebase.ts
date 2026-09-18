@@ -45,7 +45,7 @@ export type PortalUser = {
 export type LedgerTransaction = {
   id: string;
   userId: string;
-  type: 'DEPOSIT' | 'WITHDRAWAL' | 'P2P_SEND' | 'P2P_RECEIVE' | 'FEE';
+  type: 'DEPOSIT' | 'WITHDRAWAL' | 'P2P_SEND' | 'P2P_RECEIVE' | 'FEE' | 'GAME_STAKE' | 'GAME_PAYOUT' | 'GAME_REFUND';
   amount: number;
   fee?: number;
   status: string;
@@ -90,7 +90,7 @@ export type PublicProfile = {
 
 export type WalletLedgerEntry = {
   userId: string;
-  type: 'DEPOSIT' | 'WITHDRAWAL' | 'INTERNAL_TRANSFER' | 'ONCHAIN_SEND' | 'ONCHAIN_RECEIVE' | 'FEE';
+  type: 'DEPOSIT' | 'WITHDRAWAL' | 'INTERNAL_TRANSFER' | 'ONCHAIN_SEND' | 'ONCHAIN_RECEIVE' | 'MASTER_GRANT' | 'MASTER_ADJUSTMENT' | 'GAME_STAKE' | 'GAME_PAYOUT' | 'GAME_REFUND' | 'FEE';
   direction: 'IN' | 'OUT' | 'NONE';
   amount: number;
   fee?: number;
@@ -242,7 +242,7 @@ function decodeDocument<T>(document: { name?: string; fields?: Record<string, Fi
   const data = Object.fromEntries(
     Object.entries(document.fields || {}).map(([key, value]) => [key, fromFirestoreValue(value)]),
   );
-  return { id, ...(data as T) };
+  return { ...(data as T), id };
 }
 
 function encodeFields(data: Record<string, unknown>): Record<string, FirestoreValue> {
@@ -314,6 +314,9 @@ async function refreshStoredSessionToken(): Promise<string | undefined> {
 async function authenticatedFetch(url: string, options: RequestInit = {}, token?: string): Promise<Response> {
   const send = (requestToken?: string) => fetch(url, {
     ...options,
+    // A blocked Firestore request must not keep AppRuntime from restoring the
+    // cached authenticated profile and rendering protected screens.
+    signal: options.signal || AbortSignal.timeout(10_000),
     headers: {
       ...(options.headers || {}),
       ...(requestToken ? { Authorization: `Bearer ${requestToken}` } : {}),
@@ -595,6 +598,8 @@ export type TetrisLobbyRoom = {
 };
 export type TetrisLobbyClaim = { roomNumber: number; matchId: string; role: 'A' | 'B'; opponent?: TetrisQueueProfile };
 export type WebrtcMatchClaim = { callId: string; opponent: TetrisQueueProfile; initiator: boolean };
+export type BrickBreakerQueueProfile = { id: string; name: string; image?: string; country?: string };
+export type BrickBreakerMatchClaim = { roomCode: string; opponent: BrickBreakerQueueProfile };
 
 export type AccountModeration = {
   userId: string;
@@ -875,6 +880,50 @@ async function getWaitingQueueDocuments(collection: string, token?: string): Pro
   return (data.documents || []).filter((row) => fromFirestoreValue(row.fields?.status) === 'waiting');
 }
 
+export async function claimBrickBreakerMatch(profile: BrickBreakerQueueProfile, mode: 'classic' | 'items', token?: string, requestedRoomCode?: string): Promise<BrickBreakerMatchClaim | null> {
+  const waiting = await getWaitingQueueDocuments('brickBreakerQueue', token);
+  const ownRow = waiting.find((row) => {
+    const value = decodeDocument<{ userId?: string }>(row);
+    return (value.userId || value.id) === profile.id && row.updateTime;
+  });
+  if (!ownRow?.name || !ownRow.updateTime) return null;
+  const candidateRow = waiting.find((row) => {
+    const candidate = decodeDocument<{ userId?: string; mode?: string; status?: string; updatedAt?: string }>(row);
+    const candidateId = candidate.userId || candidate.id;
+    return candidateId !== profile.id && candidate.mode === mode && candidate.status === 'waiting'
+      && typeof candidate.updatedAt === 'string' && Date.parse(candidate.updatedAt) > Date.now() - 45_000 && Boolean(row.updateTime);
+  });
+  if (!candidateRow?.name || !candidateRow.updateTime) return null;
+  const candidate = decodeDocument<BrickBreakerQueueProfile & { userId?: string; mode: 'classic' | 'items'; status: 'waiting'; }>(candidateRow);
+  const candidateId = candidate.userId || candidate.id;
+  const roomCode = requestedRoomCode || Array.from(crypto.getRandomValues(new Uint8Array(12)), (value) => value.toString(16).padStart(2, '0')).join('').toUpperCase();
+  const now = new Date();
+  const opponent: BrickBreakerQueueProfile = { id: candidateId, name: candidate.name, image: candidate.image, country: candidate.country };
+  const candidateFields = {
+    ...(candidateRow.fields || {}),
+    ...encodeFields({ status: 'matched', roomCode, hostId: profile.id, matchedBy: profile.id, opponent: profile, updatedAt: now }),
+  };
+  const ownFields = {
+    ...(ownRow.fields || {}),
+    ...encodeFields({ id: profile.id, userId: profile.id, name: profile.name, image: profile.image || '', country: profile.country || 'Global', mode, status: 'matched', roomCode, hostId: profile.id, matchedBy: profile.id, opponent, updatedAt: now }),
+  };
+  const response = await authenticatedFetch(`${firestoreBase}:commit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ writes: [
+      { update: { name: candidateRow.name, fields: candidateFields }, currentDocument: { updateTime: candidateRow.updateTime } },
+      { update: { name: ownRow.name, fields: ownFields }, currentDocument: { updateTime: ownRow.updateTime } },
+    ] }),
+  }, token);
+  if (!response.ok) {
+    if (response.status === 409 || response.status === 412) return null;
+    const result = await response.json().catch(() => null) as { error?: { message?: string; status?: string } } | null;
+    if (response.status === 400 && result?.error?.status === 'FAILED_PRECONDITION') return null;
+    throw new Error(result?.error?.message || `매칭 요청이 거절되었습니다. (${response.status})`);
+  }
+  return { roomCode, opponent };
+}
+
 function isFreshQueueDocument(row: FirestoreDocument, maxAgeMs: number): boolean {
   const lastSeenAt = fromFirestoreValue(row.fields?.lastSeenAt);
   return typeof lastSeenAt === 'string' && new Date(lastSeenAt).getTime() > Date.now() - maxAgeMs && Boolean(row.name && row.updateTime);
@@ -933,6 +982,8 @@ export async function claimTetrisMatch(profile: TetrisQueueProfile, token?: stri
 
 export async function claimWebrtcMatch(profile: TetrisQueueProfile, token?: string, blockedUserIds: string[] = []): Promise<WebrtcMatchClaim | null> {
   const waiting = await getWaitingQueueDocuments('webrtcQueue', token);
+  const ownRow = waiting.find((row) => decodeDocument<{ userId?: string }>(row).userId === profile.id);
+  if (!ownRow?.updateTime || !isFreshQueueDocument(ownRow, 120_000)) return null;
   const blocked = new Set(blockedUserIds);
   const candidateRow = waiting.find((row) => {
     const candidate = decodeDocument<TetrisQueueProfile & { userId?: string }>(row);
@@ -979,11 +1030,17 @@ export async function claimWebrtcMatch(profile: TetrisQueueProfile, token?: stri
     body: JSON.stringify({
       writes: [
         { update: { name: candidateRow.name, fields: candidateFields }, currentDocument: { updateTime: candidateRow.updateTime } },
-        { update: { name: ownName, fields: encodeFields({ userId: profile.id, name: profile.name, image: profile.image, country: profile.country || 'Global', age: profile.age || 0, status: 'matched', matchedBy: profile.id, callId, opponent, lastSeenAt: new Date(), updatedAt: new Date() }) } },
+        { update: { name: ownName, fields: { ...(ownRow.fields || {}), ...encodeFields({ userId: profile.id, name: profile.name, image: profile.image, country: profile.country || 'Global', age: profile.age || 0, status: 'matched', matchedBy: profile.id, callId, opponent, lastSeenAt: new Date(), updatedAt: new Date() }) } }, currentDocument: { updateTime: ownRow.updateTime } },
       ],
     }),
   }, token);
-  if (!response.ok) return null;
+  if (!response.ok) {
+    // Concurrent queue heartbeats/claims are retryable; permission/server failures are not "no peer".
+    if (response.status === 409 || response.status === 412) return null;
+    const result = await response.json().catch(() => null) as { error?: { message?: string; status?: string } } | null;
+    if (response.status === 400 && result?.error?.status === 'FAILED_PRECONDITION') return null;
+    throw new Error(result?.error?.message || `매칭 요청이 거절되었습니다. (${response.status})`);
+  }
   return { callId, opponent, initiator: profile.id < candidate.userId };
 }
 
@@ -1093,6 +1150,16 @@ export async function listEscrowOrdersForMember(memberId: string, token = getSes
 }
 
 export type FriendStatus = 'pending' | 'accepted' | 'declined';
+export async function listFriendMessages<T>(userId: string, friendshipId: string): Promise<Array<T & { id: string }>> {
+  const token = await getFreshSessionToken();
+  if (!token || getTokenUserId(token) !== userId) throw new Error('다시 로그인해주세요.');
+  // A single friendship scope lets Firestore evaluate the stored membership rule.
+  return queryDocumentsWhere<T>('friendMessages', [
+    { field: 'friendshipId', op: 'EQUAL', value: friendshipId },
+    { field: 'participants', op: 'ARRAY_CONTAINS', value: userId },
+  ], token);
+}
+
 export type FriendConnection = {
   id: string;
   requesterId: string;

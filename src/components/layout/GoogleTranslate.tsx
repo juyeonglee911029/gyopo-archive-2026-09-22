@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { usePathname } from 'next/navigation';
-import { useGlobalStore } from '@/store/useGlobalStore';
 
 type GoogleTranslateConstructor = new (options: { pageLanguage: string; includedLanguages: string; autoDisplay: boolean }, elementId: string) => unknown;
 type GoogleWindow = Window & { google?: { translate?: { TranslateElement?: GoogleTranslateConstructor } }; googleTranslateElementInit?: () => void };
@@ -15,10 +13,27 @@ function triggerTranslation(language: 'ko' | 'en') {
   return true;
 }
 
+function clearAutomaticTranslation() {
+  if (typeof document === 'undefined') return;
+  document.cookie = 'googtrans=; Max-Age=0; path=/';
+  document.cookie = `googtrans=; Max-Age=0; path=/; domain=${window.location.hostname}`;
+  document.documentElement.classList.remove('translated-ltr', 'translated-rtl');
+  document.body.classList.remove('translated-ltr', 'translated-rtl');
+  document.body.style.top = '0';
+}
+
+function triggerWhenReady(language: 'ko' | 'en') {
+  let attempts = 0;
+  const attempt = () => {
+    attempts += 1;
+    if (triggerTranslation(language) || attempts >= 20) return;
+    window.setTimeout(attempt, 250);
+  };
+  attempt();
+}
+
 export default function GoogleTranslate() {
-  const language = useGlobalStore((state) => state.language);
-  const pathname = usePathname();
-  const translatingRef = useRef(false);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
     const googleWindow = window as GoogleWindow;
@@ -26,13 +41,14 @@ export default function GoogleTranslate() {
       const TranslateElement = googleWindow.google?.translate?.TranslateElement;
       if (!TranslateElement) return;
       const root = document.getElementById('google_translate_element');
-      if (root && !root.dataset.ready) {
+      if (root && !root.dataset.ready && !initializedRef.current) {
         new TranslateElement({ pageLanguage: 'ko', includedLanguages: 'en,ko', autoDisplay: false }, 'google_translate_element');
         root.dataset.ready = '1';
+        initializedRef.current = true;
       }
-      window.setTimeout(() => triggerTranslation(language), 100);
     };
 
+    if (!window.localStorage.getItem('gyopo-language')) clearAutomaticTranslation();
     googleWindow.googleTranslateElementInit = initialize;
     if (!document.querySelector('script[data-google-translate]')) {
       const script = document.createElement('script');
@@ -46,37 +62,22 @@ export default function GoogleTranslate() {
     return () => {
       if (googleWindow.googleTranslateElementInit === initialize) delete googleWindow.googleTranslateElementInit;
     };
-  }, [language]);
+  }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      translatingRef.current = true;
-      triggerTranslation(language);
-      window.setTimeout(() => { translatingRef.current = false; }, 1200);
-    }, 150);
-    return () => window.clearTimeout(timer);
-  }, [language, pathname]);
-
-  useEffect(() => {
-    const root = document.querySelector('.portal-frame');
-    if (!root) return;
-    let timer = 0;
-    const observer = new MutationObserver((mutations) => {
-      if (language !== 'en' || translatingRef.current) return;
-      if (!mutations.some((mutation) => mutation.addedNodes.length > 0)) return;
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        translatingRef.current = true;
-        triggerTranslation('en');
-        window.setTimeout(() => { translatingRef.current = false; }, 1200);
-      }, 500);
-    });
-    observer.observe(root, { childList: true, subtree: true });
-    return () => {
-      observer.disconnect();
-      window.clearTimeout(timer);
+    const handleLanguageChange = (event: Event) => {
+      const next = (event as CustomEvent<{ language?: 'ko' | 'en' }>).detail?.language;
+      if (!next) return;
+      if (next === 'ko') clearAutomaticTranslation();
+      triggerWhenReady(next);
     };
-  }, [language]);
+    window.addEventListener('gyopo-language-change', handleLanguageChange);
+    document.body.classList.add('gyopo-translation-controlled');
+    return () => {
+      window.removeEventListener('gyopo-language-change', handleLanguageChange);
+      document.body.classList.remove('gyopo-translation-controlled');
+    };
+  }, []);
 
   return <div id="google_translate_element" className="google-translate-root" aria-hidden="true" />;
 }

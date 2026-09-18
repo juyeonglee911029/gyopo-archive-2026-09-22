@@ -1,18 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useEffectEvent, useState } from 'react';
-import { createDocument, deleteDocument, getSessionToken, isMasterUser, listDocuments, mergeDocument } from '@/lib/firebase';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { RouteErrorState, RouteSkeleton, useRouteReadiness } from '@/components/layout/RouteExperience';
+import { fetchRouteJson, withRouteTimeout } from '@/lib/routeExperience';
+import { createDocument, deleteDocument, getDocument, getSessionToken, isMasterUser, listDocuments, mergeDocument } from '@/lib/firebase';
 import { CONTENT_SOURCES, sourceItemId } from '@/lib/contentSources';
-import { fetchSourceCategory, isSubstantiveCommunityItem, normalizeSourceBody, normalizeSourceText, normalizeSourceTitle } from '@/lib/sourcepreview';
+import { curateSourceItems, isSubstantiveCommunityItem, normalizeSourceBody, normalizeSourceText, normalizeSourceTitle, type LiveSourceItem } from '@/lib/sourcepreview';
 import { COUNTRY_LOCATIONS } from '@/lib/locations';
 import { REGIONS } from '@/lib/regions';
 import { COMMUNITY_FILTERS, communityTopic, createFilterLocations, listingLocation, matchesCommunityFilters, paginateListings, type CommunityFilterFields, type CommunityTopic } from '@/lib/listingFilters';
 import { useGlobalStore } from '@/store/useGlobalStore';
-import WriterComposer from '@/components/posts/WriterComposer';
+import WriterComposer, { type WriterDraft } from '@/components/posts/WriterComposer';
+import { editorialForStorage, normalizeEditorial, type EditorialContent } from '@/lib/editorialContent';
 import { countryForRegion, regionalPostHref } from '@/lib/regionRoutes';
 
 const locations = createFilterLocations(COUNTRY_LOCATIONS, REGIONS);
+type SourceResponse = { items?: LiveSourceItem[]; sections?: Array<{ category: string; items: LiveSourceItem[] }>; fetchedAt?: string };
 
 type Post = CommunityFilterFields & {
   id: string;
@@ -32,6 +36,7 @@ type Post = CommunityFilterFields & {
   image?: string;
   images?: string[];
   sourceUrl?: string;
+  editorial?: EditorialContent;
   sourceId?: string;
   sourceCategory?: string;
   sourceName?: string;
@@ -87,9 +92,12 @@ export default function CommunityPage() {
   const { selectedCountry, setSelectedCountry, user } = useGlobalStore();
   const [posts, setPosts] = useState<Post[]>([]);
   const [isWriting, setIsWriting] = useState(false);
-  const [draft, setDraft] = useState({ title: '', body: '', images: [] as string[] });
+  const [draft, setDraft] = useState<WriterDraft>({ title: '', body: '', images: [] });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const loadRequest = useRef(0);
+  useRouteReadiness(loading, Boolean(loadError));
   const [scope, setScope] = useState<'all' | 'country' | 'city'>('all');
   const [topic, setTopic] = useState<CommunityTopic | null>(null);
   const [cityChoice, setCityChoice] = useState({ country: '', city: '' });
@@ -99,40 +107,56 @@ export default function CommunityPage() {
   const chosenCountry = locations.find((country) => country.id === chosenLocation.country);
 
   const loadPosts = async () => {
+    const request = ++loadRequest.current;
+    setLoading(true);
+    setLoadError('');
     try {
-      const sources = CONTENT_SOURCES.filter((source) => source.categories.includes('community'));
+      const result = await withRouteTimeout((async () => {
+      const settings = await getDocument<{ disabledSourceIds?: string[] }>('adminSettings', 'contentSources').then(value => ({ value, failed: false }), () => ({ value: null, failed: true }));
+      const sources = settings.failed ? [] : CONTENT_SOURCES.filter((source) => source.categories.includes('community') && !settings.value?.disabledSourceIds?.includes(source.id));
       const [data, sourceResults] = await Promise.all([
-        listDocuments<Omit<Post, 'id'>>('posts', getSessionToken()).catch(() => []),
-        Promise.all(sources.map((source) => fetchSourceCategory(source.id, 'community').then((result) => ({ source, result })))),
+        Promise.allSettled([listDocuments<Omit<Post, 'id'>>('posts', getSessionToken())]),
+        Promise.allSettled(sources.map(async (source) => {
+          const snapshot = await fetchRouteJson<SourceResponse>(`/api/content/preview?source=${encodeURIComponent(source.id)}&category=community`);
+          if (!Array.isArray(snapshot.items) && !Array.isArray(snapshot.sections)) throw new Error('Invalid community source');
+          return { source, result: { items: curateSourceItems(snapshot.sections?.find((section) => section.category === 'community')?.items || snapshot.items || [], 'community'), fetchedAt: snapshot.fetchedAt || new Date().toISOString() } };
+        })),
       ]);
-      const sourcePosts = sourceResults.flatMap(({ source, result }) => {
+      const sourcePosts = sourceResults.flatMap((entry) => {
+        if (entry.status !== 'fulfilled') return [];
+        const { source, result } = entry.value;
         if (!result) return [];
         return result.items.map((item) => {
           const id = sourceItemId(source.id, 'community', item.url);
           return { id, type: 'general' as const, category: item.category, tag: item.tag, title: item.title, body: item.body || item.description || '', authorId: 'source', author: item.author || source.name, country: item.country || source.region, sourceLocation: item, createdAt: item.publishedAt || result.fetchedAt, image: item.image, images: item.images, sourceId: source.id, sourceCategory: 'community', sourceName: source.name, sourceUrl: item.url, sourceContentId: id };
         });
       });
-      setPosts(curateCommunityPosts([...data as Post[], ...sourcePosts]));
-      } catch {
-        setPosts([]);
+      const stored = data[0];
+      return { posts: curateCommunityPosts([...(stored.status === 'fulfilled' ? stored.value : []), ...sourcePosts]), partial: settings.failed || stored.status === 'rejected' || sourceResults.some((entry) => entry.status === 'rejected' || !entry.value.result) };
+      })());
+      if (request !== loadRequest.current) return;
+      setPosts(result.posts);
+      if (result.partial) setLoadError('일부 게시글 출처를 불러오지 못했습니다. 확인된 게시글만 표시합니다.');
+    } catch {
+      if (request === loadRequest.current) setLoadError('게시글을 불러오지 못했습니다. 연결을 확인하고 다시 시도해주세요.');
     } finally {
-      setLoading(false);
+      if (request === loadRequest.current) setLoading(false);
     }
   };
   const loadPostsEffect = useEffectEvent(loadPosts);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadPostsEffect(), 0);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); loadRequest.current++; };
   }, []);
 
   const openWrite = (post?: Post) => {
     setEditingId(post?.id || null);
-    setDraft({ title: post?.title || '', body: post?.body || '', images: post?.images || (post?.image ? [post.image] : []) });
+    setDraft({ title: post?.title || '', body: post?.body || '', images: post?.images || (post?.image ? [post.image] : []), editorial: normalizeEditorial(post?.editorial) });
     setIsWriting(true);
   };
 
-  const handleWrite = async (nextDraft: { title: string; body: string; images: string[] }) => {
+  const handleWrite = async (nextDraft: WriterDraft) => {
     if (!user) {
       window.alert('로그인 후 글을 작성할 수 있습니다.');
       return;
@@ -143,8 +167,9 @@ export default function CommunityPage() {
       ? { title: nextDraft.title, body: nextDraft.body, image: nextDraft.images[0] || '', images: nextDraft.images, updatedAt: new Date() }
       : { type: 'general' as const, title: nextDraft.title, body: nextDraft.body, image: nextDraft.images[0] || '', images: nextDraft.images, authorId: user.id, author: user.name, country: selectedCountry, createdAt: new Date().toISOString(), views: 0, likes: 0, comments: 0 };
     try {
-      if (editingId) await mergeDocument('posts', editingId, post, token);
-      else await createDocument('posts', crypto.randomUUID(), post, token);
+      const content = { ...post, editorial: editorialForStorage(nextDraft.editorial) };
+      if (editingId) await mergeDocument('posts', editingId, content, token);
+      else await createDocument('posts', crypto.randomUUID(), content, token);
       setDraft({ title: '', body: '', images: [] });
       setEditingId(null);
       setIsWriting(false);
@@ -216,8 +241,9 @@ export default function CommunityPage() {
         </div>
 
          <div className="divide-y divide-white/10">
-           {loading && <div className="py-20 text-center text-slate-400">게시글을 불러오는 중입니다...</div>}
-           {!loading && filteredPosts.length === 0 && <div className="py-20 text-center text-slate-400">선택한 조건에 맞는 게시글이 없습니다. 조건을 해제하거나 전체를 선택해주세요.</div>}
+           {loading && <RouteSkeleton label="게시글을 불러오는 중입니다." />}
+           {!loading && loadError && <RouteErrorState message={loadError} onRetry={() => void loadPosts()} />}
+           {!loading && !loadError && filteredPosts.length === 0 && <div className="ui-state route-state">선택한 조건에 맞는 게시글이 없습니다. 조건을 해제하거나 전체를 선택해주세요.</div>}
           {!loading && page.items.map((post) => (
              <div key={post.id} className="relative transition-colors hover:bg-white/[.06]">
                <Link href={post.sourceContentId ? `/content/${post.sourceContentId}?source=${encodeURIComponent(post.sourceId || '')}&category=${encodeURIComponent(post.sourceCategory || 'community')}&url=${encodeURIComponent(post.sourceUrl || '')}` : publicPostHref(post)} className="block">

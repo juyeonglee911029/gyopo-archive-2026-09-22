@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { Camera, ChevronLeft, ChevronRight, Eye, Gift, GripHorizontal, Heart, Maximize2, MessageCircle, Minimize2, Radio, Send, ShieldCheck, Sparkles, Users, X } from 'lucide-react';
 import { createDocument, deleteDocument, getDocument, getSessionToken, incrementDocument, isMasterUser, listDocuments, mergeDocument, queryDocumentsWhere, refreshStoredUser, reserveEscrowPurchase, sendUserTransfer, type PortalUser } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
+import { defaultRoomTitle, writeLiveRoom } from './liveRoomShared';
 
 const ROOM_COUNT = 30;
 const PAGE_SIZE = 10;
@@ -29,7 +30,7 @@ const waitForIce = (peer: RTCPeerConnection) => new Promise<void>((resolve) => {
 
 function LiveRoomPlayer({ room, user, compact = false }: { room: LiveRoom; user: PortalUser | null; compact?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const viewerIdRef = useRef(`viewer-${user?.id || 'guest'}-${room.id}-${Math.random().toString(36).slice(2)}`);
+  const viewerIdRef = useRef('');
   const [status, setStatus] = useState('시청 연결 준비 중');
   const [needsPlay, setNeedsPlay] = useState(false);
   const [muted, setMuted] = useState(true);
@@ -119,7 +120,7 @@ function RoomChatPanel({ room, user, messages, message, onMessageChange, onSubmi
   return <div className="live-room-chat-panel"><div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2 text-sm font-black"><MessageCircle size={16} className="text-rose-300" />{room.title} 채팅</div><span className="text-[10px] font-bold text-slate-500">{room.viewers || 0}명 온라인</span></div><div className="mt-3 h-52 space-y-2 overflow-y-auto rounded-sm bg-black/10 p-2">{messages.length ? messages.map((item) => <div key={item.id} className={`text-xs ${item.authorId === user?.id ? 'live-chat-own' : 'live-chat-other'}`}><b>{item.user}</b> {item.text}</div>) : <p className="py-10 text-center text-xs text-slate-600">아직 메시지가 없습니다.</p>}<div ref={endRef} /></div><form onSubmit={onSubmit} className="mt-3 flex gap-2"><input value={message} onChange={(event) => onMessageChange(event.target.value)} disabled={!user} placeholder={user ? '방송인에게 메시지 보내기' : '로그인 후 채팅할 수 있습니다'} className="live-room-input" /><button type="submit" disabled={!user} aria-label="메시지 보내기" className="live-room-send disabled:cursor-not-allowed disabled:opacity-40"><Send size={14} /></button></form></div>;
 }
 
-const fallbackRooms: LiveRoom[] = Array.from({ length: ROOM_COUNT }, (_, index) => ({ id: `live-room-${String(index + 1).padStart(2, '0')}`, roomNumber: index + 1, title: `LIVE ROOM ${String(index + 1).padStart(2, '0')}`, category: index % 3 === 0 ? 'K-POP' : index % 3 === 1 ? '교민 라이브' : '토크', status: 'offline', viewers: 0 }));
+const fallbackRooms: LiveRoom[] = Array.from({ length: ROOM_COUNT }, (_, index) => ({ id: `live-room-${String(index + 1).padStart(2, '0')}`, roomNumber: index + 1, title: defaultRoomTitle(index + 1), category: index % 3 === 0 ? 'K-POP' : index % 3 === 1 ? '교민 라이브' : '토크', status: 'offline', viewers: 0 }));
 const roomNumber = (id: string, fallback: number) => Number(id.match(/(\d+)$/)?.[1] || fallback);
 
 export default function LiveRoomPage() {
@@ -151,8 +152,8 @@ export default function LiveRoomPage() {
       const nextRooms = fallbackRooms.map((room) => {
         const remote = rows.find((row) => row.id === room.id);
         const lastSeen = remote?.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
-        const fresh = remote?.status === 'live' && (Number.isNaN(lastSeen) || now - lastSeen < 20_000);
-        return { ...room, ...remote, status: fresh ? ('live' as const) : ('offline' as const) };
+        const fresh = remote?.status === 'live' && Number.isFinite(lastSeen) && now - lastSeen < 20_000;
+        return { ...room, ...remote, title: fresh ? remote?.title || defaultRoomTitle(room.id) : defaultRoomTitle(room.id), status: fresh ? ('live' as const) : ('offline' as const) };
       });
       setRooms(nextRooms);
       setSelectedRoom((current) => current ? nextRooms.find((room) => room.id === current.id) || current : current);
@@ -239,11 +240,7 @@ export default function LiveRoomPage() {
         queryDocumentsWhere<{ roomId?: string }>('liveRoomViewers', [{ field: 'roomId', op: 'EQUAL', value: room.id }], token, 200).catch(() => []),
         room.sessionId ? queryDocumentsWhere<{ roomId?: string; sessionId?: string }>('liveRoomMessages', [{ field: 'roomId', op: 'EQUAL', value: room.id }, { field: 'sessionId', op: 'EQUAL', value: room.sessionId }], token, 200).catch(() => []) : Promise.resolve([]),
       ]);
-       try {
-         await mergeDocument('liveRooms', room.id, { status: 'offline', hostId: null, hostName: null, hostImage: null, sessionId: null, viewers: 0, thumbnail: null, updatedAt: new Date() }, token);
-       } catch {
-         await deleteDocument('liveRooms', room.id, token);
-       }
+         await writeLiveRoom(room.id, user!, room.sessionId || null, 'reset');
        await Promise.allSettled([...viewers.map((item) => deleteDocument('liveRoomViewers', item.id, token)), ...messages.map((item) => deleteDocument('liveRoomMessages', item.id, token))]);
       if (selectedRoom?.id === room.id) closeRoom();
       setRoomError(`${room.title} 방을 종료하고 썸네일·채팅·시청자 연결을 초기화했습니다.`);
@@ -252,7 +249,9 @@ export default function LiveRoomPage() {
       setRoomError('방 초기화에 실패했습니다. Firebase Rules가 최신인지 확인해주세요.');
     }
   };
-  resetLiveRoomRef.current = (room) => { void resetLiveRoom(room); };
+  useEffect(() => {
+    resetLiveRoomRef.current = (room) => { void resetLiveRoom(room); };
+  }, [resetLiveRoom]);
   useEffect(() => {
     const handleMasterTerminate = (event: Event) => {
       const room = (event as CustomEvent<LiveRoom>).detail;

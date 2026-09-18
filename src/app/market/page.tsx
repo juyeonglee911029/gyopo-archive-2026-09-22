@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { RouteErrorState, RouteSkeleton, useRouteReadiness } from '@/components/layout/RouteExperience';
+import { withRouteTimeout } from '@/lib/routeExperience';
 import Link from 'next/link';
 import { createDocument, deleteDocument, getSessionToken, isMasterUser, listDocuments, listEscrowOrdersForMember, mergeDocument, reserveEscrowPurchase, type EscrowOrder, type EscrowStatus } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
@@ -20,19 +22,38 @@ export default function MarketPage() {
   const [orders, setOrders] = useState<EscrowOrder[]>([]);
   const [orderNotice, setOrderNotice] = useState('');
   const [marketError, setMarketError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const loadRequest = useRef(0);
+  const [orderError, setOrderError] = useState('');
+  useRouteReadiness(loading, Boolean(marketError));
 
   const loadProducts = async () => {
+    const request = ++loadRequest.current;
+    setLoading(true);
+    setMarketError('');
     try {
-      const data = await listDocuments<Omit<Product, 'id'>>('marketItems', getSessionToken());
+      const data = await withRouteTimeout(listDocuments<Omit<Product, 'id'>>('marketItems', getSessionToken()));
+      if (request !== loadRequest.current) return;
       setProducts(data.filter((item) => item.authorId && isNativeProduct(item)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       setMarketError('');
-    } catch { setProducts([]); setMarketError('장터 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'); }
+    } catch { if (request === loadRequest.current) setMarketError('장터 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'); }
+    finally { if (request === loadRequest.current) setLoading(false); }
   };
+  const loadProductsEffect = useEffectEvent(loadProducts);
 
-  useEffect(() => { void loadProducts(); }, [selectedCountry]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadProductsEffect(), 0);
+    return () => { window.clearTimeout(timer); loadRequest.current++; };
+  }, [selectedCountry]);
   useEffect(() => {
     if (!user) { setOrders([]); return; }
-    void listEscrowOrdersForMember(user.id, getSessionToken()).then((nextOrders) => setOrders(nextOrders.filter((order) => isMasterUser(user) || order.buyerId !== order.sellerId))).catch(() => setOrders([]));
+    let active = true;
+    void withRouteTimeout(listEscrowOrdersForMember(user.id, getSessionToken())).then((nextOrders) => {
+      if (!active) return;
+      setOrders(nextOrders.filter((order) => isMasterUser(user) || order.buyerId !== order.sellerId));
+      setOrderError('');
+    }).catch(() => { if (active) { setOrders([]); setOrderError('에스크로 진행 내역을 확인하지 못했습니다. 거래 상태가 변경된 것으로 간주하지 마세요.'); } });
+    return () => { active = false; };
   }, [user?.id]);
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -93,8 +114,10 @@ export default function MarketPage() {
     <div className="category-page market-page container mx-auto max-w-6xl px-4 py-8 text-slate-100">
       <div className="category-header"><div className="category-heading"><h1 className="text-3xl font-black text-gray-800">에스크로 중고장터</h1><p className="mt-2 text-gray-500">등록 물품을 확인하고 안전한 결제 보관 절차로 거래하세요.</p></div><div className="flex w-full flex-wrap gap-2 md:w-auto"><Link href="/theater" className="border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-black text-rose-700 hover:bg-rose-100">LIVE ROOM</Link><input type="text" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="물품 검색..." className="min-w-0 flex-1 border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 md:w-64" /><button onClick={() => setIsWriting(true)} className="bg-orange-500 px-5 py-2 font-bold text-white hover:bg-orange-600">내 물건 팔기</button></div></div>
       {orderNotice && <div className="mb-5 border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-700">{orderNotice}</div>}
-      {marketError && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700"><span>{marketError}</span><button type="button" onClick={() => void loadProducts()} className="bg-rose-600 px-3 py-2 text-xs font-black text-white">다시 불러오기</button></div>}
-      {filteredProducts.length === 0 && !marketError && <div className="border border-white/10 bg-white/[.035] py-20 text-center"><span className="mb-4 block text-4xl">🛒</span><p className="text-slate-300">등록된 매물이 없습니다.</p><p className="mt-2 text-xs text-slate-500">로그인 후 내 물건 팔기에서 첫 매물을 등록해보세요.</p></div>}
+      {loading && <RouteSkeleton label="장터 목록을 불러오는 중입니다." />}
+      {!loading && marketError && <RouteErrorState message={marketError} onRetry={() => void loadProducts()} />}
+      {user && orderError && <p role="alert" className="ui-state route-state">{orderError}</p>}
+      {!loading && filteredProducts.length === 0 && !marketError && <div className="ui-state route-state"><p>선택한 지역과 검색 조건에 맞는 매물이 없습니다.</p><p>검색 조건을 바꾸거나 내 물건 팔기에서 매물을 등록해보세요.</p></div>}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 md:gap-6">{filteredProducts.map((item) => <div key={item.id} className="group relative overflow-hidden border border-white/10 bg-white/[.035] shadow-sm transition hover:bg-white/[.06]"><Link href={`/content/${encodeURIComponent(item.id)}?collection=marketItems`} className="group block"><div className="absolute left-2 top-2 z-10"><span className="bg-black/60 px-2 py-1 text-[10px] font-bold text-white">{item.country}</span></div><div className="flex aspect-square items-center justify-center overflow-hidden bg-black/10">{item.image ? <img src={item.image} alt={item.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" /> : <span className="text-4xl text-slate-400">📦</span>}</div><div className="space-y-2 p-4"><h3 className="truncate font-medium text-white group-hover:text-orange-300">{item.title}</h3><div className="inline-block bg-emerald-300/10 px-2 py-1 text-lg font-black text-emerald-200">{displayPrice(item.price)}</div><div className="flex justify-between border-t border-white/10 pt-2 text-xs text-slate-400"><span>{item.location}</span><span>{new Date(item.createdAt).toLocaleDateString('ko-KR')}</span></div></div></Link><div className="px-4 pb-4"><button onClick={() => void handleBuy(item)} className="mt-2 w-full bg-orange-500 py-2 text-xs font-black text-white hover:bg-orange-600">구매 · 결제 보관</button>{user && isNativeProduct(item) && (user.id === item.authorId || isMasterUser(user)) && <button onClick={() => void removeProduct(item)} className="w-full py-1 text-xs font-bold text-rose-300">삭제</button>}</div></div>)}</div>
       {orders.length > 0 && <section className="mt-10 border border-white/10 bg-white/[.035] p-5"><h2 className="mb-2 text-xl font-black">내 에스크로 진행 내역</h2>{isMasterUser(user) && orders.some((order) => order.buyerId === order.sellerId) && <p className="mb-4 text-xs font-bold text-amber-300">구매자와 판매자가 같은 테스트 주문이 있습니다.</p>}<div className="space-y-3">{orders.map((order) => <div key={order.id} className="border border-white/10 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-bold">${order.amount} · {order.status}</span><div className="flex gap-2">{order.sellerId === user?.id && order.status === 'PAYMENT_HELD' && order.buyerId !== order.sellerId && <button onClick={() => void updateOrder(order, 'SHIPPING', '판매자가 배송을 시작했습니다.')} className="bg-cyan-500 px-3 py-2 text-xs font-black text-white">배송 시작</button>}{order.sellerId === user?.id && order.status === 'SHIPPING' && <button onClick={() => void updateOrder(order, 'IN_TRANSIT', '상품이 배송 중으로 변경되었습니다.')} className="bg-blue-500 px-3 py-2 text-xs font-black text-white">배송 중으로 변경</button>}{order.buyerId === user?.id && order.status === 'IN_TRANSIT' && <button onClick={() => void updateOrder(order, 'DELIVERED', '구매자가 수령을 확인했습니다.')} className="bg-emerald-500 px-3 py-2 text-xs font-black text-white">수령 확인</button>}{isMasterUser(user) && order.buyerId === order.sellerId && <button onClick={() => void removeOrder(order)} className="border border-rose-200 px-3 py-2 text-xs font-black text-rose-300">운영자 삭제</button>}</div></div><div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-400 sm:grid-cols-4">{(['PAYMENT_HELD', 'SHIPPING', 'IN_TRANSIT', 'DELIVERED'] as EscrowStatus[]).map((step) => <div key={step} className={`px-2 py-2 text-center ${order.timeline?.some((item) => item.status === step) || order.status === step ? 'bg-emerald-300/15 font-bold text-emerald-200' : 'bg-white/5'}`}>{step}</div>)}</div></div>)}</div></section>}
       <div className="mx-auto mt-6 max-w-4xl"><BannerAd type="horizontal" /></div>

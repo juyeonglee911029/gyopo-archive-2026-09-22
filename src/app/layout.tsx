@@ -1,17 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
-import Header from '@/components/layout/Header';
-import Footer from '@/components/layout/footer';
-import GlobalChat from '@/components/layout/GlobalChat';
-import PortalFrame from '@/components/layout/portalframe';
-import SiteBackgroundVideo from '@/components/layout/sitebackgroundvideo';
-import PortalTextRail from '@/components/layout/portaltextrail';
-import MobileBottomNav from '@/components/layout/MobileBottomNav';
+import '@/styles/design-system.css';
+import GlobalAppShell from '@/components/layout/GlobalAppShell';
 import AppRuntime from '@/components/layout/AppRuntime';
-import FriendDock from '@/components/layout/FriendDock';
-import AssistantDock from '@/components/layout/AssistantDock';
-import GoogleTranslate from '@/components/layout/GoogleTranslate';
-import { AdSenseScript } from '@/components/ads/AdSense';
 import { SITE_URL } from '@/lib/seo';
 
 export const metadata: Metadata = {
@@ -40,7 +31,7 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
-export const viewport: Viewport = { themeColor: '#070b17', colorScheme: 'dark' };
+export const viewport: Viewport = { themeColor: '#090e18', colorScheme: 'dark', width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 export default function RootLayout({
   children,
@@ -49,9 +40,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
-      <body className="font-sans bg-[#070b17] text-slate-100 min-h-screen flex flex-col">
+      <body className="font-sans min-h-screen">
         <AppRuntime>
-          <AdSenseScript />
           <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
             '@context': 'https://schema.org',
             '@type': 'WebSite',
@@ -60,25 +50,9 @@ export default function RootLayout({
              url: SITE_URL,
             description: '전 세계 한인을 위한 커뮤니티, 구인구직, 업소록, 장터, 화상채팅, K-POP 라디오 포털',
             inLanguage: ['ko', 'en'],
-             potentialAction: { '@type': 'SearchAction', target: `${SITE_URL}/assistant?q={search_term_string}`, 'query-input': 'required name=search_term_string' },
+             potentialAction: { '@type': 'SearchAction', target: `${SITE_URL}/search?q={search_term_string}`, 'query-input': 'required name=search_term_string' },
           }) }} />
-           <SiteBackgroundVideo />
-           <GoogleTranslate />
-            <div className="portal-chrome">
-              <Header />
-              <PortalTextRail />
-           <MobileBottomNav />
-              <GlobalChat />
-              <FriendDock />
-              <AssistantDock />
-           </div>
-
-           <PortalFrame>
-             <main className="min-w-0 flex-grow">
-               {children}
-             </main>
-            <Footer />
-          </PortalFrame>
+          <GlobalAppShell>{children}</GlobalAppShell>
         </AppRuntime>
       </body>
     </html>

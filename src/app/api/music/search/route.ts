@@ -85,15 +85,16 @@ export async function GET(request: NextRequest) {
     const response = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GYOPO Music Search/1.0)' },
       next: { revalidate: 120 },
+      signal: AbortSignal.timeout(6500),
     });
     if (!response.ok) throw new Error(`YouTube returned ${response.status}`);
     const html = await response.text();
     const initialData = parseInitialData(html);
-    if (!initialData) return NextResponse.json({ results: [] });
+    if (!initialData) throw new Error('YouTube search data unavailable');
     const results: YouTubeResult[] = [];
     collectVideos(initialData, results);
     return NextResponse.json({ results: results.slice(0, 12) });
   } catch {
-    return NextResponse.json({ results: [], error: 'YouTube 검색 결과를 불러오지 못했습니다.' }, { status: 200 });
+    return NextResponse.json({ results: [], error: 'YouTube 검색 결과를 불러오지 못했습니다.' }, { status: 502 });
   }
 }

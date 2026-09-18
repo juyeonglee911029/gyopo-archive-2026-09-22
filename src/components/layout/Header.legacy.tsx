@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { useEffect, useRef, useState } from 'react';
-import { Languages, LogIn, LogOut } from 'lucide-react';
+import { Languages, LogIn, LogOut, Menu, MessageCircle, PhoneCall, Search } from 'lucide-react';
 import { isMasterUser, MASTER_DEPOSIT_ADDRESS, signOut } from '@/lib/firebase';
 import MusicPlayer from './musicplayer';
 
@@ -11,42 +11,56 @@ function formatUsdt(value: number) {
   return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function TranslateMenu() {
+export function TranslateMenu() {
   const language = useGlobalStore((state) => state.language);
   const setLanguage = useGlobalStore((state) => state.setLanguage);
+
+  const changeLanguage = () => {
+    const next = language === 'ko' ? 'en' : 'ko';
+    setLanguage(next);
+    window.dispatchEvent(new CustomEvent('gyopo-language-change', { detail: { language: next } }));
+  };
 
   useEffect(() => {
     document.documentElement.lang = language;
   }, [language]);
 
   return (
-    <button type="button" onClick={() => setLanguage(language === 'ko' ? 'en' : 'ko')} aria-label={language === 'ko' ? 'Switch to English' : '한국어로 전환'} className="translate-control">
+    <button type="button" onClick={changeLanguage} aria-label={language === 'ko' ? 'Switch to English' : '한국어로 전환'} className="translate-control">
       <Languages size={15} className="text-teal-300" />
       <span>{language === 'ko' ? 'English' : '한국어'}</span>
     </button>
   );
 }
 
-export default function Header() {
+export default function Header({ menuOpen = false, menuId, onMenuOpen }: { menuOpen?: boolean; menuId?: string; onMenuOpen?: () => void }) {
   const { user, setUser } = useGlobalStore();
   const [masterChainBalance, setMasterChainBalance] = useState<number | null>(null);
   const [localTime, setLocalTime] = useState('');
   const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    const chrome = headerRef.current?.parentElement;
-    if (!chrome) return;
-    const updateChromeBottom = () => {
-      chrome.style.setProperty('--portal-chrome-bottom', `${Math.max(0, Math.ceil(chrome.getBoundingClientRect().bottom))}px`);
+    const header = headerRef.current;
+    if (!header) return;
+    const root = document.documentElement;
+    const previousHeight = root.style.getPropertyValue('--header-height');
+    const previousBottom = root.style.getPropertyValue('--portal-chrome-bottom');
+    const updateHeaderHeight = () => {
+      const height = `${Math.max(0, Math.ceil(header.getBoundingClientRect().height))}px`;
+      root.style.setProperty('--header-height', height);
+      root.style.setProperty('--portal-chrome-bottom', height);
     };
-    const observer = new ResizeObserver(updateChromeBottom);
-    observer.observe(chrome);
-    updateChromeBottom();
-    window.addEventListener('resize', updateChromeBottom);
+    const observer = new ResizeObserver(updateHeaderHeight);
+    observer.observe(header);
+    updateHeaderHeight();
+    window.addEventListener('resize', updateHeaderHeight);
     return () => {
       observer.disconnect();
-      window.removeEventListener('resize', updateChromeBottom);
-      chrome.style.removeProperty('--portal-chrome-bottom');
+      window.removeEventListener('resize', updateHeaderHeight);
+      if (previousHeight) root.style.setProperty('--header-height', previousHeight);
+      else root.style.removeProperty('--header-height');
+      if (previousBottom) root.style.setProperty('--portal-chrome-bottom', previousBottom);
+      else root.style.removeProperty('--portal-chrome-bottom');
     };
   }, []);
 
@@ -85,16 +99,23 @@ export default function Header() {
 
   return (
     <header ref={headerRef} className="site-header">
-      <div className="site-header-inner">
-        <div className="site-header-primary">
-          <Link href="/" className="group flex flex-shrink-0 items-center gap-2" aria-label="GYOPO 홈">
+      <div className="site-header-inner" style={{ overflow: 'visible' }}>
+        <div className="site-header-primary global-header-primary">
+          <Link href="/" className="global-header-logo group flex flex-shrink-0 items-center gap-2" aria-label="GYOPO 홈">
             <span className="brand-mark flex h-8 w-8 items-center justify-center rounded-none text-slate-950 transition-transform group-hover:rotate-6 sm:h-9 sm:w-9">
               <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2.2" aria-hidden="true"><path d="M5 5.5h14M5 12h14M5 18.5h14M5 5.5v13M19 5.5v13" /></svg>
             </span>
-            <span className="hidden leading-none sm:block"><span className="font-display block text-[15px] font-extrabold tracking-[.18em] text-white">GYOPO</span><span className="mt-1 block text-[8px] font-bold tracking-[.22em] text-cyan-300/60">GLOBAL NETWORK</span></span>
+            <span className="leading-none"><span className="font-display block text-[15px] font-extrabold tracking-[.18em] text-white">GYOPO</span><span className="global-header-tagline mt-1 hidden text-[8px] font-bold tracking-[.22em] text-cyan-300/60 sm:block">GLOBAL NETWORK</span></span>
           </Link>
+          <div className="ml-auto flex items-center gap-1">
+            <button type="button" onClick={() => window.dispatchEvent(new Event('gyopo-friends-open'))} aria-label="친구 채팅과 통화 열기" className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-300/20 bg-cyan-300/[.08] px-2 py-2 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/[.16] sm:px-3"><MessageCircle size={16} /><span className="hidden sm:inline">친구</span></button>
+            <Link href="/webrtc" aria-label="화상 통화 열기" className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300/20 bg-emerald-300/[.08] px-2 py-2 text-xs font-black text-emerald-100 transition hover:bg-emerald-300/[.16] sm:px-3"><PhoneCall size={16} /><span className="hidden sm:inline">통화</span></Link>
+          </div>
+          <Link href="/search" className="global-header-search" aria-label="검색"><Search size={20} aria-hidden="true" /><span className="sr-only">검색</span></Link>
+          <button type="button" className="global-header-menu" aria-label="메뉴 열기" aria-haspopup="dialog" aria-expanded={menuOpen} aria-controls={menuId} onClick={onMenuOpen || (() => window.dispatchEvent(new Event('gyopo-menu-open')))}><Menu size={22} aria-hidden="true" /></button>
         </div>
 
+        <div className="global-header-secondary">
         <div className="site-header-music flex-1">
           <MusicPlayer embedded />
         </div>
@@ -122,6 +143,7 @@ export default function Header() {
               <span>로그인</span>
             </Link>
           )}
+        </div>
         </div>
       </div>
     </header>

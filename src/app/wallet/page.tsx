@@ -60,6 +60,35 @@ export default function WalletPage() {
   const [usdTopupAmount, setUsdTopupAmount] = useState('10');
   const [usdTopupBusy, setUsdTopupBusy] = useState(false);
   const [usdTopupMessage, setUsdTopupMessage] = useState('');
+  const [paddleTransactionId, setPaddleTransactionId] = useState('');
+
+  const confirmPaddleTransaction = async (transactionId: string, claimKey: string) => {
+    setUsdTopupMessage('카드 결제를 확인하고 USD 잔액에 반영하는 중입니다...');
+    try {
+      const token = await getFreshSessionToken();
+      if (!token) throw new Error('로그인 세션이 만료되었습니다. 로그인 화면에서 Google 계정을 다시 선택해주세요.');
+      const response = await fetch('/api/paddle/confirm', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ transactionId }),
+      });
+      const result = await response.json().catch(() => ({})) as { amountUsd?: number; status?: string; error?: string };
+      if (!response.ok && response.status !== 202) throw new Error(result.error || '결제 확인에 실패했습니다.');
+      if (result.status && result.status !== 'completed') {
+        window.sessionStorage.removeItem(claimKey);
+        setUsdTopupMessage('결제 확인이 아직 진행 중입니다. 잠시 후 아래 버튼으로 다시 확인하세요.');
+        return;
+      }
+      const refreshed = await refreshStoredUser().catch(() => null);
+      if (refreshed) setUser(refreshed);
+      setPaddleTransactionId('');
+      setUsdTopupMessage(`${formatUsd(Number(result.amountUsd || 0))} USD가 서비스 잔액에 반영되었습니다.`);
+      window.history.replaceState({}, '', '/wallet');
+    } catch (error) {
+      window.sessionStorage.removeItem(claimKey);
+      setUsdTopupMessage(error instanceof Error ? `${error.message} 아래 버튼으로 다시 확인하세요.` : '결제 확인에 실패했습니다. 아래 버튼으로 다시 확인하세요.');
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -67,30 +96,10 @@ export default function WalletPage() {
     const transactionId = params.get('_ptxn') || params.get('transaction_id') || params.get('transactionId');
     if (!transactionId) return;
     const claimKey = `gyopo-paddle-claim:${transactionId}`;
+    setPaddleTransactionId(transactionId);
     if (window.sessionStorage.getItem(claimKey)) return;
     window.sessionStorage.setItem(claimKey, '1');
-    setUsdTopupMessage('카드 결제를 확인하고 USD 잔액에 반영하는 중입니다...');
-    void getFreshSessionToken().then((token) => {
-      if (!token) throw new Error('로그인 세션이 만료되었습니다. 로그인 화면에서 Google 계정을 다시 선택해주세요.');
-      return fetch('/api/paddle/confirm', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ transactionId }),
-      });
-    }).then(async (response) => {
-      const result = await response.json().catch(() => ({})) as { amountUsd?: number; status?: string; error?: string };
-      if (!response.ok && response.status !== 202) throw new Error(result.error || '결제 확인에 실패했습니다.');
-      if (result.status && result.status !== 'completed') {
-        setUsdTopupMessage('결제 확인이 아직 진행 중입니다. 잠시 후 잔액이 갱신됩니다.');
-        return;
-      }
-      const refreshed = await refreshStoredUser().catch(() => null);
-      if (refreshed) setUser(refreshed);
-      setUsdTopupMessage(`${formatUsd(Number(result.amountUsd || 0))} USD가 서비스 잔액에 반영되었습니다.`);
-      window.history.replaceState({}, '', '/wallet');
-    }).catch((error) => {
-      setUsdTopupMessage(error instanceof Error ? error.message : '결제 확인에 실패했습니다.');
-    });
+    void confirmPaddleTransaction(transactionId, claimKey);
   }, [user?.id, setUser]);
 
   useEffect(() => {
@@ -391,7 +400,7 @@ export default function WalletPage() {
           <div className="mt-4 flex flex-wrap gap-2">{[1, 5, 10, 25].map((value) => <button type="button" key={value} onClick={() => setUsdTopupAmount(String(value))} className="border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs font-black text-cyan-100 hover:bg-cyan-300/20">${value}</button>)}</div>
           <div className="mt-3 flex gap-2"><input type="number" min="0.1" max="1000" step="0.01" value={usdTopupAmount} onChange={(event) => setUsdTopupAmount(event.target.value)} className="min-w-0 flex-1 border border-white/10 bg-white/[.06] px-3 py-3 text-sm font-black text-white outline-none focus:border-cyan-300/50" placeholder="10.00" /><button type="button" onClick={() => void beginUsdTopup()} disabled={usdTopupBusy} className="bg-cyan-300 px-4 py-3 text-xs font-black text-slate-950 hover:bg-cyan-200 disabled:opacity-50">{usdTopupBusy ? '준비 중...' : '카드로 충전'}</button></div>
           <p className="mt-2 text-[11px] text-slate-500">최소 $0.10 · 안전한 카드 결제</p>
-          {usdTopupMessage && <p className="mt-3 border border-cyan-300/20 bg-cyan-300/10 p-3 text-xs font-bold text-cyan-100">{usdTopupMessage}</p>}
+           {usdTopupMessage && <div className="mt-3 border border-cyan-300/20 bg-cyan-300/10 p-3 text-xs font-bold text-cyan-100"><p>{usdTopupMessage}</p>{paddleTransactionId && <button type="button" onClick={() => void confirmPaddleTransaction(paddleTransactionId, `gyopo-paddle-claim:${paddleTransactionId}`)} className="mt-2 border border-cyan-200/40 px-2 py-1.5 text-[11px] font-black text-cyan-50">결제 확인 다시 시도</button>}</div>}
         </section>
 
         <section className="wallet-service-panel overflow-hidden">
