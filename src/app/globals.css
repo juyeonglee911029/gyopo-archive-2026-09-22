@@ -1809,3 +1809,64 @@ body { top: 0 !important; margin-top: 0 !important; }
   .global-main { padding-bottom: calc(5.25rem + env(safe-area-inset-bottom)); }
   .global-footer { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
 }
+
+/* Shared primitives used by the refactored public pages. */
+.page-container { width: 100%; min-width: 0; }
+.page-container-content { min-width: 0; }
+.ui-page-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+.ui-page-header-copy { display: flex; min-width: 0; flex: 1 1 24rem; flex-direction: column; gap: .45rem; }
+.ui-breadcrumb { color: #94a3b8; font-size: .65rem; font-weight: 800; }
+.ui-page-title { margin: 0; color: #f8fafc; font-size: clamp(1.8rem, 3vw, 2.75rem); font-weight: 500; letter-spacing: -.03em; line-height: 1.12; }
+.ui-page-subtitle, .ui-section-subtitle { margin: 0; color: #94a3b8; font-size: .85rem; line-height: 1.6; }
+.ui-page-stats { display: flex; flex-wrap: wrap; gap: .4rem; }
+.ui-page-actions, .ui-section-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.ui-text-link { display: inline-flex; align-items: center; gap: .3rem; color: #67e8f9; font-size: .72rem; font-weight: 800; text-decoration: none; }
+.ui-text-link:hover { color: #ccfbf1; }
+.ui-section-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 1.7rem 0 .8rem; }
+.ui-section-title { margin: 0; color: #f8fafc; font-size: 1.15rem; font-weight: 800; letter-spacing: -.02em; }
+.ui-category-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+.ui-category-card { display: flex; min-width: 0; min-height: 10.5rem; flex-direction: column; gap: .8rem; border: 1px solid rgba(148, 163, 184, .14); border-radius: 1.1rem; background: rgba(8, 16, 31, .42); padding: 1rem; color: #e2e8f0; text-decoration: none; transition: transform .18s ease, border-color .18s ease, background-color .18s ease; }
+.ui-category-card:hover { transform: translateY(-2px); border-color: rgba(45, 212, 191, .35); background: rgba(255, 255, 255, .08); }
+.ui-category-card-top { display: flex; align-items: center; gap: .5rem; }
+.ui-category-card-icon { display: inline-flex; height: 2.45rem; width: 2.45rem; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: .8rem; background: rgba(45, 212, 191, .1); color: #99f6e4; }
+.ui-category-card-badge { min-width: 0; flex: 1; color: #a5f3fc; font-size: .58rem; font-weight: 800; }
+.ui-category-card-arrow { flex: 0 0 auto; color: #64748b; }
+.ui-category-card-body { min-width: 0; flex: 1; }
+.ui-category-card-title { margin: 0; color: #f8fafc; font-size: .85rem; font-weight: 800; }
+.ui-category-card-description { margin: .35rem 0 0; color: #94a3b8; font-size: .68rem; line-height: 1.55; }
+.ui-category-card-meta { display: flex; flex-wrap: wrap; gap: .35rem; color: #64748b; font-size: .58rem; font-weight: 800; }
+.ui-category-card-new { color: #5eead4; }
+.ui-content-card { border: 1px solid rgba(148, 163, 184, .14); border-radius: 1.1rem; background: rgba(8, 16, 31, .42); box-shadow: 0 20px 70px rgba(0, 0, 0, .12); }
+.ui-content-card-header, .ui-content-card-body, .ui-content-card-footer { padding: 1rem 1.1rem; }
+.ui-content-card-header { border-bottom: 1px solid rgba(148, 163, 184, .1); }
+.ui-content-card-footer { border-top: 1px solid rgba(148, 163, 184, .1); }
+.ui-button { display: inline-flex; min-height: 2.2rem; align-items: center; justify-content: center; gap: .35rem; border: 0; border-radius: .65rem; background: #5eead4; padding: .5rem .8rem; color: #06111d; font-size: .7rem; font-weight: 900; }
+.ui-button:hover { background: #99f6e4; }
+.ui-state { display: grid; place-items: center; gap: .45rem; padding: 2rem 1rem; color: #94a3b8; text-align: center; }
+.ui-state-icon { display: grid; height: 2.6rem; width: 2.6rem; place-items: center; border-radius: .8rem; background: rgba(45, 212, 191, .1); color: #5eead4; }
+.ui-state-title { margin: 0; color: #e2e8f0; font-size: .9rem; font-weight: 800; }
+.ui-state-description { max-width: 32rem; margin: 0; font-size: .72rem; line-height: 1.55; }
+.ui-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; }
+.ui-skeleton { display: grid; gap: .65rem; padding: 1rem 0; }
+.ui-skeleton-line { height: 1rem; border-radius: .35rem; background: linear-gradient(90deg, rgba(148, 163, 184, .08), rgba(148, 163, 184, .2), rgba(148, 163, 184, .08)); background-size: 200% 100%; animation: ui-skeleton-shimmer 1.4s ease-in-out infinite; }
+@keyframes ui-skeleton-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.ui-ad-slot { min-height: 8rem; display: grid; place-items: center; border: 1px dashed rgba(148, 163, 184, .16); border-radius: 1.1rem; background: rgba(8, 16, 31, .25); color: #64748b; }
+.ui-ad-label { align-self: start; justify-self: end; padding: .55rem .7rem; font-size: .55rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.home-lead { padding-top: 1.2rem; }
+.home-lead-grid { min-width: 0; border: 1px solid rgba(255, 255, 255, .1); border-radius: 1.75rem; padding: 1.35rem; }
+.home-context-card { display: grid; gap: 1rem; border: 1px solid rgba(255, 255, 255, .1); border-radius: 1.35rem; background: rgba(8, 16, 31, .3); padding: 1rem; }
+.home-location-controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .45rem; color: #99f6e4; }
+.home-location-controls h2 { min-width: 0; margin: 0; overflow: hidden; color: #f8fafc; font-size: .85rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.home-clock-strip { min-width: 0; }
+
+@media (max-width: 1023px) {
+  .ui-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-lead-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 639px) {
+  .ui-page-header { flex-direction: column; }
+  .ui-page-title { font-size: 1.8rem; }
+  .ui-category-grid { grid-template-columns: minmax(0, 1fr); }
+  .ui-section-header { align-items: flex-start; flex-direction: column; gap: .4rem; }
+  .home-lead-grid { gap: 1rem; border-radius: 1.5rem; padding: 1.1rem; }
+}
