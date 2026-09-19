@@ -136,31 +136,6 @@ service cloud.firestore {
       return data.gender == get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.gender
         && data.country == get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.country;
     }
-    function isValidEscrowOrder(data) {
-      return data.keys().hasOnly(['buyerId', 'sellerId', 'productId', 'amount', 'status', 'createdAt', 'updatedAt', 'timeline'])
-        && data.keys().hasAll(['buyerId', 'sellerId', 'productId', 'amount', 'status', 'createdAt', 'updatedAt', 'timeline'])
-        && data.buyerId is string
-        && data.sellerId is string
-        && data.buyerId != data.sellerId
-        && data.productId is string
-        && data.amount is number
-        && data.amount > 0
-        && data.status == 'PAYMENT_HELD'
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp
-        && data.timeline is list;
-    }
-    function isAllowedEscrowTransition() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'timeline', 'updatedAt'])
-        && request.resource.data.timeline is list
-        && resource.data.timeline is list
-        && request.resource.data.timeline.size() == resource.data.timeline.size() + 1
-        && (
-          (request.auth.uid == resource.data.sellerId && resource.data.status == 'PAYMENT_HELD' && request.resource.data.status == 'SHIPPING')
-          || (request.auth.uid == resource.data.sellerId && resource.data.status == 'SHIPPING' && request.resource.data.status == 'IN_TRANSIT')
-          || (request.auth.uid == resource.data.buyerId && resource.data.status == 'IN_TRANSIT' && request.resource.data.status == 'DELIVERED')
-        );
-    }
     match /posts/{postId} {
       allow read: if true;
       allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
