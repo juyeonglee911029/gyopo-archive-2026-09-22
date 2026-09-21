@@ -52,6 +52,7 @@ async function resolveRoute({ params, searchParams }: Props): Promise<ResolvedRo
   if (!country) notFound();
   const [first, second, third, ...rest] = segments;
   if (!first) return { kind: 'country', country, overview: await getCountryOverview(country.slug) };
+  if (first === 'visa') redirect(`/${country.slug}/immigration${second ? `/${second}` : ''}`);
 
   const service = getPublicServiceRoute(first);
   if (service && !second) {
