@@ -1,4 +1,4 @@
-import { getRegionalSitemapPosts } from '@/lib/regionalContent';
+Correct sitemap helper sourceimport { getRegionalSitemapPosts } from '@/lib/regionalContent';
 import { canonicalUrl } from '@/lib/seo';
 import { cityRegionalPostHref, countriesForRegion, getCityRoute, publicServiceSlugForCategory, REGION_ROUTES, regionalPostHref } from '@/lib/regionRoutes';
 
