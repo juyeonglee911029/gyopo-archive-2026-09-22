@@ -61,12 +61,12 @@ export async function buildSplitSitemap(segment: SplitSitemap): Promise<SitemapE
   const entries = new Map<string, SitemapEntry>();
   if (segment === 'core') for (const route of CORE_ROUTES) add(entries, route, undefined, route === '/' ? 1 : 0.6);
   if (segment === 'core') return [...entries.values()];
-  if (segment === 'countries') for (const region of REGION_ROUTES) if (countriesForRegion(region.slug).length) add(entries, `/regions/${{region.slug}`, undefined, 0.7);
+  if (segment === 'countries') for (const region of REGION_ROUTES) if (countriesForRegion(region.slug).length) add(entries, `/regions/${region.slug}`, undefined, 0.7);
   const posts = await getRegionalSitemapPosts();
   for (const post of posts) {
     const lastModified = post.updatedAt || post.createdAt;
-    const countryPath = `/${{post.country.slug}`;
-    const categoryPath = ${{countryPath}`/${{publicServiceSlugForCategory(post.category)}`;
+    const countryPath = `/${post.country.slug}`;
+    const categoryPath = `${countryPath}/${publicServiceSlugForCategory(post.category)}`;
     const city = post.city ? getCityRoute(post.country.slug, post.city) : undefined;
     if (segment === 'countries') add(entries, countryPath, lastModified, 0.8);
     const countrySegment = categorySegment(post.category, false);
@@ -75,11 +75,11 @@ export async function buildSplitSitemap(segment: SplitSitemap): Promise<SitemapE
       add(entries, regionalPostHref(post.country, post.category, post.id), lastModified, 0.7);
     }
     if (!city) continue;
-    const cityPath = ${{countryPath}`/${{city.slug}`;
+    const cityPath = `/${post.country.slug}/${city.slug}`;
     if (segment === 'cities') add(entries, cityPath, lastModified, 0.75);
     const citySegment = categorySegment(post.category, true);
     if (citySegment === segment) {
-      const cityCategoryPath = ${{cityPath}`/${{publicServiceSlugForCategory(post.category)}`;
+      const cityCategoryPath = `${cityPath}/${publicServiceSlugForCategory(post.category)}`;
       add(entries, cityCategoryPath, lastModified, 0.8);
       add(entries, cityRegionalPostHref(city, post.category, post.id), lastModified, 0.7);
     }
@@ -93,11 +93,11 @@ function escapeXml(value: string): string {
 
 export async function splitSitemapResponse(segment: SplitSitemap): Promise<Response> {
   const entries = await buildSplitSitemap(segment);
-  const body = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${{entries.map((entry) => `<url><loc>${{escapeXml(entry.url)}</loc>${{entry.lastModified ? `<lastmod>${{escapeXml(entry.lastModified)}</lastmod>` : ''}${{entry.changeFrequency ? `<changefreq>${{entry.changeFrequency}</changefreq>` : ''}${{entry.priority !== undefined ? `<priority>${{entry.priority.toFixed(1)}</priority>` : ''}</url>`).join('')}</urlset>`;
+  const body = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${entries.map((entry) => `<url><loc>${escapeXml(entry.url)}</loc>${entry.lastModified ? `<lastmod>${escapeXml(entry.lastModified)}</lastmod>` : ''}${entry.changeFrequency ? `<changefreq>${entry.changeFrequency}</changefreq>` : ''}${entry.priority !== undefined ? `<priority>${entry.priority.toFixed(1)}</priority>` : ''}</url>`).join('')}</urlset>`;
   return new Response(body, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=0, must-revalidate' } });
 }
 
 export function splitSitemapIndexResponse(origin: string): Response {
-  const body = `<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${{SPLIT_SITEMAPS.map((segment) => `<sitemap><loc>${{escapeXml(${{origin}`/sitemap-${{segment}.xml`)}</loc></sitemap>`).join('')}</sitemapindex>`;
+  const body = `<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${SPLIT_SITEMAPS.map((segment) => `<sitemap><loc>${escapeXml(`${origin}/sitemap-${segment}.xml`)}</loc></sitemap>`).join('')}</sitemapindex>`;
   return new Response(body, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=0, must-revalidate' } });
 }
