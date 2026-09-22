@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { MUSIC_TRACKS, type MusicSyncDetail } from '@/lib/music';
+import { emitMusicEvent, MUSIC_TRACKS, type MusicSyncDetail } from '@/lib/music';
 import { SITE_URL } from '@/lib/seo';
 
 export default function SiteBackgroundVideo() {
@@ -69,6 +69,7 @@ export default function SiteBackgroundVideo() {
       const index = MUSIC_TRACKS.findIndex((track) => track.videoId === currentVideoIdRef.current);
       const next = MUSIC_TRACKS[(index + 1) % MUSIC_TRACKS.length];
       currentVideoIdRef.current = next.videoId;
+      emitMusicEvent('gyopo-music-local', { source: 'local', player: 'top', origin: 'background-player', track: next, playing: !mutedRef.current, position: 0, startedAt: Date.now() });
       setVideoId(next.videoId);
     };
     window.addEventListener('message', handlePlayerMessage);
