@@ -47,3 +47,36 @@
   .tetris-camera-panel { min-height: 12rem; }
   .tetris-chat-panel { min-height: 13rem; }
 }
+
+@media (min-width: 901px) {
+  .tetris-own-panel .tetris-focus-board > div { width: auto; height: 100%; max-width: 100%; min-height: 0; aspect-ratio: 1 / 2; }
+  .tetris-own-panel .tetris-focus-board > div .grid-cols-10 { width: 100%; height: 100%; min-height: 0; grid-template-rows: repeat(20, minmax(0, 1fr)); }
+  .tetris-focus-board .grid-cols-10 > div { min-width: 0; min-height: 0; }
+}
+
+@media (max-width: 900px) {
+  .tetris-focused-page { padding: .5rem .5rem calc(.5rem + env(safe-area-inset-bottom)); }
+  .tetris-focused-shell { height: auto; }
+  .tetris-focused-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr); grid-template-areas: "own opponent" "camera chat"; height: auto; }
+  .tetris-own-panel, .tetris-opponent-panel { height: clamp(28rem, calc(100svh - var(--header-height, 112px) - 2rem), 42rem); }
+  .tetris-focus-board { container-type: size; }
+  .tetris-focus-board > div { width: 100%; height: 100%; }
+  .tetris-focus-board .grid-cols-10 { grid-template-rows: repeat(20, minmax(0, 1fr)); gap: clamp(1px, .6cqw, 3px); width: 100%; height: 100%; padding: clamp(2px, 1cqw, 6px); }
+  .tetris-focus-settings { max-height: 24rem; }
+  .tetris-focus-settings input, .tetris-focus-settings select, .tetris-focus-chat-form input { font-size: 1rem; }
+}
+
+@media (max-width: 600px) {
+  .tetris-focused-workspace { grid-template-columns: minmax(0, 1fr); grid-template-areas: "own" "opponent" "camera" "chat"; }
+  .tetris-own-panel { display: grid; grid-template-columns: min(50%, max(8rem, calc(50svh - 9.5rem))) minmax(0, 1fr); grid-template-areas: "header header" "board settings" "controls controls"; align-items: start; height: clamp(30rem, calc(100svh - var(--header-height, 112px) - var(--bottom-nav-height, 68px) - 1rem), 42rem); }
+  .tetris-own-panel > .tetris-focus-header { grid-area: header; }
+  .tetris-own-panel > .tetris-focus-board { grid-area: board; height: auto; aspect-ratio: 1 / 1.9; align-self: start; }
+  .tetris-own-panel > .tetris-focus-controls { grid-area: controls; }
+  .tetris-focus-settings { grid-area: settings; min-width: 0; padding: .5rem; }
+  .tetris-focus-settings > .flex { flex-wrap: wrap; }
+  .tetris-focus-settings :is(button, input, select) { min-height: 2.75rem; }
+  .tetris-focus-settings label { flex-basis: 100%; }
+  .tetris-focus-settings :is(input, select) { font-size: 1rem; }
+  .tetris-opponent-panel { width: 100%; height: 26rem; }
+  .tetris-opponent-panel .tetris-focus-board .grid-cols-10 { width: min(100%, 7.25rem); height: auto; aspect-ratio: 1 / 2; }
+}
