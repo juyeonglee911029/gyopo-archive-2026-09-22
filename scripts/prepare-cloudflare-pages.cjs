@@ -73,6 +73,10 @@ const workerMarker = 'const buildStartTime = Date.now();';
 if (!adapterSource.includes('gyopo-next-on-pages-template')) {
   if (!adapterSource.includes(workerMarker)) throw new Error('next-on-pages worker build marker is missing');
   adapterSource = adapterSource.replace(
+    /\(0, import_path\d+\.join\)\(templatesDir, "cache", fileName\)/,
+    "gyopoNextOnPagesPath.join(process.cwd(), '.cloudflare-template-cache/cache', fileName)",
+  );
+  adapterSource = adapterSource.replace(
     workerMarker,
   `const gyopoNextOnPagesTemplate = require('node:fs');
   const gyopoNextOnPagesPath = require('node:path');
