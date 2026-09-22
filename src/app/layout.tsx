@@ -8,7 +8,6 @@ import AppRuntime from '@/components/layout/AppRuntime';
 import { SITE_URL } from '@/lib/seo';
 
 export const runtime = 'edge';
-export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
