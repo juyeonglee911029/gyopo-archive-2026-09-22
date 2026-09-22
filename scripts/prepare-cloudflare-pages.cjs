@@ -3,8 +3,9 @@ const path = require('node:path');
 
 const root = process.cwd();
 const adapter = path.join(root, 'node_modules/@cloudflare/next-on-pages');
+const templateRoot = path.join(adapter, 'templates');
 const templateSource = path.join(adapter, 'templates/_worker.js');
-const templateCache = '/tmp/gyopo-next-on-pages-template';
+const templateCache = path.join(root, '.cloudflare-template-cache');
 const binary = '/tmp/gyopo-esbuild/package/bin/esbuild';
 const topLevelEsbuild = path.join(root, 'node_modules/esbuild');
 const adapterEsbuild = path.join(adapter, 'node_modules/esbuild');
@@ -14,12 +15,12 @@ if (!fs.existsSync(topLevelEsbuild)) throw new Error('esbuild package is missing
 if (!fs.existsSync(binary)) throw new Error('esbuild binary is missing');
 
 fs.rmSync(templateCache, { recursive: true, force: true });
-fs.cpSync(templateSource, templateCache, { recursive: true });
+fs.cpSync(templateRoot, templateCache, { recursive: true });
 fs.rmSync(adapterEsbuild, { recursive: true, force: true });
 fs.mkdirSync(path.dirname(adapterEsbuild), { recursive: true });
 fs.cpSync(topLevelEsbuild, adapterEsbuild, { recursive: true });
 
-const workerSource = path.join(templateCache, 'index.ts');
+const workerSource = path.join(templateCache, '_worker.js/index.ts');
 const templateDir = path.join(adapter, 'templates');
 const workerOutput = path.join(templateDir, '_worker.js');
 const adapterEntry = path.join(adapter, 'dist/index.js');
