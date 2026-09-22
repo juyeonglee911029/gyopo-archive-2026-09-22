@@ -180,7 +180,7 @@ const buildVisual = (state: GameState) => {
 
 function BoardGrid({ cells, compact = false }: { cells: number[][]; compact?: boolean }) {
   return (
-    <div className={`grid grid-cols-10 rounded-xl  ${compact ? 'gap-px p-1' : 'gap-1 p-2'}`}>
+    <div className={`grid grid-cols-10 rounded-xl bg-[#0b1221] ${compact ? 'gap-px p-1' : 'gap-1 p-2'}`}>
       {cells.flatMap((row, y) => row.map((cell, x) => (
         <div
           key={`${x}-${y}`}
