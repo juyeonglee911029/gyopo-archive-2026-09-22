@@ -43,10 +43,8 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
   const isCompact = mode === 'compact';
   const isCallRoute = pathname === '/webrtc' || pathname === '/apps/random-chat';
   const mediaRoute = pathname === '/music' || pathname === '/watch';
-  // Keep the background iframe mounted while routes change, including the music page.
-  // Music-video playback controls its audio separately and must not restart this video.
+  const isKoreanStuffRoute = pathname === '/korean-stuff' || pathname.startsWith('/korean-stuff/');
   const backgroundVideoRoute = !isCompact;
-
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
 
   useEffect(() => {
@@ -64,6 +62,7 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
         ['/master/korean-stuff', 'Korean Stuff 운영'],
         ['/master/keywords', '키워드'],
         ['/admin/growth/exposure', 'Exposure OS'],
+        ['/admin/growth/exposure/assets', 'URL 1,074개·키워드'],
       ].map(([href, label]) => {
         const active = href === '/master' ? pathname === href : isNavigationActive(pathname, href);
         return <Link key={href} href={href} className={active ? 'is-active' : undefined} aria-current={active ? 'page' : undefined}>{label}</Link>;
@@ -72,9 +71,9 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
     <main className="global-main global-admin-main min-w-0">{children}</main>
   </div>;
 
-  return <div className={`global-app-shell${isCompact ? ' is-compact' : ''}${mediaRoute ? ' is-media-route' : ''}`} data-shell-mode={mode} data-media-route={mediaRoute ? pathname.slice(1) : undefined}>
+  return <div className={`global-app-shell${isCompact ? ' is-compact' : ''}${mediaRoute ? ' is-media-route' : ''}${isKoreanStuffRoute ? ' is-korean-stuff-route' : ''}`} data-shell-mode={mode} data-media-route={mediaRoute ? pathname.slice(1) : undefined}>
     {isCallRoute && <Suspense fallback={null}><CompactCallMode onChange={setCompact} /></Suspense>}
-      {backgroundVideoRoute && <SiteBackgroundVideo />}
+    {backgroundVideoRoute && <SiteBackgroundVideo />}
     {!isCompact && <AdSenseScript />}
     {!isCompact && <GoogleTranslate />}
     {!isCompact && <a href="#global-main" className="global-skip-link">본문 바로가기</a>}
@@ -83,8 +82,8 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
       <Header menuOpen={drawerOpen} menuId={drawerId} onMenuOpen={() => setDrawerOpen(true)} />
     </div>
     <div className={`global-page-body mx-auto w-full min-w-0${isCompact ? '' : ` grid max-w-[1600px] grid-cols-1${rightRail ? ' has-right-rail lg:grid-cols-[250px_minmax(0,1fr)_minmax(0,300px)]' : ' lg:grid-cols-[250px_minmax(0,1fr)]'}`}`}>
-      {!isCompact && <aside className="global-sidebar hidden lg:block" aria-label="주요 메뉴"><GlobalSidebar /></aside>}
-      <main id="global-main" className="global-main min-w-0" tabIndex={-1}><RouteExperience><PageContainer>{children}</PageContainer></RouteExperience></main>
+      {!isCompact && <aside className="global-sidebar" aria-label="주요 메뉴"><GlobalSidebar /></aside>}
+      <main id="global-main" className="global-main min-w-0" tabIndex={-1}><RouteExperience><PageContainer className={isKoreanStuffRoute ? 'korean-stuff-page-container' : ''}>{children}</PageContainer></RouteExperience></main>
       {!isCompact && rightRail && <aside className="global-right-rail min-w-0" aria-label="추가 정보">{rightRail}</aside>}
     </div>
     {!isCompact && <Footer />}
