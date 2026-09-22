@@ -507,7 +507,7 @@ export async function createKoreanStuffOrder(params: {
       const productName = documentName(projectId, 'koreanStuffProducts', params.productId);
       const ledgerName = documentName(projectId, 'walletLedger', `korean-stuff-${params.orderId}`);
       const orderData = { ...params.order, id: params.orderId, total: params.total, currency: 'USD', status: 'PAID', createdAt: now, updatedAt: now };
-      const productData = { ...product.fields, payload: { stringValue: JSON.stringify({ ...productPayload, stock: Number(productPayload.stock || 0) - params.quantity, updatedAt: now }) }, updatedAt: { timestampValue: now } };
+            const productData: Record<string, AdminFirestoreValue> = { ...product.fields, payload: { stringValue: JSON.stringify({ ...productPayload, stock: Number(productPayload.stock || 0) - params.quantity, updatedAt: now }) }, updatedAt: { timestampValue: now } };
 
       return {
         writes: [
