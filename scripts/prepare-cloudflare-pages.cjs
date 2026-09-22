@@ -16,6 +16,21 @@ if (!fs.existsSync(binary)) throw new Error('esbuild binary is missing');
 
 fs.rmSync(templateCache, { recursive: true, force: true });
 fs.cpSync(templateRoot, templateCache, { recursive: true });
+
+const pcreSource = path.join(templateCache, '_worker.js/utils/pcre.ts');
+const pcreEntry = [
+  path.join(root, 'node_modules/pcre-to-regexp/dist/index.js'),
+  path.join(adapter, 'node_modules/pcre-to-regexp/dist/index.js'),
+].find(fs.existsSync);
+if (!pcreEntry) throw new Error('pcre-to-regexp package is missing');
+fs.writeFileSync(
+  pcreSource,
+  fs.readFileSync(pcreSource, 'utf8').replace(
+    "'pcre-to-regexp/dist/index.js'",
+    JSON.stringify(pcreEntry),
+  ),
+);
+
 fs.rmSync(adapterEsbuild, { recursive: true, force: true });
 fs.mkdirSync(path.dirname(adapterEsbuild), { recursive: true });
 fs.cpSync(topLevelEsbuild, adapterEsbuild, { recursive: true });
