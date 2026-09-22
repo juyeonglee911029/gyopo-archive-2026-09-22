@@ -515,7 +515,7 @@ export async function createKoreanStuffOrder(params: {
           { update: { name: orderName, fields: { payload: { stringValue: JSON.stringify(orderData) }, updatedAt: { timestampValue: now } } }, currentDocument: { exists: false } },
           { update: { name: productName, fields: productData }, currentDocument: { updateTime: product.updateTime } },
           { update: { name: ledgerName, fields: { userId: firestoreValue(params.userId), type: firestoreValue('DEBIT'), direction: firestoreValue('OUT'), amount: firestoreValue(params.total), status: firestoreValue('COMPLETED'), network: firestoreValue('GYOPO'), symbol: firestoreValue('USD'), requestId: firestoreValue(params.orderId), memo: firestoreValue(`Korean Stuff 주문 ${params.productId}`), createdAt: { timestampValue: now } } }, currentDocument: { exists: false } },
-        ],
+                ] as unknown as FirestoreWrite[],
         result: { balanceUsd: nextBalance },
       };
     },
