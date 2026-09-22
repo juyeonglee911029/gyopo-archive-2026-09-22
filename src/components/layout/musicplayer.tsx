@@ -6,18 +6,10 @@ import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import { emitMusicEvent, MUSIC_HOT_KEYWORDS, MUSIC_TRACKS, musicPopoverPosition, normalizeMusicFavorites, readMusicVolume, searchMusicTracks, type MusicSyncDetail, type MusicTrack } from '@/lib/music';
 import { useGlobalStore } from '@/store/useGlobalStore';
-import { SITE_URL } from '@/lib/seo';
 import '@/styles/music-popover.css';
 
 function sendPlayerCommand(frame: HTMLIFrameElement | null, func: string, args: unknown[] = []) {
-  frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube.com');
-}
-
-function subscribeToPlayerState(frame: HTMLIFrameElement | null) {
-  const target = frame?.contentWindow;
-  if (!target) return;
-  target.postMessage(JSON.stringify({ event: 'listening', id: 'gyopo-top-player' }), 'https://www.youtube.com');
-  target.postMessage(JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] }), 'https://www.youtube.com');
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('gyopo-background-command', { detail: { func, args } }));
 }
 
 export default function MusicPlayer({ embedded = false }: { embedded?: boolean }) {
@@ -292,7 +284,7 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
     setTrack(next);
     setPlaying(true);
     setSearchFocused(false);
-    const detail: MusicSyncDetail = { source: 'local', player: 'top', origin: originRef.current, track: next, playing: true, position: 0, startedAt: Date.now(), volume };
+    const detail: MusicSyncDetail = { source: 'local', player: 'top', origin: originRef.current, track: next, playing: true, position: 0, startedAt: Date.now(), volume, userInitiated: true };
     pendingSyncRef.current = detail;
     syncFrame(detail);
     emitMusicEvent('gyopo-music-local', detail);
@@ -335,7 +327,7 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
     if (next && pathname !== '/music') sendPlayerCommand(frameRef.current, 'unMute');
     else sendPlayerCommand(frameRef.current, 'mute');
     sendPlayerCommand(frameRef.current, next && pathname !== '/music' ? 'playVideo' : 'pauseVideo');
-    emitMusicEvent('gyopo-music-local', { source: 'local', player: 'top', origin: originRef.current, track, playing: next, position: 0, startedAt: Date.now(), volume });
+    emitMusicEvent('gyopo-music-local', { source: 'local', player: 'top', origin: originRef.current, track, playing: next, position: 0, startedAt: Date.now(), volume, userInitiated: true });
   };
 
   const changeVolume = (next: number) => {
@@ -344,7 +336,7 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
     if (bounded > 0) lastVolumeRef.current = bounded;
     try { window.localStorage.setItem('gyopo-music-volume', String(bounded)); } catch { setSaveError('볼륨을 저장하지 못했습니다. 현재 창에서만 적용됩니다.'); }
     sendPlayerCommand(frameRef.current, 'setVolume', [bounded]);
-    emitMusicEvent('gyopo-music-local', { source: 'local', player: 'top', origin: originRef.current, track, playing, position: 0, startedAt: Date.now(), volume: bounded });
+    emitMusicEvent('gyopo-music-local', { source: 'local', player: 'top', origin: originRef.current, track, playing, position: 0, startedAt: Date.now(), volume: bounded, userInitiated: true });
   };
 
   const toggleMuted = () => changeVolume(volume > 0 ? 0 : lastVolumeRef.current || 70);
@@ -428,7 +420,6 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
           </div>
            <button type="button" onClick={toggleFavoriteLoop} aria-pressed={favoriteLoop} aria-label={favoriteLoop ? '즐겨찾기 반복 끄기' : '즐겨찾기 반복 켜기'} className={`music-player-utility ${favoriteLoop ? 'text-rose-200' : 'text-slate-300'}`}><Repeat2 size={15} /></button>
         </div>
-          <iframe ref={frameRef} tabIndex={-1} onLoad={() => { subscribeToPlayerState(frameRef.current); syncFrame(); }} title="GYOPO music player" src={`https://www.youtube.com/embed/${MUSIC_TRACKS[0].videoId}?enablejsapi=1&origin=${encodeURIComponent(SITE_URL)}&autoplay=0&cc_load_policy=0&iv_load_policy=3&playsinline=1`} className="pointer-events-none absolute h-px w-px opacity-0" allow="autoplay; encrypted-media" />
       </div>
 
       {saveError && !searchFocused && !favoriteMenuOpen && <button type="button" className="music-save-error" onClick={toggleFavoriteMenu} role="alert">{saveError}</button>}
