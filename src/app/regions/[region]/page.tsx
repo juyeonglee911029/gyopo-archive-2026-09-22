@@ -2,12 +2,14 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { EmptyState, PageContainer, PageHeader } from '@/components/ui/Primitives';
-import { countriesForRegion, getRegionRoute } from '@/lib/regionRoutes';
+import { countriesForRegion, getRegionRoute, REGION_ROUTES } from '@/lib/regionRoutes';
 import { pageMetadata } from '@/lib/seo';
 
-export const runtime = 'edge';
-
 type Props = { params: Promise<{ region: string }> };
+
+export function generateStaticParams() {
+  return REGION_ROUTES.map((region) => ({ region: region.slug }));
+}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const region = getRegionRoute((await params).region);
