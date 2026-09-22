@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { emitMusicEvent, MUSIC_TRACKS, type MusicSyncDetail } from '@/lib/music';
+import { MUSIC_TRACKS, type MusicSyncDetail } from '@/lib/music';
 import { SITE_URL } from '@/lib/seo';
 
 export default function SiteBackgroundVideo() {
@@ -69,28 +69,28 @@ export default function SiteBackgroundVideo() {
       const index = MUSIC_TRACKS.findIndex((track) => track.videoId === currentVideoIdRef.current);
       const next = MUSIC_TRACKS[(index + 1) % MUSIC_TRACKS.length];
       currentVideoIdRef.current = next.videoId;
-      emitMusicEvent('gyopo-music-local', { source: 'local', player: 'top', origin: 'background-player', track: next, playing: !mutedRef.current, position: 0, startedAt: Date.now() });
       setVideoId(next.videoId);
     };
     window.addEventListener('message', handlePlayerMessage);
     return () => window.removeEventListener('message', handlePlayerMessage);
   }, []);
+
   return (
     <div className="site-background-video" aria-hidden="true">
        <iframe
          key={videoId}
           ref={frameRef}
-          onLoad={() => {
-            if (currentVideoIdRef.current !== videoId) sendCommand('loadVideoById', [currentVideoIdRef.current]);
-            frameRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'gyopo-background-player' }), 'https://www.youtube.com');
-            sendCommand('addEventListener', ['onStateChange']);
-            sendCommand('mute');
+           onLoad={() => {
+             if (currentVideoIdRef.current !== videoId) sendCommand('loadVideoById', [currentVideoIdRef.current]);
+             frameRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'gyopo-background-player' }), 'https://www.youtube.com');
+             sendCommand('addEventListener', ['onStateChange']);
+             sendCommand('mute');
             sendCommand('setVolume', [100]);
             if (!mutedRef.current) sendCommand('unMute');
             sendCommand('playVideo');
           }}
          title="GYOPO background music video"
-          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&cc_load_policy=0&iv_load_policy=3&origin=${encodeURIComponent(SITE_URL)}`}
+           src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&cc_load_policy=0&iv_load_policy=3&origin=${encodeURIComponent(SITE_URL)}`}
          allow="autoplay; encrypted-media"
        />
       <div className="site-background-video-shade" />
