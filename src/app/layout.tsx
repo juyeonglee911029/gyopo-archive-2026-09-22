@@ -7,8 +7,6 @@ import GlobalAppShell from '@/components/layout/GlobalAppShell';
 import AppRuntime from '@/components/layout/AppRuntime';
 import { SITE_URL } from '@/lib/seo';
 
-export const dynamic = 'force-static';
-
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: 'K-Global Portal | 글로벌 한인 교민 통합 포털',
