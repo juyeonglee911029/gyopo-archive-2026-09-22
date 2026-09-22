@@ -18,6 +18,7 @@ export type MusicSyncDetail = {
   position?: number;
   startedAt?: number;
   volume?: number;
+  userInitiated?: boolean;
 };
 
 export function emitMusicEvent(name: 'gyopo-music-local' | 'gyopo-music-sync', detail: MusicSyncDetail) {
