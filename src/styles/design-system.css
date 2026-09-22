@@ -19,5 +19,5 @@ body { font-family: var(--font-sans); }
 @keyframes global-live-pulse { 0%, 100% { opacity: .58; transform: scale(.82); } 50% { opacity: 1; transform: scale(1.12); } }
 
 @media (max-width: 767px) {
-  body:has(.tetris-focused-page) { background: transparent; } body:has(.badball-shell) { background: #070b17; }
+  body:has(.tetris-focused-page), body:has(.badball-shell) { background: #070b17; }
 }
