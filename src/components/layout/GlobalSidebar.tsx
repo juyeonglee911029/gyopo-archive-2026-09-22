@@ -17,6 +17,7 @@ const navigationGroups = [
     { id: 'jobs', href: '/jobs', label: '구인구직', english: 'Jobs', icon: BriefcaseBusiness },
     { id: 'directory', href: '/directory', label: '업소록', english: 'Directory', icon: Store },
     { id: 'market', href: '/market', label: '장터', english: 'Market', icon: ShoppingBag },
+    { id: 'korean-stuff', href: '/korean-stuff', label: 'KOREAN STUFF', english: 'Korean Stuff', icon: ShoppingBag },
     { id: 'news', href: '/news', label: '뉴스', english: 'News', icon: Newspaper },
     { id: 'events', href: '/regions', label: '행사', english: 'Events', icon: CalendarDays },
   ] },

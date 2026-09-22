@@ -61,6 +61,7 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
       {[
         ['/', 'GYOPO 홈'],
         ['/master', '관리자'],
+        ['/master/korean-stuff', 'Korean Stuff 운영'],
         ['/master/keywords', '키워드'],
         ['/admin/growth/exposure', 'Exposure OS'],
       ].map(([href, label]) => {
