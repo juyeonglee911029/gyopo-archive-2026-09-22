@@ -1,8 +1,5 @@
 'use client';
 
-export const runtime = 'edge';
-export const dynamic = 'force-dynamic';
-
 import { Suspense, useState } from 'react';
 import { beginRoute, RouteErrorState, useRouteReadiness } from '@/components/layout/RouteExperience';
 
