@@ -1,7 +1,5 @@
 'use client';
 
-export const runtime = 'edge';
-export const dynamic = 'force-dynamic';
 
 export default function GlobalError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
