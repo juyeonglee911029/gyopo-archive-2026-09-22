@@ -1,5 +1,7 @@
 'use client';
 
+export const runtime = 'edge';
+
 import { Suspense, useState } from 'react';
 import { beginRoute, RouteErrorState, useRouteReadiness } from '@/components/layout/RouteExperience';
 
