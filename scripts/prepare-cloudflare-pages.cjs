@@ -33,6 +33,12 @@ fs.writeFileSync(
   ),
 );
 
+const cacheSource = path.join(templateCache, 'cache');
+const cacheTarget = path.join(adapter, 'templates/cache');
+if (!fs.existsSync(cacheSource)) throw new Error('next-on-pages cache templates are missing');
+fs.rmSync(cacheTarget, { recursive: true, force: true });
+fs.cpSync(cacheSource, cacheTarget, { recursive: true });
+
 fs.rmSync(adapterEsbuild, { recursive: true, force: true });
 fs.mkdirSync(path.dirname(adapterEsbuild), { recursive: true });
 fs.cpSync(topLevelEsbuild, adapterEsbuild, { recursive: true });
