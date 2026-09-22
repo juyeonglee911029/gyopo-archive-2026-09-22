@@ -23,11 +23,13 @@ const pcreEntry = [
   path.join(adapter, 'node_modules/pcre-to-regexp/dist/index.js'),
 ].find(fs.existsSync);
 if (!pcreEntry) throw new Error('pcre-to-regexp package is missing');
+const pcreBundle = path.join(templateCache, '_worker.js/utils/pcre-to-regexp.js');
+fs.copyFileSync(pcreEntry, pcreBundle);
 fs.writeFileSync(
   pcreSource,
   fs.readFileSync(pcreSource, 'utf8').replace(
     "'pcre-to-regexp/dist/index.js'",
-    JSON.stringify(pcreEntry),
+    "'./pcre-to-regexp.js'",
   ),
 );
 
