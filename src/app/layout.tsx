@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import './korean-stuff/korean-stuff.css';
 import '@/styles/design-system.css';
 import GlobalAppShell from '@/components/layout/GlobalAppShell';
 import AppRuntime from '@/components/layout/AppRuntime';
