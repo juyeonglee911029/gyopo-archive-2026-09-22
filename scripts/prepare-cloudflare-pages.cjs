@@ -57,6 +57,10 @@ esbuildSource = esbuildSource.replace(
 fs.writeFileSync(adapterEsbuildEntry, esbuildSource);
 
 let adapterSource = fs.readFileSync(adapterEntry, 'utf8');
+adapterSource = adapterSource.replace(
+  /await \(0, import_promises\d+\.cp\)\(\s*noNodejsCompatFlagStaticErrorPagePath,\s*\(0, import_path\d+\.join\)\(outputDir, "cdn-cgi", "errors", "no-nodejs_compat\.html"\)\s*\);/,
+  'await (0, import_promises10.mkdir)((0, import_path9.join)(outputDir, "cdn-cgi", "errors"), { recursive: true });',
+);
 const invalidMarker = 'if (collectedFunctions.invalidFunctions.size > 0) {';
 if (!adapterSource.includes('invalidPath.includes(String.fromCharCode(47,95,103,108,111,98,97,108,45,101,114,114,111,114))')) {
   if (!adapterSource.includes(invalidMarker)) throw new Error('next-on-pages invalid-route check is missing');
