@@ -54,7 +54,7 @@ if (!adapterSource.includes('gyopo-next-on-pages-template')) {
   `const gyopoNextOnPagesTemplate = require('node:fs');
   const gyopoNextOnPagesPath = require('node:path');
   gyopoNextOnPagesTemplate.rmSync(gyopoNextOnPagesPath.join(process.cwd(), 'node_modules/@cloudflare/next-on-pages/templates/_worker.js'), { recursive: true, force: true });
-  await import_esbuild.build({ entryPoints: [${JSON.stringify(workerSource)}], bundle: true, platform: 'neutral', target: 'es2022', nodePaths: [gyopoNextOnPagesPath.join(process.cwd(), 'node_modules/@cloudflare/next-on-pages/node_modules')], outfile: ${JSON.stringify(workerOutput)} });
+  await import_esbuild.build({ entryPoints: [${JSON.stringify(workerSource)}], bundle: true, platform: 'neutral', target: 'es2022', nodePaths: [gyopoNextOnPagesPath.join(process.cwd(), 'node_modules'), gyopoNextOnPagesPath.join(process.cwd(), 'node_modules/@cloudflare/next-on-pages/node_modules')], outfile: ${JSON.stringify(workerOutput)} });
   const buildStartTime = Date.now();`,
   );
 }
