@@ -212,6 +212,18 @@ export async function listAdminJsonDocuments(collection: string): Promise<Array<
   });
 }
 
+export async function getAdminJsonDocument(collection: string, id: string): Promise<{ id: string; data: Record<string, unknown>; updatedAt?: string } | null> {
+  if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(collection) || !/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new Error('Firestore 문서 식별자가 올바르지 않습니다.');
+  const document = await getDocument(collection, id);
+  if (!document) return null;
+  const raw = document.fields?.payload;
+  let data: Record<string, unknown> = {};
+  if (raw && 'stringValue' in raw) {
+    try { data = JSON.parse(raw.stringValue) as Record<string, unknown>; } catch { data = {}; }
+  }
+  return { id, data, updatedAt: document.fields?.updatedAt && 'timestampValue' in document.fields.updatedAt ? document.fields.updatedAt.timestampValue : undefined };
+}
+
 export async function listAdminDocuments(collection: string): Promise<Array<{ id: string; data: Record<string, unknown>; updatedAt?: string }>> {
   if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(collection)) throw new Error('Firestore 컬렉션 이름이 올바르지 않습니다.');
   const response = await adminRequest((projectId) => `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collection}?pageSize=300`);
@@ -440,4 +452,72 @@ export async function adjustUsdBalance(params: {
     throw new Error('USD 지급 내용을 저장하지 못했습니다.');
   }
   return { amountUsd, balanceUsd, direction: params.direction, alreadyApplied: false };
+}
+
+export async function createKoreanStuffOrder(params: {
+  userId: string;
+  orderId: string;
+  productId: string;
+  quantity: number;
+  total: number;
+  order: Record<string, unknown>;
+}): Promise<{ balanceUsd: number }> {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(params.userId)) throw new Error('주문 회원 식별자가 올바르지 않습니다.');
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(params.orderId) || !/^ks-[A-Za-z0-9_-]{16,64}$/.test(params.orderId)) throw new Error('주문 식별자가 올바르지 않습니다.');
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(params.productId)) throw new Error('상품 식별자가 올바르지 않습니다.');
+  if (!Number.isInteger(params.quantity) || params.quantity < 1 || params.quantity > 10) throw new Error('주문 수량이 올바르지 않습니다.');
+  if (!Number.isFinite(params.total) || params.total <= 0 || params.total > 1_000_000) throw new Error('주문 금액이 올바르지 않습니다.');
+
+  return runFirestoreTransaction(
+    [
+      { collection: 'profiles', id: params.userId },
+      { collection: 'koreanStuffProducts', id: params.productId },
+      { collection: 'koreanStuffOrders', id: params.orderId },
+      { collection: 'walletLedger', id: `korean-stuff-${params.orderId}` },
+    ],
+    ({ projectId, get }) => {
+      const profile = get({ collection: 'profiles', id: params.userId });
+      const product = get({ collection: 'koreanStuffProducts', id: params.productId });
+      const existingOrder = get({ collection: 'koreanStuffOrders', id: params.orderId });
+      const existingLedger = get({ collection: 'walletLedger', id: `korean-stuff-${params.orderId}` });
+      const readPayload = (document: AdminFirestoreDocument | null): Record<string, unknown> | null => {
+        const raw = document?.fields?.payload;
+        if (!raw || !('stringValue' in raw)) return null;
+        try { return JSON.parse(raw.stringValue) as Record<string, unknown>; } catch { return null; }
+      };
+
+      if (existingOrder) {
+        const existing = readPayload(existingOrder);
+        if (!existing || existing.userId !== params.userId || existing.productId !== params.productId || Number(existing.total) !== params.total) throw new Error('주문 재시도 식별자가 다른 주문에 사용되었습니다.');
+        return { writes: [], result: { balanceUsd: firestoreNumber(profile?.fields?.usdBalance) } };
+      }
+      if (existingLedger) throw new Error('주문 원장이 이미 사용되었습니다.');
+      if (!profile?.name || !profile.updateTime) throw new Error('로그인 회원 프로필을 찾을 수 없습니다.');
+      if (!product?.name || !product.updateTime) throw new Error('상품이 더 이상 판매되지 않습니다.');
+
+      const productPayload = readPayload(product);
+      if (!productPayload || productPayload.status !== 'APPROVED' || Number(productPayload.stock || 0) < params.quantity) throw new Error('상품 재고가 부족하거나 판매가 종료되었습니다.');
+      if (Math.round(Number(productPayload.salePrice || 0) * params.quantity * 100) / 100 !== params.total) throw new Error('상품 금액이 변경되었습니다. 상품을 다시 주문해주세요.');
+      const balanceUsd = firestoreNumber(profile.fields?.usdBalance);
+      if (!Number.isFinite(balanceUsd) || balanceUsd < params.total) throw new Error('USD 잔액이 부족합니다. 지갑에서 충전 후 다시 시도해주세요.');
+
+      const now = new Date().toISOString();
+      const nextBalance = Math.round((balanceUsd - params.total) * 100) / 100;
+      const orderName = documentName(projectId, 'koreanStuffOrders', params.orderId);
+      const productName = documentName(projectId, 'koreanStuffProducts', params.productId);
+      const ledgerName = documentName(projectId, 'walletLedger', `korean-stuff-${params.orderId}`);
+      const orderData = { ...params.order, id: params.orderId, total: params.total, currency: 'USD', status: 'PAID', createdAt: now, updatedAt: now };
+      const productData = { ...product.fields, payload: { stringValue: JSON.stringify({ ...productPayload, stock: Number(productPayload.stock || 0) - params.quantity, updatedAt: now }) }, updatedAt: { timestampValue: now } };
+
+      return {
+        writes: [
+          { update: { name: profile.name, fields: { ...(profile.fields || {}), usdBalance: firestoreValue(nextBalance), updatedAt: { timestampValue: now } } }, currentDocument: { updateTime: profile.updateTime } },
+          { update: { name: orderName, fields: { payload: { stringValue: JSON.stringify(orderData) }, updatedAt: { timestampValue: now } } }, currentDocument: { exists: false } },
+          { update: { name: productName, fields: productData }, currentDocument: { updateTime: product.updateTime } },
+          { update: { name: ledgerName, fields: { userId: firestoreValue(params.userId), type: firestoreValue('DEBIT'), direction: firestoreValue('OUT'), amount: firestoreValue(params.total), status: firestoreValue('COMPLETED'), network: firestoreValue('GYOPO'), symbol: firestoreValue('USD'), requestId: firestoreValue(params.orderId), memo: firestoreValue(`Korean Stuff 주문 ${params.productId}`), createdAt: { timestampValue: now } } }, currentDocument: { exists: false } },
+        ],
+        result: { balanceUsd: nextBalance },
+      };
+    },
+  );
 }

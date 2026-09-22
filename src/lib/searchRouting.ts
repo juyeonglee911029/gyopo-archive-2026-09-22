@@ -13,6 +13,7 @@ const HOT_KEYWORD_ROUTES: Array<{ aliases: string[]; href: string; label: string
   { aliases: ['뉴스', '지역 뉴스', '오늘의 뉴스', 'news'], href: '/news', label: '오늘의 뉴스' },
   { aliases: ['커뮤니티', 'community'], href: '/community', label: '커뮤니티' },
   { aliases: ['장터', 'market'], href: '/market', label: '장터' },
+  { aliases: ['korean stuff', 'koreanstuff', '한국 상품', '한국 쇼핑'], href: '/korean-stuff', label: 'KOREAN STUFF' },
   { aliases: ['음악', 'music'], href: '/music', label: '음악' },
 ];
 
