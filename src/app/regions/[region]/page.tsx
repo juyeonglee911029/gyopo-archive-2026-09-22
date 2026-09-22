@@ -5,6 +5,8 @@ import { EmptyState, PageContainer, PageHeader } from '@/components/ui/Primitive
 import { countriesForRegion, getRegionRoute, REGION_ROUTES } from '@/lib/regionRoutes';
 import { pageMetadata } from '@/lib/seo';
 
+export const runtime = 'edge';
+
 type Props = { params: Promise<{ region: string }> };
 
 export function generateStaticParams() {
