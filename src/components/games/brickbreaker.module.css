@@ -1,0 +1,51 @@
+.shell { min-height: calc(100dvh - 5rem); overflow-x: hidden; padding: 1rem; color: #e2e8f0; background: radial-gradient(circle at 75% 0%, rgba(34, 211, 238, .1), transparent 30rem), #070b17; }
+.header, .lobby, .panel, .ranking { border: 1px solid rgba(148, 163, 184, .16); background: rgba(10, 18, 32, .72); box-shadow: 0 18px 60px rgba(0, 0, 0, .18); }
+.header { display: flex; align-items: end; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; }
+.header small { color: #67e8f9; font-size: .58rem; font-weight: 900; letter-spacing: .18em; }
+.header h1 { margin: .2rem 0 0; color: #f8fafc; font-size: clamp(1.3rem, 3vw, 2.4rem); line-height: 1; }
+.header h1 span { color: #67e8f9; }
+.header > strong { color: #94a3b8; font-size: .65rem; }
+.lobby { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; margin-top: .55rem; padding: .55rem; }
+.lobby > span, .lobby > label { color: #94a3b8; font-size: .65rem; }
+.lobby input, .lobby select, .lobby button, .bar button, .chatForm button { min-height: 2rem; border: 1px solid rgba(148, 163, 184, .2); background: rgba(255, 255, 255, .05); padding: .35rem .55rem; color: #e2e8f0; font-size: .65rem; }
+.lobby button, .bar button, .chatForm button { cursor: pointer; font-weight: 900; }
+.lobby button:hover, .bar button:hover, .chatForm button:hover { border-color: rgba(103, 232, 249, .5); background: rgba(103, 232, 249, .12); }
+.bet { display: inline-flex; align-items: center; gap: .35rem; }
+.bet input { width: 5rem; }
+.error { margin: .55rem 0; border: 1px solid rgba(251, 113, 133, .28); background: rgba(251, 113, 133, .1); padding: .5rem .65rem; color: #fecdd3; font-size: .7rem; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .65rem; margin-top: .65rem; }
+.panel { min-width: 0; overflow: hidden; }
+.bar { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: .5rem; border-bottom: 1px solid rgba(148, 163, 184, .12); padding: .5rem .65rem; color: #94a3b8; font-size: .62rem; }
+.bar b { color: #a5f3fc; }
+.bar strong { color: #f8fafc; font-size: .85rem; }
+.stage { position: relative; display: grid; min-height: 16rem; place-items: center; background: #02040b; }
+.canvas { display: block; width: 100%; max-height: min(55dvh, 38rem); aspect-ratio: 1.6; object-fit: contain; touch-action: none; }
+.overlay { position: absolute; inset: 0; display: grid; place-content: center; gap: .45rem; background: rgba(2, 4, 11, .58); padding: 1rem; text-align: center; }
+.overlay strong { color: #a5f3fc; font-size: .85rem; letter-spacing: .12em; }
+.overlay p { color: #94a3b8; font-size: .65rem; }
+.overlay button { border: 1px solid rgba(103, 232, 249, .45); background: #67e8f9; padding: .55rem .8rem; color: #07111b; font-weight: 900; }
+.liveMessage { position: absolute; right: .6rem; bottom: .6rem; left: .6rem; padding: .4rem .55rem; background: rgba(15, 23, 42, .8); color: #fde68a; font-size: .65rem; text-align: center; }
+.camera { display: block; width: 100%; height: 100%; min-height: 13rem; border: 0; background: #02040b; }
+.empty { display: grid; min-height: 13rem; place-content: center; padding: 1rem; color: #64748b; text-align: center; }
+.empty strong { color: #a5f3fc; font-size: .72rem; }
+.empty p { margin-top: .4rem; font-size: .65rem; line-height: 1.5; }
+.messages { min-height: 10rem; max-height: 16rem; overflow-y: auto; padding: .7rem; color: #cbd5e1; font-size: .68rem; line-height: 1.55; }
+.messages p { margin: 0 0 .4rem; }
+.chatForm { display: flex; border-top: 1px solid rgba(148, 163, 184, .12); }
+.chatForm input { min-width: 0; flex: 1; border: 0; background: transparent; padding: .6rem; color: #fff; outline: none; }
+.chatForm button { border: 0; background: #67e8f9; color: #07111b; }
+.notice { margin: .6rem 0; color: #64748b; font-size: .64rem; line-height: 1.5; }
+.ranking { display: grid; grid-template-columns: minmax(0, 1fr) minmax(14rem, .45fr); gap: 1rem; padding: .8rem 1rem; }
+.ranking h2 { margin: 0; color: #f8fafc; font-size: .85rem; }
+.ranking p { margin: .35rem 0 0; color: #94a3b8; font-size: .65rem; line-height: 1.5; }
+
+@media (max-width: 800px) {
+  .shell { min-height: auto; padding: .5rem; }
+  .header { align-items: start; }
+  .header > strong { display: none; }
+  .grid { grid-template-columns: 1fr; }
+  .stage { min-height: 13rem; }
+  .canvas { max-height: 48dvh; }
+  .ranking { grid-template-columns: 1fr; }
+}
+
