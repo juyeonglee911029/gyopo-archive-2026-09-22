@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { RouteErrorState, RouteSkeleton, useRouteReadiness } from '@/components/layout/RouteExperience';
 import { fetchRouteJson, withRouteTimeout } from '@/lib/routeExperience';
 import { createDocument, deleteDocument, getDocument, getSessionToken, isMasterUser, listDocuments } from '@/lib/firebase';
@@ -11,6 +11,7 @@ import { COUNTRY_LOCATIONS } from '@/lib/locations';
 import { REGIONS } from '@/lib/regions';
 import { createFilterLocations, EMPTY_JOB_FILTERS, listingLocation, matchesJobFilters, paginateListings, parseSavedJobIds, type JobFilterFields, type JobFilters } from '@/lib/listingFilters';
 import { useGlobalStore } from '@/store/useGlobalStore';
+import { useEffectEvent } from '@/lib/useeffectevent';
 
 type Job = JobFilterFields & { id: string; title: string; company: string; location: string; salary: string; tag: string; category?: string; country: string; authorId: string; createdAt: string; publishedAt?: string; body?: string; image?: string; images?: string[]; sourceId?: string; sourceName?: string; sourceUrl?: string; sourceCategory?: string; sourceContentId?: string; sourceSnapshot?: boolean };
 type ContentSourceSettings = { disabledSourceIds?: string[] };
@@ -37,6 +38,7 @@ export default function JobsPage() {
   const { user, selectedCountry, setSelectedCountry } = useGlobalStore();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isWriting, setIsWriting] = useState(false);
+  const [formError, setFormError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const loadRequest = useRef(0);
@@ -131,18 +133,19 @@ export default function JobsPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!user) return window.alert('로그인 후 공고를 등록할 수 있습니다.');
+    if (!user) return setFormError('로그인 후 공고를 등록할 수 있습니다.');
     const token = getSessionToken();
     if (!token) return;
     const values = Object.values(form).map((value) => value.trim());
-    if (form.title.trim().length < 4 || form.company.trim().length < 2 || form.location.trim().length < 2 || form.country.trim().length < 2 || !form.salary.trim()) return window.alert('공고 제목·회사명·근무 지역·국가·급여를 정확히 입력해주세요.');
-    if (values.some((value) => /<[^>]+>|javascript:|data:text\/html|https?:\/\//i.test(value))) return window.alert('공고 내용에 HTML 또는 외부 링크를 입력할 수 없습니다.');
+    if (form.title.trim().length < 4 || form.company.trim().length < 2 || form.location.trim().length < 2 || form.country.trim().length < 2 || !form.salary.trim()) return setFormError('공고 제목·회사명·근무 지역·국가·급여를 정확히 입력해주세요.');
+    if (values.some((value) => /<[^>]+>|javascript:|data:text\/html|https?:\/\//i.test(value))) return setFormError('공고 내용에 HTML 또는 외부 링크를 입력할 수 없습니다.');
+    setFormError('');
     try {
       await createDocument('jobs', crypto.randomUUID(), { ...form, title: form.title.trim(), company: form.company.trim(), location: form.location.trim(), country: form.country.trim(), salary: form.salary.trim(), authorId: user.id, createdAt: new Date().toISOString() }, token);
       setForm({ title: '', company: '', location: '', country: '', salary: '', tag: '정규직' });
       setIsWriting(false);
       await loadJobs();
-    } catch { window.alert('공고를 저장하지 못했습니다.'); }
+    } catch { setFormError('공고를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.'); }
   };
 
   const removeJob = async (job: Job) => {
@@ -169,7 +172,7 @@ export default function JobsPage() {
             <h1 className="text-3xl font-black text-white">구인/구직</h1>
             <p className="mt-2 text-sm font-bold text-blue-200">실제 구인 정보만 등록해주세요. 지역과 조건을 함께 선택해 공고를 찾아보세요.</p>
           </div>
-          <button onClick={() => setIsWriting(true)} className="rounded-lg bg-blue-600 px-5 py-2.5 font-bold text-white shadow-md transition hover:bg-blue-500">구인 글쓰기</button>
+           {user ? <button onClick={() => { setFormError(''); setIsWriting(true); }} className="rounded-xl bg-cyan-300 px-5 py-2.5 font-black text-slate-950 shadow-md transition hover:bg-cyan-200">구인 글쓰기</button> : <Link href="/login" className="rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-5 py-2.5 text-sm font-black text-cyan-100 transition hover:bg-cyan-300/20">로그인 후 공고 등록</Link>}
         </header>
         <section aria-label="구인 공고 필터" className="mb-5 space-y-3 rounded-xl border border-white/10 p-4">
           <div className="flex flex-wrap gap-2">
@@ -196,7 +199,7 @@ export default function JobsPage() {
         </main>
         {!isLoading && page.total > 0 && <nav aria-label="구인 공고 페이지" className="mt-5 flex items-center justify-center gap-4 text-sm"><button type="button" disabled={page.page === 1} onClick={() => setPagination({ key: pageKey, page: page.page - 1 })} className="rounded-lg border border-white/20 px-4 py-2 disabled:opacity-40">이전</button><span>{page.page} / {page.totalPages}</span><button type="button" disabled={page.page === page.totalPages} onClick={() => setPagination({ key: pageKey, page: page.page + 1 })} className="rounded-lg border border-white/20 px-4 py-2 disabled:opacity-40">다음</button></nav>}
       </div>
-      {isWriting && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onMouseDown={(event) => event.target === event.currentTarget && setIsWriting(false)}><form onSubmit={handleSubmit} className="w-full max-w-lg space-y-3 rounded-2xl bg-white p-6 shadow-2xl"><h2 className="text-xl font-black text-slate-900">구인 공고 등록</h2><input required placeholder="공고 제목" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-xl border px-4 py-3" /><input required placeholder="회사명" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="w-full rounded-xl border px-4 py-3" /><input required placeholder="근무 지역" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full rounded-xl border px-4 py-3" /><input required placeholder="국가 태그 (예: 독일, 미국, 브라질)" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} className="w-full rounded-xl border px-4 py-3" /><input required placeholder="급여" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} className="w-full rounded-xl border px-4 py-3" /><select value={form.tag} onChange={(e) => setForm({ ...form, tag: e.target.value })} className="w-full rounded-xl border px-4 py-3"><option>정규직</option><option>파트타임</option><option>계약직</option><option>재택근무</option></select><div className="flex gap-2 pt-2"><button type="button" onClick={() => setIsWriting(false)} className="flex-1 rounded-xl border py-3 font-bold">취소</button><button className="flex-1 rounded-xl bg-blue-600 py-3 font-bold text-white">등록</button></div></form></div>}
+       {isWriting && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(event) => event.target === event.currentTarget && setIsWriting(false)}><form onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-labelledby="job-composer-title" className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[1.5rem] border border-cyan-200/15 bg-[#0b1221] p-5 text-slate-100 shadow-[0_24px_90px_rgba(0,0,0,.55)] sm:p-6"><div className="mb-6 flex items-start justify-between gap-4 border-b border-white/10 pb-4"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-300">Job Board</p><h2 id="job-composer-title" className="mt-1 text-xl font-black text-white">구인 공고 등록</h2><p className="mt-2 text-xs leading-5 text-slate-400">지원자가 한눈에 이해할 수 있도록 근무 조건을 구체적으로 적어주세요.</p></div><button type="button" onClick={() => setIsWriting(false)} aria-label="작성창 닫기" className="rounded-full px-2 py-1 text-xs font-bold text-slate-400 transition hover:bg-white/10 hover:text-white">닫기</button></div>{formError && <p role="alert" className="mb-4 rounded-xl border border-rose-300/20 bg-rose-300/[.08] px-3 py-2 text-xs font-bold leading-5 text-rose-200">{formError}</p>}<div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><div className="mb-2 flex items-center justify-between gap-2"><label htmlFor="job-title" className="text-sm font-black text-white">공고 제목 <span className="text-rose-300">필수</span></label><span className="text-[11px] tabular-nums text-slate-500">{form.title.length}/120</span></div><input id="job-title" required maxLength={120} placeholder="예: LA 한식당 주방 보조" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-xl border border-white/10 bg-white/[.045] px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/70 focus:bg-white/[.07]" /></div><div><label htmlFor="job-company" className="mb-2 block text-sm font-black text-white">회사명 <span className="text-rose-300">필수</span></label><input id="job-company" required maxLength={80} placeholder="회사 또는 고용주 이름" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="w-full rounded-xl border border-white/10 bg-white/[.045] px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/70 focus:bg-white/[.07]" /></div><div><label htmlFor="job-location" className="mb-2 block text-sm font-black text-white">근무 지역 <span className="text-rose-300">필수</span></label><input id="job-location" required maxLength={120} placeholder="예: Los Angeles, CA" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full rounded-xl border border-white/10 bg-white/[.045] px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/70 focus:bg-white/[.07]" /></div><div><label htmlFor="job-country" className="mb-2 block text-sm font-black text-white">국가 태그 <span className="text-rose-300">필수</span></label><input id="job-country" required maxLength={40} placeholder="예: 미국, 독일, 브라질" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} className="w-full rounded-xl border border-white/10 bg-white/[.045] px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/70 focus:bg-white/[.07]" /></div><div><label htmlFor="job-salary" className="mb-2 block text-sm font-black text-white">급여·조건 <span className="text-rose-300">필수</span></label><input id="job-salary" required maxLength={80} placeholder="예: 시급 $18 · 협의 가능" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} className="w-full rounded-xl border border-white/10 bg-white/[.045] px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/70 focus:bg-white/[.07]" /></div><div><label htmlFor="job-tag" className="mb-2 block text-sm font-black text-white">고용 형태</label><select id="job-tag" value={form.tag} onChange={(e) => setForm({ ...form, tag: e.target.value })} className="w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/70"><option>정규직</option><option>파트타임</option><option>계약직</option><option>재택근무</option></select></div></div><div className="mt-6 flex gap-2 border-t border-white/10 pt-4"><button type="button" onClick={() => setIsWriting(false)} className="flex-1 rounded-xl border border-white/10 py-3 font-bold text-slate-300 transition hover:bg-white/[.06] hover:text-white">취소</button><button className="flex-1 rounded-xl bg-cyan-300 py-3 font-black text-slate-950 transition hover:bg-cyan-200">등록하기</button></div></form></div>}
     </div>
   );
 }
