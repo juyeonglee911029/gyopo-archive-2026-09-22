@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
+import { Suspense, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { getSessionToken } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
+import { useEffectEvent } from '@/lib/useeffectevent';
 
 type AssistantSearchMatch = { id: string; href: string; title: string; snippet: string; category: string; region: string; city?: string };
 type Message = { id: string; role: 'user' | 'assistant'; content: string; matches?: AssistantSearchMatch[] };
