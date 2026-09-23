@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RouteErrorState, RouteSkeleton, useRouteReadiness } from '@/components/layout/RouteExperience';
 import { fetchRouteJson, withRouteTimeout } from '@/lib/routeExperience';
 import { createDocument, deleteDocument, getDocument, getSessionToken, isMasterUser, listDocuments, mergeDocument } from '@/lib/firebase';
@@ -14,6 +14,7 @@ import { useGlobalStore } from '@/store/useGlobalStore';
 import WriterComposer, { type WriterDraft } from '@/components/posts/WriterComposer';
 import { editorialForStorage, normalizeEditorial, type EditorialContent } from '@/lib/editorialContent';
 import { countryForRegion, regionalPostHref } from '@/lib/regionRoutes';
+import { useEffectEvent } from '@/lib/useeffectevent';
 
 const locations = createFilterLocations(COUNTRY_LOCATIONS, REGIONS);
 type SourceResponse = { items?: LiveSourceItem[]; sections?: Array<{ category: string; items: LiveSourceItem[] }>; fetchedAt?: string };
@@ -202,9 +203,7 @@ export default function CommunityPage() {
           <h1 className="text-3xl font-black text-white">교민 커뮤니티</h1>
           <p className="text-sm text-gray-500 mt-1">직접 쓴 이야기와 선별된 생활 질문·정보·유머를 나눠보세요.</p>
         </div>
-       <button onClick={() => user ? openWrite() : window.alert('로그인 후 글을 작성할 수 있습니다.')} className="bg-blue-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-blue-700 shadow-md transition">
-          글쓰기
-        </button>
+        {user ? <button onClick={() => openWrite()} className="rounded-xl bg-cyan-300 px-5 py-2.5 font-black text-slate-950 shadow-md transition hover:bg-cyan-200">글쓰기</button> : <Link href="/login" className="rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-5 py-2.5 text-sm font-black text-cyan-100 transition hover:bg-cyan-300/20">로그인 후 글쓰기</Link>}
       </div>
 
        <section aria-label="커뮤니티 필터" className="mb-5 space-y-3 rounded-xl border border-white/10 p-4">
