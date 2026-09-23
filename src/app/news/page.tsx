@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Clock3, Radio, ShieldCheck } from 'lucide-react';
 import { RouteErrorState, RouteSkeleton, useRouteReadiness } from '@/components/layout/RouteExperience';
@@ -9,6 +9,7 @@ import { listDocuments } from '@/lib/firebase';
 import { regionLabel } from '@/lib/regions';
 import { CONTENT_SOURCES, sourceItemId } from '@/lib/contentSources';
 import { useGlobalStore } from '@/store/useGlobalStore';
+import { useEffectEvent } from '@/lib/useeffectevent';
 
 type SnapshotItem = { title: string; url: string; description?: string; body?: string; publishedAt?: string; category?: string };
 type SnapshotSection = { category: string; label: string; url: string; items: SnapshotItem[] };
