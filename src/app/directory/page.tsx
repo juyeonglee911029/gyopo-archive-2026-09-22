@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RouteErrorState, RouteSkeleton, useRouteReadiness } from '@/components/layout/RouteExperience';
 import { fetchRouteJson, withRouteTimeout } from '@/lib/routeExperience';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { Clock3, MessageCircle, Navigation, Phone, Star } from 'lucide-react';
 import BannerAd from '@/components/ads/BannerAd';
+import { useEffectEvent } from '@/lib/useeffectevent';
 import { deleteDocument, getDocument, getFreshSessionToken, getSessionToken, isMasterUser, listDocuments } from '@/lib/firebase';
 import { sourceItemId } from '@/lib/contentSources';
 import { curateSourceItems, type LiveSourceItem } from '@/lib/sourcepreview';
