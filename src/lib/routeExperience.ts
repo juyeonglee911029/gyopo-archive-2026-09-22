@@ -158,8 +158,9 @@ export function createRouteExperience(clock: Clock = {
     report(id: string, report: Readiness) {
       const previous = reports.get(id);
       reports.set(id, report);
-      if (report.destination === committed && report.loading && !previous?.loading && !isRouteBusy(state)) start(committed);
-      if (report.destination === state.destination && report.error && state.phase === 'COMPLETE') start(committed);
+      if (state.phase === 'ERROR' && state.error === 'timeout' && report.destination === state.destination && !report.loading && !report.error) start(state.destination);
+      else if (report.destination === committed && report.loading && !previous?.loading && !isRouteBusy(state)) start(committed);
+      else if (report.destination === state.destination && report.error && state.phase === 'COMPLETE') start(committed);
       check();
     },
     remove(id: string) { reports.delete(id); check(); },
