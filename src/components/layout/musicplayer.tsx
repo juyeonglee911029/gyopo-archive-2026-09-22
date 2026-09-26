@@ -4,7 +4,7 @@ import { Heart, ListMusic, LoaderCircle, Music2, Pause, Play, Repeat2, Search, S
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
-import { emitMusicEvent, MUSIC_HOT_KEYWORDS, MUSIC_TRACKS, musicPopoverPosition, normalizeMusicFavorites, readMusicVolume, searchMusicTracks, type MusicSyncDetail, type MusicTrack } from '@/lib/music';
+import { emitMusicEvent, mergeMusicMetadata, MUSIC_HOT_KEYWORDS, MUSIC_TRACKS, musicPopoverPosition, normalizeMusicFavorites, readMusicVolume, searchMusicTracks, type MusicSyncDetail, type MusicTrack } from '@/lib/music';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { musicPlayback, playbackMessage, revealMusicPlayer, useMusicPlayback } from '@/lib/musicPlayback';
 
@@ -232,8 +232,8 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
       .then((metadata) => {
         if (!metadata) return;
         const current = musicPlayback.getSnapshot().track;
-        if (current.videoId === track.videoId) musicPlayback.select({ ...current, ...metadata }, false);
-        setFavoriteTracks((current) => current.map((item) => item.videoId === track.videoId ? { ...item, ...metadata } : item));
+        if (current.videoId === track.videoId) musicPlayback.select(mergeMusicMetadata(current, metadata), false);
+        setFavoriteTracks((current) => current.map((item) => item.videoId === track.videoId ? mergeMusicMetadata(item, metadata) : item));
       })
       .catch(() => undefined);
   }, [track.videoId, track.views, track.published]);
@@ -334,7 +334,7 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
         </div>
         <div className="music-player-transport">
           <button type="button" onClick={() => selectRelativeTrack(-1)} aria-label="이전 곡" className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white"><SkipBack size={15} /></button>
-          <button ref={playButtonRef} type="button" onClick={togglePlaying} aria-label={playing ? '일시정지' : playback.desiredPlaying ? '재생 준비 취소' : '재생'} aria-busy={playback.desiredPlaying && !playing} aria-expanded={pathname === '/music' ? undefined : panelOpen} title={playbackMessage(playback)} className="rounded-full bg-teal-300 p-2 text-slate-950 hover:bg-teal-200">
+          <button ref={playButtonRef} type="button" onClick={togglePlaying} aria-label={playing ? '일시정지' : playback.desiredPlaying ? '재생 준비 취소' : '재생'} aria-busy={playback.desiredPlaying && !playing} aria-expanded={pathname === '/music' ? undefined : panelOpen} title={playbackMessage(playback)} style={{ color: '#5eead4' }} className="rounded-full bg-teal-300 p-2 text-slate-950 hover:bg-teal-200">
             {playing ? <Pause size={15} /> : playback.desiredPlaying ? <LoaderCircle size={15} /> : <Play size={15} />}
           </button>
           <button type="button" onClick={() => selectRelativeTrack(1)} aria-label="다음 곡" className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white"><SkipForward size={15} /></button>

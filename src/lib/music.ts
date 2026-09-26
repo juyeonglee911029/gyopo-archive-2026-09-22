@@ -9,6 +9,15 @@ export type MusicTrack = {
   thumbnail?: string;
 };
 
+export function mergeMusicMetadata(track: MusicTrack, metadata: Partial<MusicTrack>): MusicTrack {
+  const next = { ...track };
+  for (const key of ['title', 'artist', 'views', 'published', 'thumbnail'] as const) {
+    const value = metadata[key];
+    if (typeof value === 'string' && value.trim()) next[key] = value.trim();
+  }
+  return next;
+}
+
 export type MusicSyncDetail = {
   source?: 'local' | 'room';
   player?: 'top' | 'video' | 'radio' | 'game';

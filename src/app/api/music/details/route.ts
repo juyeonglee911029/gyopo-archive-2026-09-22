@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
     const video = player?.videoDetails as Record<string, unknown> | undefined;
     const microformat = (player?.microformat as Record<string, unknown> | undefined)?.playerMicroformatRenderer as Record<string, unknown> | undefined;
     const title = text(video?.title);
+    if (!title.trim()) throw new Error('YouTube metadata is unavailable');
     const author = text(video?.author);
     const viewCount = String(video?.viewCount || html.match(/"viewCount":"(\d+)"/)?.[1] || '');
     const published = text(microformat?.publishDate) || text(microformat?.uploadDate) || html.match(/"(?:publishDate|uploadDate)":"([^"]+)"/)?.[1] || '';

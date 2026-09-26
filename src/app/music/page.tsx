@@ -2,7 +2,7 @@
 
 import { Heart, Pause, Play, Search, Music2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { MUSIC_HOT_KEYWORDS, MUSIC_TRACKS, searchMusicTracks, type MusicTrack } from '@/lib/music';
+import { mergeMusicMetadata, MUSIC_HOT_KEYWORDS, MUSIC_TRACKS, searchMusicTracks, type MusicTrack } from '@/lib/music';
 import { getSessionToken, saveProfile } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { musicPlayback, playbackMessage, revealMusicPlayer, useMusicPlayback } from '@/lib/musicPlayback';
@@ -103,8 +103,8 @@ export default function MusicPage() {
       .then((metadata) => {
         if (!metadata) return;
         const current = musicPlayback.getSnapshot().track;
-        if (current.videoId === track.videoId) musicPlayback.select({ ...current, ...metadata }, false);
-        setFavoriteTracks((current) => current.map((item) => item.videoId === track.videoId ? { ...item, ...metadata } : item));
+        if (current.videoId === track.videoId) musicPlayback.select(mergeMusicMetadata(current, metadata), false);
+        setFavoriteTracks((current) => current.map((item) => item.videoId === track.videoId ? mergeMusicMetadata(item, metadata) : item));
       })
       .catch(() => undefined);
   }, [track.videoId, track.views, track.published]);
