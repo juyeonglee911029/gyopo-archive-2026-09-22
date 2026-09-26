@@ -30,7 +30,6 @@ import { allowClientAction, getVideoAlias, inspectSafetyText, RANDOM_VIDEO_MIN_A
 import { callMediaConstraints, isVideoOnlyCall, createMirroredCamera, mergeRemoteTrack, playCallMedia } from '@/lib/callMedia';
 import { createCandidateQueue, createRtcSignaling, startSerialPoll, RTC_INITIAL_TIMEOUT, RTC_DISCONNECT_GRACE, RTC_RESTART_TIMEOUT, type RtcDescription } from '@/lib/rtcSignaling';
 import { rtcConfiguration, rtcFailureMessage } from '@/lib/rtcConfiguration';
-import '@/styles/call-ui.css';
 
 type QueueEntry = OnlineUser & {
   status?: 'waiting' | 'matched';

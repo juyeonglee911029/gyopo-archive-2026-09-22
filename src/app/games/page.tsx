@@ -8,8 +8,6 @@ import { useEffect, useReducer, useRef, useState, type FormEvent, type TouchEven
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowRightLeft, ArrowUp, Camera, Gamepad2, MessageCircle, Play, RotateCw, Send, Shield, Sparkles, Swords, Timer, Users, X, Zap } from 'lucide-react';
 import { claimTetrisLobbyRoom, claimTetrisMatch, createDocument, deleteDocument, deleteExpiredChatMessages, getDocument, getSessionToken, getSessionUserId, heartbeatTetrisLobbyRoom, joinTetrisLobbyRoom, listDocuments, listOnlineUsers, mergeDocument, OnlineUser, queryDocuments, queryDocumentsWhere, refreshStoredUser, refundGameStake, releaseTetrisLobbyRoom, reserveGameStake, reserveTetrisLobbyRoom, settleTetrisMatch, startTetrisCountdown, upsertDocument, type TetrisLobbyRoom, type TetrisQueueProfile } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
-import '@/styles/call-ui.css';
-import '@/styles/game-workspace.css';
 
 function formatUsd(value: number | string) {
   return Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -180,7 +178,7 @@ const buildVisual = (state: GameState) => {
 
 function BoardGrid({ cells, compact = false }: { cells: number[][]; compact?: boolean }) {
   return (
-    <div className={`grid grid-cols-10 rounded-xl bg-[#0b1221] ${compact ? 'gap-px p-1' : 'gap-1 p-2'}`}>
+    <div className={`tetris-board-grid grid grid-cols-10 rounded-xl bg-[#0b1221] ${compact ? 'gap-px p-1' : 'gap-1 p-2'}`}>
       {cells.flatMap((row, y) => row.map((cell, x) => (
         <div
           key={`${x}-${y}`}
@@ -1465,6 +1463,7 @@ export default function GamesPage() {
           window.dispatchEvent(new CustomEvent('gyopo-music-sync', {
             detail: {
               source: 'room',
+              player: 'top',
               track: { id: `youtube-${room.musicVideoId}`, title: room.musicTitle || 'GYOPO MUSIC', artist: room.musicArtist || 'YouTube', videoId: room.musicVideoId, keywords: [] },
               playing: Boolean(room.musicPlaying),
               position: Number(room.musicPosition || 0),
@@ -1651,6 +1650,36 @@ export default function GamesPage() {
        <div className="tetris-focused-page text-white">
          <div className="tetris-focused-shell">
            <div className="tetris-focused-workspace" aria-label="Tetris workspace">
+             <aside className="tetris-social-column" aria-label="웹캠, 대전 준비 및 채팅">
+               <section className="tetris-focus-panel tetris-camera-panel" data-tetris-panel="camera" aria-label="웹캠 연결">
+                 <header className="tetris-focus-header"><b className="flex items-center gap-1.5"><Camera size={13} /> Video Only</b><span>입장 수락 시 자동 연결</span></header>
+                 <div className="tetris-focus-camera">
+                   {videoRoomActive && videoRoomUrl ? <iframe key={`${matchId}-${opponent?.id}`} title="게임 상대방 영상 (마이크 사용 안 함)" src={videoRoomUrl} allow="camera; autoplay; microphone 'none'; display-capture 'none'" className="block h-full w-full border-0" /> : <div className="grid h-full place-items-center p-4 text-center"><div><Camera size={22} className="mx-auto text-cyan-200" /><p className="mt-2 text-xs font-black text-slate-300">{matchPhase === 'finished' ? '게임방 영상 연결 종료' : matchId && opponent ? '상대의 입장 수락을 기다리는 중' : '상대가 입장하면 영상이 연결됩니다'}</p><p className="mt-1 text-xs leading-4 text-slate-400">카메라만 연결합니다. 마이크와 상대 음성은 사용하지 않습니다.</p></div></div>}
+                 </div>
+               </section>
+               <section id="tetris-settings" className="tetris-focus-panel tetris-focus-settings space-y-1 text-xs" data-tetris-panel="settings" tabIndex={0} aria-label="대전 및 배팅 설정">
+                 <b className="block text-amber-100">대전 · 배팅 설정</b>
+                 <p role="status" className="text-slate-300">{matchStatus} · {matchPhase.toUpperCase()}</p>
+                 <div className="tetris-settings-row">
+                   <select aria-label="대전 상대 선택" value={selectedOnlineUserId || ''} onChange={(event) => setSelectedOnlineUserId(event.target.value || null)} className="bg-transparent p-1 text-xs">
+                     <option value="">접속 회원 선택</option>
+                     {onlineUsers.filter((online) => online.id !== user?.id).map((online) => <option key={online.id} value={online.id}>{online.name}</option>)}
+                   </select>
+                   <button type="button" disabled={!selectedOnlineUserId || Boolean(matchId) || matchPhase === 'countdown' || matchPhase === 'playing'} onClick={() => { const online = onlineUsers.find((entry) => entry.id === selectedOnlineUserId); if (online) void sendInvite(online); }} className="bg-cyan-300/10 px-2 py-1 text-cyan-100 disabled:opacity-40">대전 신청</button>
+                 </div>
+                 {inviteStatus && <p className="rounded-lg bg-cyan-300/[0.07] px-2 py-1.5 leading-4 text-cyan-100">{inviteStatus}</p>}
+                 {matchId && <div className="grid grid-cols-2 gap-1.5"><div className={`rounded-lg px-2 py-1.5 text-center ${readyForBattle ? 'bg-emerald-300/10 text-emerald-200' : 'bg-white/[0.04] text-slate-500'}`}><b className="block">나</b>{readyForBattle ? '준비 완료' : '준비 전'}</div><div className={`rounded-lg px-2 py-1.5 text-center ${opponentReady ? 'bg-emerald-300/10 text-emerald-200' : 'bg-white/[0.04] text-slate-500'}`}><b className="block">상대방</b>{opponentReady ? '준비 완료' : '준비 전'}</div></div>}
+                 {!['holding', 'countdown', 'playing', 'finished'].includes(matchPhase) && <div className="tetris-settings-row"><label className="min-w-0"><span className="mb-1 block text-amber-100">배팅금액 (USD)</span>{matchRole === 'B' ? <div className="flex h-full items-center rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1.5 font-black text-amber-100">배팅 {formatUsd(betAmount)} USD</div> : <input type="number" min={MIN_ENTRY_FEE} max={MAX_ENTRY_FEE} step="1" value={betAmount} onChange={(event) => setBetAmount(Number(event.target.value))} aria-label="배팅금액" className="w-full rounded-lg border border-amber-300/30 bg-black/30 px-2 py-1.5 font-black text-white outline-none focus:border-amber-300" />}</label><button type="button" onClick={() => void confirmBet()} disabled={!matchId || matchPhase !== 'betting' || readyForBattle} className="self-end rounded-lg bg-amber-300 px-2 py-1.5 font-black text-slate-950 disabled:opacity-45">{readyForBattle ? '준비 완료' : matchPhase === 'waiting' ? '수락 대기' : matchRole === 'B' ? '수락·준비' : matchId ? '준비하기' : '대전 후 준비'}</button></div>}
+                 {matchPhase === 'holding' && <div className="rounded-lg bg-emerald-300/10 px-2 py-1.5 text-center font-bold text-emerald-200">양쪽 참가비 홀딩 중 · 자동 시작 대기</div>}
+                 {matchPhase === 'finished' && <button type="button" onClick={() => void requestRematch()} className="w-full rounded-lg bg-cyan-300 px-2 py-1.5 font-black text-slate-950">승패 결과 · 다시 신청하기</button>}
+                 {matchId && <div className="flex gap-1.5"><button type="button" onClick={toggleTogetherListening} className={`flex-1 rounded-lg border px-2 py-1.5 font-black ${togetherListening ? 'border-teal-300/40 bg-teal-300/15 text-teal-200' : 'border-white/10 bg-white/5 text-slate-300'}`}>{togetherListening ? '같이 듣기 켜짐' : '같이 듣기'}</button><button type="button" onClick={() => void requestBattleStart()} disabled={!readyForBattle || !opponentReady || !['betting', 'holding'].includes(matchPhase)} className="flex-1 rounded-lg bg-cyan-300 px-2 py-1.5 font-black text-slate-950 disabled:opacity-40">자동 시작 확인</button></div>}
+               </section>
+               <section className="tetris-focus-panel tetris-chat-panel" data-tetris-panel="chat" aria-label="게임 채팅">
+                 <header className="tetris-focus-header"><b>게임 채팅</b><span className="text-emerald-200">{onlineUsers.length}명</span></header>
+                 <div ref={chatScrollRef} className="tetris-focus-messages" role="log" tabIndex={0} aria-label="게임 채팅 메시지">{messages.length === 0 ? <p className="text-slate-400">게임 채팅 대기 중</p> : messages.map((message) => <div key={message.id}><b className="text-cyan-200">{message.user}</b> {message.text}</div>)}</div>
+                 <form onSubmit={sendMessage} className="tetris-focus-chat-form"><input aria-label="게임 채팅" value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="게임 채팅" className="min-w-0 flex-1 bg-transparent px-2 py-2 text-xs text-white outline-none" /><button aria-label="게임 채팅 보내기" className="bg-cyan-400 px-3 text-slate-950"><Send size={13} /></button></form>
+               </section>
+             </aside>
              <section id="tetris-own" className="tetris-focus-panel tetris-own-panel" data-tetris-panel="own" aria-label="내 테트리스 보드">
            <header className="tetris-focus-header">
              <b>내 보드</b><a className="tetris-panel-link" href="#tetris-opponent">상대 보드 보기 ↓</a>
@@ -1662,7 +1691,7 @@ export default function GamesPage() {
              <div className="tetris-inline-next" aria-label="다음 블록"><span>Next</span><NextBlock piece={game.nextPiece} compact /></div>
             </header>
                    <div className="tetris-focus-board">
-                        <div className="relative h-full w-full" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+                         <div className="tetris-board-surface relative" tabIndex={0} role="region" aria-label="테트리스 키보드 조작 보드" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
                          <BoardGrid cells={visual} />
                          {!game.started && !countdown && <div className="tetris-ready-readout pointer-events-none absolute inset-0 z-10 grid place-items-center"><div><Timer size={20} className="mx-auto text-cyan-200" /><b className="mt-2 block text-sm tracking-[.25em] text-white">{elapsedLabel}</b><span className="mt-1 block text-[9px] font-black uppercase tracking-[.2em] text-slate-500">READY</span></div></div>}
                           {battleFx && <div key={battleFx.id} className={`battle-fx ${battleFx.kind === 'incoming' ? 'battle-fx-incoming' : battleFx.kind === 'attack' ? 'battle-fx-attack' : 'battle-fx-clear'}`}><span className="battle-fx-stars">✦ ✦ ✦</span>{battleFx.kind === 'incoming' ? <Zap size={18} /> : <Sparkles size={18} />}<b>{battleFx.title}</b><span>{battleFx.subtitle}</span></div>}
@@ -1671,7 +1700,7 @@ export default function GamesPage() {
                       </div>
                   </div>
 
-                  <div className="tetris-focus-controls">
+                   <div className="tetris-focus-controls" role="group" aria-label="게임 조작">
                    <button type="button" onClick={practiceStart} disabled={matchPhase === 'countdown' || matchPhase === 'playing'} className="flex min-h-9 items-center justify-center gap-1 rounded-xl bg-cyan-400 px-1 text-[10px] font-black text-slate-950 disabled:opacity-40 sm:text-xs"><Play size={13} />시작</button>
                   <button type="button" onClick={matchPhase === 'waiting' ? () => void cancelMatch() : () => void findMatch()} disabled={['betting', 'countdown', 'playing'].includes(matchPhase)} className="min-h-9 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-1 text-[10px] font-black text-cyan-100 disabled:opacity-40 sm:text-xs">{matchPhase === 'waiting' ? '취소' : '매칭'}</button>
                    <button type="button" onClick={() => dispatch({ type: 'ROTATE' })} disabled={!game.running || game.paused} className="flex min-h-9 items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/5 px-1 text-[10px] font-bold disabled:opacity-30 sm:text-xs"><RotateCw size={13} />회전</button>
@@ -1679,40 +1708,12 @@ export default function GamesPage() {
                     <button type="button" onClick={() => dispatch({ type: 'DROP' })} disabled={!game.running || game.paused} className="flex min-h-9 items-center justify-center gap-1 rounded-xl border border-amber-300/20 bg-amber-300/10 px-1 text-[10px] font-black text-amber-100 disabled:opacity-30 sm:text-xs"><ArrowDown size={13} />드롭</button>
                     <button type="button" onClick={() => void leaveBattleRoom()} disabled={!matchId} className="flex min-h-9 items-center justify-center gap-1 rounded-xl border border-rose-300/25 bg-rose-300/10 px-1 text-[10px] font-black text-rose-200 disabled:opacity-30 sm:text-xs"><X size={13} />나가기</button>
                 </div>
-              <div className="tetris-focus-settings space-y-1 text-xs" role="region" aria-label="대전 및 배팅 설정">
-                <b className="block text-amber-100">대전 · 배팅 설정</b>
-                <p role="status" className="text-slate-300">{matchStatus} · {matchPhase.toUpperCase()}</p>
-                <div className="flex gap-1.5">
-                  <select aria-label="대전 상대 선택" value={selectedOnlineUserId || ''} onChange={(event) => setSelectedOnlineUserId(event.target.value || null)} className="min-w-0 flex-1 bg-transparent p-1 text-xs">
-                    <option value="">접속 회원 선택</option>
-                    {onlineUsers.filter((online) => online.id !== user?.id).map((online) => <option key={online.id} value={online.id}>{online.name}</option>)}
-                  </select>
-                  <button type="button" disabled={!selectedOnlineUserId || Boolean(matchId) || matchPhase === 'countdown' || matchPhase === 'playing'} onClick={() => { const online = onlineUsers.find((entry) => entry.id === selectedOnlineUserId); if (online) void sendInvite(online); }} className="bg-cyan-300/10 px-2 py-1 text-cyan-100 disabled:opacity-40">대전 신청</button>
-                </div>
-                {inviteStatus && <p className="rounded-lg bg-cyan-300/[0.07] px-2 py-1.5 leading-4 text-cyan-100">{inviteStatus}</p>}
-                {matchId && <div className="grid grid-cols-2 gap-1.5"><div className={`rounded-lg px-2 py-1.5 text-center ${readyForBattle ? 'bg-emerald-300/10 text-emerald-200' : 'bg-white/[0.04] text-slate-500'}`}><b className="block">나</b>{readyForBattle ? '준비 완료' : '준비 전'}</div><div className={`rounded-lg px-2 py-1.5 text-center ${opponentReady ? 'bg-emerald-300/10 text-emerald-200' : 'bg-white/[0.04] text-slate-500'}`}><b className="block">상대방</b>{opponentReady ? '준비 완료' : '준비 전'}</div></div>}
-                {!['holding', 'countdown', 'playing', 'finished'].includes(matchPhase) && <div className="flex gap-1.5"><label className="min-w-0 flex-1"><span className="sr-only">배팅금액</span>{matchRole === 'B' ? <div className="flex h-full items-center rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1.5 font-black text-amber-100">배팅 {formatUsd(betAmount)} USD</div> : <input type="number" min={MIN_ENTRY_FEE} max={MAX_ENTRY_FEE} step="1" value={betAmount} onChange={(event) => setBetAmount(Number(event.target.value))} aria-label="배팅금액" className="h-full w-full rounded-lg border border-amber-300/30 bg-black/30 px-2 py-1.5 font-black text-white outline-none focus:border-amber-300" />}</label><button type="button" onClick={() => void confirmBet()} disabled={!matchId || matchPhase !== 'betting' || readyForBattle} className="min-w-[88px] rounded-lg bg-amber-300 px-2 py-1.5 font-black text-slate-950 disabled:opacity-45">{readyForBattle ? '준비 완료' : matchPhase === 'waiting' ? '수락 대기' : matchRole === 'B' ? '수락·준비' : matchId ? '준비하기' : '대전 후 준비'}</button></div>}
-                {matchPhase === 'holding' && <div className="rounded-lg bg-emerald-300/10 px-2 py-1.5 text-center font-bold text-emerald-200">양쪽 참가비 홀딩 중 · 자동 시작 대기</div>}
-                {matchPhase === 'finished' && <button type="button" onClick={() => void requestRematch()} className="w-full rounded-lg bg-cyan-300 px-2 py-1.5 font-black text-slate-950">승패 결과 · 다시 신청하기</button>}
-                {matchId && <div className="flex gap-1.5"><button type="button" onClick={toggleTogetherListening} className={`flex-1 rounded-lg border px-2 py-1.5 font-black ${togetherListening ? 'border-teal-300/40 bg-teal-300/15 text-teal-200' : 'border-white/10 bg-white/5 text-slate-300'}`}>{togetherListening ? '같이 듣기 켜짐' : '같이 듣기'}</button><button type="button" onClick={() => void requestBattleStart()} disabled={!readyForBattle || !opponentReady || !['betting', 'holding'].includes(matchPhase)} className="flex-1 rounded-lg bg-cyan-300 px-2 py-1.5 font-black text-slate-950 disabled:opacity-40">자동 시작 확인</button></div>}
-              </div>
-              </section>
-              <section id="tetris-opponent" className="tetris-focus-panel tetris-opponent-panel" data-tetris-panel="opponent" aria-label="상대 테트리스 보드">
-                <header className="tetris-focus-header"><b>상대 보드</b><span className="min-w-0 truncate">{opponent?.name || '상대 대기'}</span><span className="text-emerald-200">{opponentState ? 'SYNC' : 'WAITING'}</span></header>
-                <div className="tetris-focus-board"><BoardGrid cells={opponentVisual} /></div>
-                <div className="tetris-focus-metrics"><BattleMetrics state={opponentState} elapsed={elapsedLabel} /><a className="tetris-panel-link" href="#tetris-own">내 보드 · 배팅 설정 ↑</a></div>
-              </section>
-              <section className="tetris-focus-panel tetris-camera-panel" data-tetris-panel="camera" aria-label="웹캠 연결">
-                <header className="tetris-focus-header"><b className="flex items-center gap-1.5"><Camera size={13} /> Video Only</b><span>입장 수락 시 자동 연결</span></header>
-                <div className="tetris-focus-camera">
-                  {videoRoomActive && videoRoomUrl ? <iframe key={`${matchId}-${opponent?.id}`} title="게임 상대방 영상 (마이크 사용 안 함)" src={videoRoomUrl} allow="camera; autoplay; microphone 'none'; display-capture 'none'" className="block h-full w-full border-0" /> : <div className="grid h-full place-items-center p-4 text-center"><div><Camera size={22} className="mx-auto text-cyan-200" /><p className="mt-2 text-xs font-black text-slate-300">{matchPhase === 'finished' ? '게임방 영상 연결 종료' : matchId && opponent ? '상대의 입장 수락을 기다리는 중' : '상대가 입장하면 영상이 연결됩니다'}</p><p className="mt-1 text-xs leading-4 text-slate-400">카메라만 연결합니다. 마이크와 상대 음성은 사용하지 않습니다.</p></div></div>}
-                </div>
-              </section>
-              <section className="tetris-focus-panel tetris-chat-panel" data-tetris-panel="chat" aria-label="게임 채팅">
-                <header className="tetris-focus-header"><b>게임 채팅</b><span className="text-emerald-200">{onlineUsers.length}명</span></header>
-                <div ref={chatScrollRef} className="tetris-focus-messages">{messages.length === 0 ? <p className="text-slate-400">게임 채팅 대기 중</p> : messages.map((message) => <div key={message.id}><b className="text-cyan-200">{message.user}</b> {message.text}</div>)}</div>
-                <form onSubmit={sendMessage} className="tetris-focus-chat-form"><input aria-label="게임 채팅" value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="게임 채팅" className="min-w-0 flex-1 bg-transparent px-2 py-2 text-xs text-white outline-none" /><button aria-label="게임 채팅 보내기" className="bg-cyan-400 px-3 text-slate-950"><Send size={13} /></button></form>
-              </section>
+               </section>
+               <section id="tetris-opponent" className="tetris-focus-panel tetris-opponent-panel" data-tetris-panel="opponent" aria-label="상대 테트리스 보드">
+                 <header className="tetris-focus-header"><b>상대 보드</b><span className="min-w-0 truncate">{opponent?.name || '상대 대기'}</span><span className="text-emerald-200">{opponentState ? 'SYNC' : 'WAITING'}</span></header>
+                 <div className="tetris-focus-board"><div className="tetris-board-surface"><BoardGrid cells={opponentVisual} /></div></div>
+                 <div className="tetris-focus-metrics"><BattleMetrics state={opponentState} elapsed={elapsedLabel} /><a className="tetris-panel-link" href="#tetris-own">내 보드 보기 ↑</a></div>
+               </section>
           </div>
         </div>
         {incomingInvite && <div className="fixed inset-0 z-[90] grid place-items-center bg-black/75 p-4 backdrop-blur-sm"><div className="w-full max-w-sm rounded-3xl border border-cyan-300/35 bg-[#111a2d] p-5 shadow-[0_25px_100px_rgba(0,0,0,.65)]"><div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">Live battle request</div><h2 className="mt-1 text-2xl font-black">대전 신청이 왔습니다</h2><div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.05] p-3"><img src={incomingInvite.sender.image} alt="" className="h-12 w-12 rounded-full object-cover" /><div className="min-w-0"><div className="truncate font-black">{incomingInvite.sender.name}</div><div className="text-xs text-slate-400">{incomingInvite.sender.country || 'Global'} · Tetris Battle</div></div></div><p className="mt-4 text-sm text-slate-400">수락하면 방에 입장하고 배팅금액 확인 후 준비할 수 있습니다.</p><div className="mt-5 grid grid-cols-2 gap-2"><button type="button" onClick={() => void rejectInvite()} className="rounded-xl border border-white/10 bg-white/5 py-3 font-bold">거절</button><button type="button" onClick={() => void acceptInvite()} className="rounded-xl bg-cyan-400 py-3 font-black text-slate-950">수락하고 입장</button></div></div></div>}

@@ -81,8 +81,8 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
     <div className="global-header-wrap" hidden={isCompact} inert={isCompact}>
       <Header menuOpen={drawerOpen} menuId={drawerId} onMenuOpen={() => setDrawerOpen(true)} />
     </div>
-    <div className={`global-page-body mx-auto w-full min-w-0${isCompact ? '' : ` grid max-w-[1600px] grid-cols-1${rightRail ? ' has-right-rail lg:grid-cols-[250px_minmax(0,1fr)_minmax(0,300px)]' : ' lg:grid-cols-[250px_minmax(0,1fr)]'}`}`}>
-      {!isCompact && <aside className="global-sidebar hidden lg:block" aria-label="주요 메뉴"><GlobalSidebar /></aside>}
+    <div className={`global-page-body${!isCompact && rightRail ? ' has-right-rail' : ''}`}>
+      {!isCompact && <aside className="global-sidebar" aria-label="주요 메뉴"><GlobalSidebar /></aside>}
       <main id="global-main" className="global-main min-w-0" tabIndex={-1}><RouteExperience><PageContainer>{children}</PageContainer></RouteExperience></main>
       {!isCompact && rightRail && <aside className="global-right-rail min-w-0" aria-label="추가 정보">{rightRail}</aside>}
     </div>

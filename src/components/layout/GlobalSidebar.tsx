@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { AppWindow, BriefcaseBusiness, CalendarDays, CarFront, ChevronDown, Film, Gamepad2, GraduationCap, Home, Landmark, MapPin, MessageCircle, Music2, Newspaper, ShieldCheck, ShoppingBag, Store } from 'lucide-react';
+import { AppWindow, BriefcaseBusiness, CalendarDays, CarFront, ChevronDown, Film, Gamepad2, GraduationCap, Home, Landmark, MapPin, MessageCircle, Music2, Newspaper, ShieldCheck, ShoppingBag, Store, UserRoundCheck } from 'lucide-react';
 import { COUNTRY_ROUTES, cityHref, countryHref, countryForRegion, getCityRoute, getCountryRoute, getPublicServiceRoute, getRegionalCategory } from '@/lib/regionRoutes';
 import { REGIONS } from '@/lib/regions';
 import { PUBLIC_CATEGORIES } from '@/lib/publicCategories';
@@ -123,6 +123,8 @@ export function GlobalRegionSelectors({ compact = false, onNavigate }: { compact
 
 export default function GlobalSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const user = useGlobalStore((state) => state.user);
   const selectedCountry = useGlobalStore((state) => state.selectedCountry);
   const language = useGlobalStore((state) => state.language);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -150,5 +152,13 @@ export default function GlobalSidebar({ onNavigate }: { onNavigate?: () => void 
        })}
     </nav>;
     })}
+    <button type="button" className="global-friends-link" onClick={() => {
+      onNavigate?.();
+      if (!user) {
+        if (beginRoute('/users')) router.push('/users');
+        return;
+      }
+      window.dispatchEvent(new Event('gyopo-friends-open'));
+    }}><UserRoundCheck size={18} aria-hidden="true" /><span>{language === 'ko' ? '친구·통화' : 'Friends & calls'}</span></button>
   </div>;
 }

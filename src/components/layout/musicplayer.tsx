@@ -1,32 +1,21 @@
 'use client';
 
-import { Heart, ListMusic, Music2, Pause, Play, Repeat2, Search, SkipBack, SkipForward, Volume2, VolumeX, X } from 'lucide-react';
+import { Heart, ListMusic, LoaderCircle, Music2, Pause, Play, Repeat2, Search, SkipBack, SkipForward, Volume2, VolumeX, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import { emitMusicEvent, MUSIC_HOT_KEYWORDS, MUSIC_TRACKS, musicPopoverPosition, normalizeMusicFavorites, readMusicVolume, searchMusicTracks, type MusicSyncDetail, type MusicTrack } from '@/lib/music';
 import { useGlobalStore } from '@/store/useGlobalStore';
-import { SITE_URL } from '@/lib/seo';
-import '@/styles/music-popover.css';
-
-function sendPlayerCommand(frame: HTMLIFrameElement | null, func: string, args: unknown[] = []) {
-  frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube.com');
-}
-
-function subscribeToPlayerState(frame: HTMLIFrameElement | null) {
-  const target = frame?.contentWindow;
-  if (!target) return;
-  target.postMessage(JSON.stringify({ event: 'listening', id: 'gyopo-top-player' }), 'https://www.youtube.com');
-  target.postMessage(JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] }), 'https://www.youtube.com');
-}
+import { musicPlayback, playbackMessage, revealMusicPlayer, useMusicPlayback } from '@/lib/musicPlayback';
 
 export default function MusicPlayer({ embedded = false }: { embedded?: boolean }) {
   const pathname = usePathname();
   const [isCompactCall, setIsCompactCall] = useState(false);
   const user = useGlobalStore((state) => state.user);
-  const [track, setTrack] = useState<MusicTrack>(MUSIC_TRACKS[0]);
-  const [playing, setPlaying] = useState(false);
-  const [volume, setVolume] = useState(70);
+  const playback = useMusicPlayback();
+  const { track, volume, panelOpen } = playback;
+  const playing = playback.status === 'playing';
+  const silenced = playback.muted || volume === 0;
   const lastVolumeRef = useRef(70);
   const [query, setQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
@@ -39,7 +28,9 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
   const [favoriteMenuOpen, setFavoriteMenuOpen] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [popoverPosition, setPopoverPosition] = useState<ReturnType<typeof musicPopoverPosition> | null>(null);
-  const frameRef = useRef<HTMLIFrameElement>(null);
+  const playerHostRef = useRef<HTMLDivElement>(null);
+  const playButtonRef = useRef<HTMLButtonElement>(null);
+  const [playerPosition, setPlayerPosition] = useState({ top: 80, left: 8, width: 320, maxHeight: 400 });
   const searchShellRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
@@ -47,30 +38,59 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
   const favoritePopoverRef = useRef<HTMLDivElement>(null);
   const favoriteButtonRef = useRef<HTMLButtonElement>(null);
   const favoriteMenuRef = useRef<HTMLDivElement>(null);
-  const pendingSyncRef = useRef<MusicSyncDetail | null>(null);
-  const syncTimerRef = useRef<number | null>(null);
-  const autoAdvanceTimerRef = useRef<number | null>(null);
   const metadataLoadedRef = useRef(new Set<string>());
-  const originRef = useRef('top-player');
-  const previousPathRef = useRef(pathname);
-  const loadedVideoIdRef = useRef<string | null>(null);
+  const receivedSyncRef = useRef(false);
   const localResults = searchMusicTracks(query);
   const hasRemoteResults = remoteQuery === query.trim() && remoteResults.length > 0 && !remoteError;
   const results = query.trim() ? (hasRemoteResults ? remoteResults : localResults.length ? localResults : MUSIC_TRACKS) : MUSIC_TRACKS;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    musicPlayback.setRoute(pathname === '/music' ? 'video' : 'top');
     setIsCompactCall(pathname === '/webrtc' && new URLSearchParams(window.location.search).get('compact') === '1');
     setSearchFocused(false);
     setFavoriteMenuOpen(false);
-    if (pathname === '/music' || previousPathRef.current === '/music') {
-      setPlaying(false);
-      if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
-      pendingSyncRef.current = null;
-      sendPlayerCommand(frameRef.current, 'pauseVideo');
-      sendPlayerCommand(frameRef.current, 'mute');
-    }
-    previousPathRef.current = pathname;
   }, [pathname]);
+
+  useLayoutEffect(() => {
+    if (!panelOpen || pathname === '/music' || !playerHostRef.current) return;
+    return musicPlayback.mount('top', playerHostRef.current);
+  }, [panelOpen, pathname]);
+
+  useEffect(() => () => musicPlayback.close(), []);
+
+  useLayoutEffect(() => {
+    if (!panelOpen || pathname === '/music') return;
+    const update = () => {
+      const viewport = window.visualViewport;
+      const left = viewport?.offsetLeft || 0;
+      const top = viewport?.offsetTop || 0;
+      const width = Math.max(200, Math.min(320, (viewport?.width || window.innerWidth) - 16));
+      const height = viewport?.height || window.innerHeight;
+      const anchor = playButtonRef.current?.getBoundingClientRect();
+      const panelTop = Math.max(top + 8, Math.min((anchor?.bottom || top + 64) + 8, top + height - 310));
+      setPlayerPosition({ width, left: Math.max(left + 8, Math.min(anchor?.left || left + 8, left + (viewport?.width || window.innerWidth) - width - 8)), top: panelTop, maxHeight: Math.max(200, top + height - panelTop - 8) });
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { musicPlayback.close(); playButtonRef.current?.focus(); } };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('keydown', escape);
+    window.visualViewport?.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('scroll', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('keydown', escape);
+      window.visualViewport?.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('scroll', update);
+    };
+  }, [panelOpen, pathname]);
+
+  useEffect(() => {
+    const pauseHidden = () => { if (document.hidden) musicPlayback.pause(); };
+    document.addEventListener('visibilitychange', pauseHidden);
+    return () => document.removeEventListener('visibilitychange', pauseHidden);
+  }, []);
 
   useEffect(() => {
     const closeSearch = (event: PointerEvent) => {
@@ -126,9 +146,14 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
   useEffect(() => {
     try {
       const nextVolume = readMusicVolume(window.localStorage.getItem('gyopo-music-volume'));
-      setVolume(nextVolume);
+      musicPlayback.setVolume(nextVolume);
       if (nextVolume > 0) lastVolumeRef.current = nextVolume;
     } catch { /* Keep the default when storage is unavailable. */ }
+  }, []);
+
+  useEffect(() => { if (volume > 0) lastVolumeRef.current = volume; }, [volume]);
+
+  useEffect(() => {
     try {
       const local = window.localStorage.getItem(`gyopo-music-favorites:${user?.id || 'guest'}`);
       const stored = normalizeMusicFavorites(local !== null ? JSON.parse(local) : user?.musicFavorites);
@@ -147,20 +172,7 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
     return () => window.removeEventListener('gyopo-music-favorite-loop', receiveLoop);
   }, []);
 
-  useEffect(() => {
-    const pauseForVideo = (event: Event) => {
-      const detail = (event as CustomEvent<{ player?: string; playing?: boolean }>).detail;
-      if (detail?.player !== 'video' || !detail.playing) return;
-      if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
-      if (autoAdvanceTimerRef.current) window.clearTimeout(autoAdvanceTimerRef.current);
-      pendingSyncRef.current = null;
-      setPlaying(false);
-      sendPlayerCommand(frameRef.current, 'pauseVideo');
-      sendPlayerCommand(frameRef.current, 'mute');
-    };
-    window.addEventListener('gyopo-music-player', pauseForVideo);
-    return () => window.removeEventListener('gyopo-music-player', pauseForVideo);
-  }, []);
+  useEffect(() => { musicPlayback.setPlaylist(favoriteTracks, favoriteLoop); }, [favoriteTracks, favoriteLoop]);
 
   useEffect(() => {
     const receiveFavorites = (event: Event) => {
@@ -219,135 +231,65 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
       .then((response) => response.ok ? response.json() as Promise<Partial<MusicTrack>> : null)
       .then((metadata) => {
         if (!metadata) return;
-        setTrack((current) => current.videoId === track.videoId ? { ...current, ...metadata } : current);
+        const current = musicPlayback.getSnapshot().track;
+        if (current.videoId === track.videoId) musicPlayback.select({ ...current, ...metadata }, false);
         setFavoriteTracks((current) => current.map((item) => item.videoId === track.videoId ? { ...item, ...metadata } : item));
       })
       .catch(() => undefined);
   }, [track.videoId, track.views, track.published]);
 
-  const syncFrame = (detail?: MusicSyncDetail) => {
-    const current = detail || pendingSyncRef.current;
-    const videoId = current?.track.videoId || track.videoId;
-    const nextVolume = current?.volume ?? volume;
-    // The video page consumes top-player events. Delegate there, never play both iframes.
-    const nextPlaying = pathname !== '/music' && (current?.playing ?? playing);
-    const needsLoad = loadedVideoIdRef.current !== videoId;
-    const applyPlayback = () => {
-      if (nextPlaying) sendPlayerCommand(frameRef.current, 'unMute');
-      else sendPlayerCommand(frameRef.current, 'mute');
-      sendPlayerCommand(frameRef.current, 'setVolume', [nextVolume]);
-      if (current?.position) sendPlayerCommand(frameRef.current, 'seekTo', [current.position, true]);
-      sendPlayerCommand(frameRef.current, nextPlaying ? 'playVideo' : 'pauseVideo');
-    };
-
-    if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
-    if (needsLoad) {
-      loadedVideoIdRef.current = videoId;
-      sendPlayerCommand(frameRef.current, nextPlaying ? 'loadVideoById' : 'cueVideoById', [videoId]);
-      syncTimerRef.current = window.setTimeout(applyPlayback, 160);
-    } else {
-      applyPlayback();
-    }
-    pendingSyncRef.current = null;
-  };
-
   useEffect(() => {
     const receiveMusicSync = (event: Event) => {
       const detail = (event as CustomEvent<MusicSyncDetail>).detail;
-      if (!detail?.track?.videoId) return;
-      if (detail.player !== 'top') return;
-      if (detail.origin === originRef.current) return;
-      pendingSyncRef.current = detail;
-      setTrack(detail.track);
-      setPlaying(detail.playing);
-      if (typeof detail.volume === 'number') setVolume(detail.volume);
-      syncFrame(detail);
+      if (!detail?.track?.videoId || detail.player !== 'top') return;
+      receivedSyncRef.current = true;
+      musicPlayback.sync(detail);
+    };
+    const sendCurrentMusic = () => {
+      const current = musicPlayback.getSnapshot();
+      emitMusicEvent('gyopo-music-local', { source: 'local', player: current.owner, origin: 'top-player', track: current.track, playing: current.status === 'playing', position: current.currentTime, startedAt: Date.now(), volume: current.volume });
     };
     window.addEventListener('gyopo-music-sync', receiveMusicSync);
-    window.addEventListener('gyopo-music-local', receiveMusicSync);
-     const sendCurrentMusic = () => emitMusicEvent('gyopo-music-local', { source: 'local', player: 'top', origin: originRef.current, track, playing, position: 0, startedAt: Date.now(), volume });
     window.addEventListener('gyopo-music-request-state', sendCurrentMusic);
+    if (!receivedSyncRef.current) sendCurrentMusic();
+    receivedSyncRef.current = false;
     return () => {
       window.removeEventListener('gyopo-music-sync', receiveMusicSync);
-      window.removeEventListener('gyopo-music-local', receiveMusicSync);
       window.removeEventListener('gyopo-music-request-state', sendCurrentMusic);
     };
-    }, [playing, track, volume, pathname]);
+  }, [playing, track, volume, pathname]);
 
-  useEffect(() => {
-    const resumeAudio = () => {
-      if (!playing || pathname === '/music') return;
-      sendPlayerCommand(frameRef.current, 'unMute');
-      sendPlayerCommand(frameRef.current, 'playVideo');
-    };
-    window.addEventListener('pointerdown', resumeAudio, { once: true, passive: true });
-    window.addEventListener('keydown', resumeAudio, { once: true });
-    return () => {
-      window.removeEventListener('pointerdown', resumeAudio);
-      window.removeEventListener('keydown', resumeAudio);
-    };
-  }, [playing, pathname]);
+  const revealPagePlayer = () => {
+    if (pathname === '/music') revealMusicPlayer();
+  };
 
   const selectTrack = (next: MusicTrack) => {
-    setTrack(next);
-    setPlaying(true);
+    revealPagePlayer();
+    musicPlayback.select(next);
     setSearchFocused(false);
-    const detail: MusicSyncDetail = { source: 'local', player: 'top', origin: originRef.current, track: next, playing: true, position: 0, startedAt: Date.now(), volume };
-    pendingSyncRef.current = detail;
-    syncFrame(detail);
-    emitMusicEvent('gyopo-music-local', detail);
   };
 
   const selectRelativeTrack = (direction: -1 | 1) => {
-    const pool = favoriteLoop && favoriteTracks.length ? favoriteTracks : MUSIC_TRACKS;
-    const index = pool.findIndex((item) => item.id === track.id);
-    selectTrack(pool[index < 0 ? (direction === 1 ? 0 : pool.length - 1) : (index + direction + pool.length) % pool.length]);
+    revealPagePlayer();
+    musicPlayback.relative(direction);
   };
 
-  useEffect(() => {
-    const handlePlayerMessage = (event: MessageEvent) => {
-       if (event.origin !== 'https://www.youtube.com' || event.source !== frameRef.current?.contentWindow || typeof event.data !== 'string') return;
-      let payload: { event?: string; info?: number | { playerState?: number } };
-      try {
-        payload = JSON.parse(event.data) as typeof payload;
-      } catch {
-        return;
-      }
-      const ended = payload.event === 'onStateChange'
-        ? Number(payload.info) === 0
-        : payload.event === 'infoDelivery' && typeof payload.info === 'object' && payload.info?.playerState === 0;
-       if (!ended || !playing) return;
-       if (autoAdvanceTimerRef.current) window.clearTimeout(autoAdvanceTimerRef.current);
-       autoAdvanceTimerRef.current = window.setTimeout(() => selectRelativeTrack(1), 250);
-    };
-    window.addEventListener('message', handlePlayerMessage);
-    return () => {
-      window.removeEventListener('message', handlePlayerMessage);
-      if (autoAdvanceTimerRef.current) window.clearTimeout(autoAdvanceTimerRef.current);
-    };
-  }, [favoriteLoop, favoriteTracks, playing, track.id]);
-
   const togglePlaying = () => {
-    const next = !playing;
-    if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
-    pendingSyncRef.current = null;
-    setPlaying(next);
-    if (next && pathname !== '/music') sendPlayerCommand(frameRef.current, 'unMute');
-    else sendPlayerCommand(frameRef.current, 'mute');
-    sendPlayerCommand(frameRef.current, next && pathname !== '/music' ? 'playVideo' : 'pauseVideo');
-    emitMusicEvent('gyopo-music-local', { source: 'local', player: 'top', origin: originRef.current, track, playing: next, position: 0, startedAt: Date.now(), volume });
+    revealPagePlayer();
+    musicPlayback.toggle();
   };
 
   const changeVolume = (next: number) => {
     const bounded = Math.min(100, Math.max(0, next));
-    setVolume(bounded);
+    musicPlayback.setVolume(bounded);
     if (bounded > 0) lastVolumeRef.current = bounded;
     try { window.localStorage.setItem('gyopo-music-volume', String(bounded)); } catch { setSaveError('볼륨을 저장하지 못했습니다. 현재 창에서만 적용됩니다.'); }
-    sendPlayerCommand(frameRef.current, 'setVolume', [bounded]);
-    emitMusicEvent('gyopo-music-local', { source: 'local', player: 'top', origin: originRef.current, track, playing, position: 0, startedAt: Date.now(), volume: bounded });
   };
 
-  const toggleMuted = () => changeVolume(volume > 0 ? 0 : lastVolumeRef.current || 70);
+  const toggleMuted = () => {
+    if (volume === 0) changeVolume(lastVolumeRef.current || 70);
+    else musicPlayback.setMuted(!playback.muted);
+  };
 
   const toggleFavorite = (item: MusicTrack) => {
     const nextTracks = favoriteTracks.some((favorite) => favorite.videoId === item.videoId) ? favoriteTracks.filter((favorite) => favorite.videoId !== item.videoId) : [...favoriteTracks, item];
@@ -380,12 +322,8 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
     buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : index < 0 ? (event.key === 'ArrowUp' ? buttons.length - 1 : 0) : (index + (event.key === 'ArrowUp' ? -1 : 1) + buttons.length) % buttons.length]?.focus();
   };
 
-  useEffect(() => {
-    sendPlayerCommand(frameRef.current, 'setVolume', [volume]);
-  }, [volume]);
-
   return (
-    <section hidden={isCompactCall} className={`music-player-shell music-player-refresh ${embedded ? 'music-player-embedded' : ''}`} aria-label="음악 플레이어">
+    <section hidden={isCompactCall} className={`music-player-shell music-player-refresh ${embedded ? 'music-player-embedded' : ''}`} aria-label="음악 플레이어" data-player-status={playback.status} data-player-state={playback.state} data-player-time={playback.currentTime} data-player-owner={playback.owner} data-player-muted={playback.muted}>
       <div className="music-player-bar">
         <div className="music-player-track">
           <Music2 size={17} className="shrink-0 text-teal-300" />
@@ -396,8 +334,8 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
         </div>
         <div className="music-player-transport">
           <button type="button" onClick={() => selectRelativeTrack(-1)} aria-label="이전 곡" className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white"><SkipBack size={15} /></button>
-          <button type="button" onClick={togglePlaying} aria-label={playing ? '일시정지' : '재생'} className="rounded-full bg-teal-300 p-2 text-slate-950 hover:bg-teal-200">
-            {playing ? <Pause size={15} /> : <Play size={15} />}
+          <button ref={playButtonRef} type="button" onClick={togglePlaying} aria-label={playing ? '일시정지' : playback.desiredPlaying ? '재생 준비 취소' : '재생'} aria-busy={playback.desiredPlaying && !playing} aria-expanded={pathname === '/music' ? undefined : panelOpen} title={playbackMessage(playback)} className="rounded-full bg-teal-300 p-2 text-slate-950 hover:bg-teal-200">
+            {playing ? <Pause size={15} /> : playback.desiredPlaying ? <LoaderCircle size={15} /> : <Play size={15} />}
           </button>
           <button type="button" onClick={() => selectRelativeTrack(1)} aria-label="다음 곡" className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white"><SkipForward size={15} /></button>
         </div>
@@ -408,7 +346,7 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
         </div>
         <div className="music-player-options">
            <div className="music-player-volume">
-             <button type="button" onClick={toggleMuted} aria-label={volume === 0 ? '음악 음소거 해제' : '음악 음소거'} aria-pressed={volume === 0} className="music-player-control">{volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}</button>
+              <button type="button" onClick={toggleMuted} aria-label={silenced ? '음악 음소거 해제' : '음악 음소거'} aria-pressed={silenced} className="music-player-control">{silenced ? <VolumeX size={14} /> : <Volume2 size={14} />}</button>
              <input aria-label="음악 볼륨" type="range" min="0" max="100" value={volume} onChange={(event) => changeVolume(Number(event.target.value))} className="w-16 accent-teal-300" />
            </div>
            <div ref={favoriteMenuRef}>
@@ -428,8 +366,21 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
           </div>
            <button type="button" onClick={toggleFavoriteLoop} aria-pressed={favoriteLoop} aria-label={favoriteLoop ? '즐겨찾기 반복 끄기' : '즐겨찾기 반복 켜기'} className={`music-player-utility ${favoriteLoop ? 'text-rose-200' : 'text-slate-300'}`}><Repeat2 size={15} /></button>
         </div>
-          <iframe ref={frameRef} tabIndex={-1} onLoad={() => { subscribeToPlayerState(frameRef.current); syncFrame(); }} title="GYOPO music player" src={`https://www.youtube.com/embed/${MUSIC_TRACKS[0].videoId}?enablejsapi=1&origin=${encodeURIComponent(SITE_URL)}&autoplay=0&cc_load_policy=0&iv_load_policy=3&playsinline=1`} className="pointer-events-none absolute h-px w-px opacity-0" allow="autoplay; encrypted-media" />
       </div>
+
+      {panelOpen && pathname !== '/music' && !isCompactCall && createPortal(
+        <div role="dialog" aria-label="YouTube 음악 플레이어" style={{ position: 'fixed', ...playerPosition, zIndex: 2147483000, background: '#101827', color: '#fff', border: '1px solid #475569', borderRadius: 8, boxShadow: '0 12px 40px #0008', padding: 0, overflowX: 'hidden', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', minHeight: 32 }}>
+            <span style={{ fontSize: 12, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{track.title}</span>
+            <button type="button" aria-label="플레이어 닫기 및 일시정지" onClick={() => { musicPlayback.close(); playButtonRef.current?.focus(); }} style={{ background: 'transparent', color: '#fff', border: 0, padding: 4 }}><X size={18} /></button>
+          </div>
+          <div ref={playerHostRef} style={{ width: '100%', height: 200, minWidth: 200, minHeight: 200 }} />
+          <div style={{ padding: 8, fontSize: 12 }}>
+            <p role={playback.error ? 'alert' : 'status'} style={{ margin: '0 0 6px' }}>{playbackMessage(playback)}{silenced ? ' · 음소거' : ''}</p>
+            <button type="button" onClick={() => musicPlayback.retry()} style={{ border: '1px solid #5eead4', background: 'transparent', color: '#5eead4', padding: '4px 8px' }}>다시 재생</button>
+            <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(track.videoId)}`} target="_blank" rel="noreferrer" style={{ color: '#fff', marginLeft: 12 }}>YouTube에서 열기</a>
+          </div>
+        </div>, document.body)}
 
       {saveError && !searchFocused && !favoriteMenuOpen && <button type="button" className="music-save-error" onClick={toggleFavoriteMenu} role="alert">{saveError}</button>}
       {searchFocused && popoverPosition && !isCompactCall && createPortal(<div ref={searchPopoverRef} id="top-music-search" role="dialog" aria-label="음악 추천 및 검색" onKeyDown={navigatePopover} style={popoverPosition} className="music-anchored-popover">

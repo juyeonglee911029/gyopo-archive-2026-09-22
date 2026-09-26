@@ -4,7 +4,6 @@ import { type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEven
 import { Check, FileText, MessageCircle, Paperclip, PhoneCall, Send, UserRoundCheck, Video, X } from 'lucide-react';
 import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFreshSessionToken, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
-import '@/styles/call-ui.css';
 
 type FriendMember = Partial<PublicProfile> & { id: string; friendshipId: string };
 type FriendMessage = {

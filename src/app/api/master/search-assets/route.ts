@@ -42,6 +42,21 @@ export async function GET(request: Request) {
   }
   const url = new URL(request.url);
   const detailPath = url.searchParams.get('path') || '';
+  if (url.searchParams.get('candidateView') === '1' && !detailPath) {
+    // Search Analytics is read separately by the selected screen; it is not URL Inspection.
+    return Response.json({
+      generatedAt: new Date().toISOString(),
+      source: 'not_checked',
+      sourceMessage: 'URL Inspection 결과가 연결되지 않아 색인 상태를 확인하지 않았습니다.',
+      assets: REGISTRY.map((asset) => ({
+        ...asset,
+        sitemapSegmentLabel: SITEMAP_SEGMENT_LABELS[asset.sitemapSegment],
+        indexStatus: null,
+        indexCheckedAt: null,
+        indexSource: 'not_checked',
+      })),
+    }, { headers: { 'cache-control': 'private, no-store', vary: 'Authorization' } });
+  }
   const current = await loadExposureRows(28);
   const byPath = rowsByPath(current.rows);
   const planDocuments = detailPath ? [] : await listAdminJsonDocuments('searchAssetClusters').catch(() => []);

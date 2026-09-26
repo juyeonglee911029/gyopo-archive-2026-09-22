@@ -179,7 +179,8 @@ const serverOnlyCollections = new Set([
   'escrowOrders',
 ]);
 const serverOnlyFinancialError = '이 금융 작업은 검증된 서버에서만 처리됩니다. 현재 클라이언트 정산 경로는 보안상 비활성화되어 있습니다.';
-let refreshPromise: Promise<string | undefined> | null = null;
+let sessionRevision = 0;
+let refreshRequest: { session: StoredSession; revision: number; promise: Promise<StoredSession | undefined> } | null = null;
 
 function assertClientWriteAllowed(collection: string): void {
   if (serverOnlyCollections.has(collection)) throw new Error(serverOnlyFinancialError);
@@ -282,36 +283,14 @@ async function runQueryDocuments(collection: string, filters: FirestoreFilter[],
   return data.flatMap((item) => item.document ? [item.document] : []);
 }
 
-async function refreshStoredSessionToken(): Promise<string | undefined> {
-  if (refreshPromise) return refreshPromise;
+async function refreshStoredSessionToken(expectedToken: string): Promise<string | undefined> {
   const session = getStoredSession();
-  if (!session?.refreshToken) return undefined;
-  refreshPromise = fetch(`https://securetoken.googleapis.com/v1/token?key=${firebaseConfig.apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(session.refreshToken)}`,
-  })
-    .then(async (response) => {
-      if (!response.ok) return undefined;
-      const data = (await response.json()) as RefreshResponse;
-      if (!data.id_token) return undefined;
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(sessionKey, JSON.stringify({
-          ...session,
-          idToken: data.id_token,
-          refreshToken: data.refresh_token || session.refreshToken,
-        }));
-      }
-      return data.id_token;
-    })
-    .catch(() => undefined)
-    .finally(() => {
-      refreshPromise = null;
-    });
-  return refreshPromise;
+  if (!session || session.idToken !== expectedToken) return undefined;
+  return refreshSessionToken(session);
 }
 
 async function authenticatedFetch(url: string, options: RequestInit = {}, token?: string): Promise<Response> {
+  const revision = sessionRevision;
   const send = (requestToken?: string) => fetch(url, {
     ...options,
     // A blocked Firestore request must not keep AppRuntime from restoring the
@@ -323,9 +302,9 @@ async function authenticatedFetch(url: string, options: RequestInit = {}, token?
     },
   });
   let response = await send(token);
-  if (response.status === 401 && token) {
-    const refreshed = await refreshStoredSessionToken();
-    if (refreshed) response = await send(refreshed);
+  if (response.status === 401 && token && revision === sessionRevision) {
+    const refreshed = await refreshStoredSessionToken(token);
+    if (refreshed && revision === sessionRevision && getStoredSession()?.idToken === refreshed) response = await send(refreshed);
   }
   return response;
 }
@@ -1306,6 +1285,13 @@ export function getStoredSession(): StoredSession | null {
   }
 }
 
+function sameStoredSession(current: StoredSession | null, expected: StoredSession): current is StoredSession {
+  return Boolean(current?.user?.id
+    && current.user.id === expected.user?.id
+    && current.idToken === expected.idToken
+    && current.refreshToken === expected.refreshToken);
+}
+
 function getTokenUserId(token?: string): string | undefined {
   if (!token) return undefined;
   try {
@@ -1335,24 +1321,34 @@ function tokenExpiresAt(token?: string): number | null {
 }
 
 async function refreshSessionToken(session: StoredSession): Promise<string | undefined> {
-  if (!session.refreshToken) return undefined;
-  if (refreshPromise) return refreshPromise;
-  refreshPromise = (async () => {
-    const response = await fetch(`https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(firebaseConfig.apiKey)}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: session.refreshToken! }),
-    }).catch(() => null);
-    if (!response?.ok) return undefined;
-    const result = await response.json().catch(() => null) as { id_token?: string; refresh_token?: string } | null;
-    if (!result?.id_token) return undefined;
-    const nextSession = { ...session, idToken: result.id_token, refreshToken: result.refresh_token || session.refreshToken };
-    window.localStorage.setItem(sessionKey, JSON.stringify(nextSession));
-    return nextSession.idToken;
-  })().finally(() => {
-    refreshPromise = null;
-  });
-  return refreshPromise;
+  if (!session.refreshToken || !sameStoredSession(getStoredSession(), session)) return undefined;
+  const revision = sessionRevision;
+  let request = refreshRequest;
+  if (!request || request.revision !== revision || !sameStoredSession(request.session, session)) {
+    // Deduplicate only within this login; an old completion must not own a new login's refresh.
+    request = { session, revision, promise: (async () => {
+      const response = await fetch(`https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(firebaseConfig.apiKey)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: session.refreshToken! }),
+      }).catch(() => null);
+      if (!response?.ok) return undefined;
+      const result = await response.json().catch(() => null) as RefreshResponse | null;
+      const current = getStoredSession();
+      if (!result?.id_token || revision !== sessionRevision || !sameStoredSession(current, session) || getTokenUserId(result.id_token) !== session.user.id) return undefined;
+      const nextSession = { ...current, idToken: result.id_token, refreshToken: result.refresh_token || current.refreshToken };
+      window.localStorage.setItem(sessionKey, JSON.stringify(nextSession));
+      return nextSession;
+    })() };
+    refreshRequest = request;
+  }
+  try {
+    const refreshed = await request.promise;
+    const current = getStoredSession();
+    return refreshed && revision === sessionRevision && sameStoredSession(current, refreshed) ? refreshed.idToken : undefined;
+  } finally {
+    if (refreshRequest === request) refreshRequest = null;
+  }
 }
 
 export async function getFreshSessionToken(force = false): Promise<string | undefined> {
@@ -1366,18 +1362,25 @@ export async function getFreshSessionToken(force = false): Promise<string | unde
 export async function refreshStoredUser(): Promise<PortalUser | null> {
   const session = getStoredSession();
   if (!session) return null;
+  const revision = sessionRevision;
   const token = await getFreshSessionToken();
+  const refreshedSession = getStoredSession();
+  if (revision !== sessionRevision) return null;
   if (!token) {
-    signOut();
+    if (sameStoredSession(refreshedSession, session)) signOut();
     return null;
   }
+  if (!refreshedSession || refreshedSession.user?.id !== session.user.id || refreshedSession.idToken !== token) return null;
   const userId = getTokenUserId(token) || session.user.id;
+  if (userId !== session.user.id) return null;
   const profile = await getDocument<PortalUser>('profiles', userId, token).catch(() => null);
-  if (!profile) return { ...session.user, id: userId };
-  const premiumExpiresAt = profile.premiumExpiresAt || session.user.premiumExpiresAt;
+  const current = getStoredSession();
+  if (revision !== sessionRevision || !sameStoredSession(current, refreshedSession)) return null;
+  if (!profile) return { ...current.user, id: userId };
+  const premiumExpiresAt = profile.premiumExpiresAt || current.user.premiumExpiresAt;
   const isSubscribed = Boolean(profile.isSubscribed && (!premiumExpiresAt || new Date(premiumExpiresAt).getTime() > Date.now()));
-  const user = { ...session.user, ...profile, id: userId, isSubscribed, premiumExpiresAt };
-  if (typeof window !== 'undefined') window.localStorage.setItem(sessionKey, JSON.stringify({ ...getStoredSession(), user }));
+  const user = { ...current.user, ...profile, id: userId, isSubscribed, premiumExpiresAt };
+  if (typeof window !== 'undefined') window.localStorage.setItem(sessionKey, JSON.stringify({ ...current, user }));
   return user;
 }
 
@@ -1391,7 +1394,12 @@ export function getSessionUserId(): string | undefined {
 }
 
 export function signOut(): void {
-  if (typeof window !== 'undefined') window.localStorage.removeItem(sessionKey);
+  if (typeof window === 'undefined') return;
+  sessionRevision++;
+  refreshRequest = null;
+  window.localStorage.removeItem(sessionKey);
+  // Native storage events reach other tabs only; notify existing same-window listeners too.
+  window.dispatchEvent(new StorageEvent('storage', { key: sessionKey, newValue: null, storageArea: window.localStorage }));
 }
 
 function isGender(value: unknown): value is Gender {

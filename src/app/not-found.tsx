@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import '@/styles/route-experience.css';
 
 export default function NotFound() {
   return <section className="ui-state route-state">

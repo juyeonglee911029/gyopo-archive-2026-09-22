@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { STARTUP_TIMEOUT } from '@/lib/routeExperience';
-import '@/styles/route-experience.css';
 
 function StartupStatus({ sessionChecked, regionReady }: { sessionChecked: boolean; regionReady: boolean }) {
   const pathname = usePathname();

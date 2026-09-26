@@ -7,7 +7,7 @@ import { LogIn, LogOut, MessageCircle, UserRound, WalletCards, X } from 'lucide-
 import { isMasterUser, signOut } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import GlobalSidebar from './GlobalSidebar';
-import { TranslateMenu } from './Header.legacy';
+import { TranslateMenu } from './Header';
 
 export default function MobileDrawer({ id, open, onOpenChange }: { id: string; open: boolean; onOpenChange: Dispatch<SetStateAction<boolean>> }) {
   const pathname = usePathname();
@@ -20,8 +20,9 @@ export default function MobileDrawer({ id, open, onOpenChange }: { id: string; o
   useEffect(() => { onOpenChange(false); }, [pathname, onOpenChange]);
 
   useEffect(() => {
-    const desktop = window.matchMedia('(min-width: 1024px)');
+    const desktop = window.matchMedia('(min-width: 769px)');
     const closeOnDesktop = () => { if (desktop.matches) onOpenChange(false); };
+    closeOnDesktop();
     desktop.addEventListener('change', closeOnDesktop);
     return () => desktop.removeEventListener('change', closeOnDesktop);
   }, [onOpenChange]);

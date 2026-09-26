@@ -243,7 +243,7 @@ export default function BrickBreaker() {
 
   const sorted = [...results].sort((a, b) => b.score - a.score);
   const wins = (uid: string) => history.filter(r => r.actor === uid && history.some(other => other.round === r.round && other.actor !== uid && other.score < r.score)).length;
-   return <main className={`${styles.shell}${hud.status === 'playing' ? ` ${styles.playing}` : ''}`}>
+   return <main className={`brick-breaker-shell ${styles.shell}${hud.status === 'playing' ? ` ${styles.playing}` : ''}`}>
     <header className={styles.header}><div><small>GYOPO ARCADE / PRIVATE DUEL</small><h1>배드볼 <span>벽돌깨기</span></h1></div><strong>{room ? `ROUND ${room.round} / 2 PLAYERS` : 'FREE PRACTICE'}</strong></header>
     <section className={styles.lobby} aria-label="비공개 대전 방">
        {!room ? <><select aria-label="게임 모드" value={mode} disabled={matchmaking === 'searching'} onChange={e => { const m = e.target.value as Mode; setMode(m); restart(m); }}><option value="classic">클래식</option><option value="items">아이템 강화</option></select><select aria-label="감속 강도" value={slowFactor} disabled={mode !== 'items' || matchmaking === 'searching'} onChange={e => { const value = Number(e.target.value); setSlowFactor(value); restart(mode, value); }}><option value=".78">감속 20%</option><option value=".68">감속 32%</option><option value=".55">감속 45%</option></select>
@@ -278,4 +278,3 @@ export default function BrickBreaker() {
     <p className={styles.notice}>무료 플레이 / 별도 유료 서비스 없음. Firestore 무료 할당량 초과 비용은 운영자 정책에 따릅니다. 직접 연결은 일부 방화벽에서 불가합니다. 방은 1시간, 최대 20라운드입니다.</p>
   </main>;
 }
-

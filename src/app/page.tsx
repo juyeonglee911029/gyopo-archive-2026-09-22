@@ -31,7 +31,7 @@ import { resolvePortalSearch } from '@/lib/searchRouting';
 import { trackSearch } from '@/lib/searchTracking';
 import { trackGrowth } from '@/lib/growthTracking';
 import { useGlobalStore } from '@/store/useGlobalStore';
-import '@/styles/home-refresh.css';
+import ReleaseRouteStyles from '@/components/layout/ReleaseRouteStyles';
 
 type HomePost = { id: string; title: string; type: string; authorId: string; views?: number; createdAt: string; country: string; sourceUrl?: string; sourceName?: string; status?: string; deleted?: boolean; isPublic?: boolean; sourceSnapshot?: boolean; expiresAt?: unknown };
 
@@ -95,6 +95,7 @@ export default function Home() {
 
   return (
     <div className="home-page home-refresh min-h-screen bg-transparent text-slate-100">
+      <ReleaseRouteStyles page="home" />
       <Suspense fallback={null}><HomeFeedReadiness loading={feedStatus === 'loading'} error={feedStatus === 'error'} /></Suspense>
       <section className="home-lead">
         <div className="home-lead-grid">

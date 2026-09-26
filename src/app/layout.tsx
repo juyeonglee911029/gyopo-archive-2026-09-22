@@ -1,6 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import './globals.css';
-import '@/styles/design-system.css';
 import GlobalAppShell from '@/components/layout/GlobalAppShell';
 import AppRuntime from '@/components/layout/AppRuntime';
 import { SITE_URL } from '@/lib/seo';
@@ -40,6 +38,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
+      <head>
+        {/* Copied aa09 served CSS, in its original cascade order. */}
+        <link rel="stylesheet" href="/styles/release-aa09/3m0y9asyu_o2b.css" />
+        <link rel="stylesheet" href="/styles/release-aa09/0obc4wf2u8iey.css" />
+        <link rel="stylesheet" href="/styles/release-aa09/3p_9c1a7v-yp3.css" />
+        <link rel="stylesheet" href="/styles/release-aa09/38nmym_0ssd2g.css" />
+      </head>
       <body className="font-sans min-h-screen">
         <AppRuntime>
           <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({

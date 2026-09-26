@@ -6,7 +6,6 @@ import { ArrowDownLeft, ArrowUpRight, Download, History, WalletCards } from 'luc
 import { getFreshSessionToken, queryDocumentsWhere, type WalletLedgerEntry } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { useEffectEvent } from '@/lib/useeffectevent';
-import '@/styles/call-ui.css';
 
 type LedgerRow = WalletLedgerEntry & { id: string };
 type HistoryFilter = 'ALL' | 'DEPOSIT' | 'TRANSFER' | 'WITHDRAWAL' | 'FEE';

@@ -4,7 +4,6 @@ import { createContext, Suspense, useContext, useEffect, useId, useLayoutEffect,
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createRouteExperience, initialRouteState, isRouteBusy, linkDestination, routeKey, ROUTE_START_EVENT } from '@/lib/routeExperience';
-import '@/styles/route-experience.css';
 
 export { beginRoute } from '@/lib/routeExperience';
 

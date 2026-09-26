@@ -1,38 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GYOPO Reconstruction
 
-## Getting Started
+This is a **new reconstruction** using deployment `aa09fb9f` as a visual and
+behavioral reference. It is not the verified original source, an exact export,
+or a claim of byte-for-byte parity. Build success alone does not establish
+feature parity or production readiness.
 
-First, run the development server:
+## Source of Truth
+
+This checked-in tree is the source of truth for the reconstruction:
+
+- `src/app/`: App Router pages, layouts, and API handlers.
+- `src/components/`, `src/lib/`, `src/store/`, `src/styles/`: application code.
+- `public/`: static assets; root configuration and `package-lock.json`: build inputs.
+
+Build releases from this tree, not backup variants, release ZIP overlays, or
+generated output. The destructive ZIP-to-source replacement workflow has been
+removed. `Header.tsx` is the canonical header. `useeffectevent.ts` and lowercase
+game/master implementations remain active code, not cleanup targets.
+
+Production must serve the build and API handlers from this tree. Do not proxy,
+rewrite, or redirect production traffic to `aa09fb9f.gyopo.pages.dev` to simulate
+a restoration. The old deployment is a comparison reference, not a runtime backend.
+
+## Local Commands
+
+Use Node.js 22.18+ or Node.js 24 and npm. Run commands from the repository root.
 
 ```bash
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`. To validate and run a production build:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm test
+npm run test:security
+npm run lint
+npm run build
+npm start
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Cloudflare Pages uses `npm run build:pages`, with output in
+`.vercel/output/static`. The adapter and Vercel CLI are pinned. `.npmrc` retains
+the peer-resolution setting required by the legacy Pages adapter; its declared
+Next.js range predates the patched Next.js version used here. Validate the
+complete Pages bundle after dependency updates, not just `next build`.
 
-## Learn More
+The reference styles in `public/styles/release-aa09/` are loaded in a tested,
+fixed order. Do not add a second global Tailwind build or CSS override bundle.
+Music uses the official YouTube IFrame API and visible player controls; browser
+autoplay restrictions still require a user playback action.
 
-To learn more about Next.js, take a look at the following resources:
+`next.config.ts` currently skips lint during the build, so run lint separately.
+External-service and emulator checks may need their own configuration; skipped
+checks are not proof that those integrations work. Supply credentials through
+local environment configuration or the hosting provider's secret settings.
+Never commit credentials, tokens, or populated environment files.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Release Gate
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-Deployment source: final portal build.
+Before replacing the GitHub production source or deploying, validate the build,
+desktop/mobile layout, navigation, and affected routes/API flows. Include
+`/community`, `/jobs`, `/market`, games, authentication, and authorized master
+access. Record failures or untested integrations explicitly. Deployment packaging
+and live-domain verification are separate steps; this cleanup does not certify
+or deploy a production release.

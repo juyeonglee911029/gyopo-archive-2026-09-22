@@ -1,4 +1,4 @@
-import { COUNTRY_LOCATIONS } from './locations';
+import { COUNTRY_LOCATIONS } from './locations.ts';
 
 const LEGACY_REGIONS = [
   { id: 'Global', label: '전체 지역', short: '전체', flag: '🌐' },
