@@ -10,7 +10,7 @@ export interface YouTubePlayer {
   playVideo(): void; pauseVideo(): void; mute(): void; unMute(): void;
   setVolume(volume: number): void; cueVideoById(id: string): void; loadVideoById(id: string): void;
   getPlayerState(): number; getCurrentTime(): number; getVolume(): number; isMuted(): boolean;
-  getVideoData(): { video_id?: string }; destroy(): void;
+  getVideoData(): { video_id?: string }; getIframe(): HTMLIFrameElement; destroy(): void;
 }
 export type YouTubeOptions = {
   videoId: string; width: string; height: string;
@@ -56,9 +56,10 @@ export function loadYouTube(): Promise<YouTubeSDK> {
 }
 
 export type YouTubeController = ReturnType<typeof createYouTubeController>;
+type AudioIntent<T> = { value: T; expiresAt: number; waitForChange: boolean };
 export function createYouTubeController(host: HTMLElement, options: {
   videoId: string; volume: number; muted?: boolean; onChange(snapshot: YouTubeSnapshot): void; onEnded?(): void;
-  canPlay?(): boolean;
+  background?: boolean; canPlay?(): boolean;
   origin?: string; loadSDK?: () => Promise<YouTubeSDK>;
 }) {
   let snapshot = { ...IDLE_YOUTUBE, volume: options.volume, muted: options.muted ?? options.volume === 0 };
@@ -67,6 +68,10 @@ export function createYouTubeController(host: HTMLElement, options: {
   let loadedId = '';
   let volume = options.volume;
   let muted = snapshot.muted;
+  let observedVolume: number | undefined;
+  let observedMuted: boolean | undefined;
+  let pendingVolume: AudioIntent<number> | undefined;
+  let pendingMuted: AudioIntent<boolean> | undefined;
   let generation = 0;
   let disposed = false;
   let hasPlayed = false;
@@ -93,11 +98,30 @@ export function createYouTubeController(host: HTMLElement, options: {
     awaitingPlay = false;
     publish({ status, error, desiredPlaying: false });
   };
+  const audioIntent = <T>(value: T, observed?: T, pending?: AudioIntent<T>): AudioIntent<T> => ({
+    value, expiresAt: Date.now() + 2000,
+    // Returning to a stale getter value is not acknowledgement of a superseding command.
+    waitForChange: Boolean(pending && (pending.waitForChange || (pending.value !== value && observed === value))),
+  });
+  const acknowledgeAudio = <T>(observed: T, pending?: AudioIntent<T>) => {
+    if (!pending) return;
+    if (observed !== pending.value) pending.waitForChange = false;
+    if ((!pending.waitForChange && observed === pending.value) || Date.now() >= pending.expiresAt) return;
+    return pending;
+  };
   const readAudio = () => {
     if (snapshot.ready && player) {
-      const actualVolume = player.getVolume();
-      if (Number.isFinite(actualVolume)) volume = Math.min(100, Math.max(0, actualVolume));
-      muted = player.isMuted();
+      try {
+        const actualVolume = player.getVolume();
+        if (Number.isFinite(actualVolume)) {
+          observedVolume = Math.min(100, Math.max(0, actualVolume));
+          pendingVolume = acknowledgeAudio(observedVolume, pendingVolume);
+          if (!pendingVolume) volume = observedVolume;
+        }
+        observedMuted = player.isMuted();
+        pendingMuted = acknowledgeAudio(observedMuted, pendingMuted);
+        if (!pendingMuted) muted = observedMuted;
+      } catch { /* Keep the last audio settings if the iframe has already detached. */ }
     }
     return { volume, muted };
   };
@@ -113,6 +137,7 @@ export function createYouTubeController(host: HTMLElement, options: {
         awaitingPlay = false;
         publish({ desiredPlaying: false });
       }
+      if (!player || disposed) return;
       if (!snapshot.desiredPlaying) {
         player.pauseVideo();
         if (loadedId !== videoId) { loadedId = videoId; player.cueVideoById(videoId); }
@@ -120,20 +145,20 @@ export function createYouTubeController(host: HTMLElement, options: {
       }
       if (loadedId !== videoId) { loadedId = videoId; player.loadVideoById(videoId); }
       else player.playVideo();
-    } catch { fail('YouTube playback failed. Please retry.'); }
+    } catch { fail('YouTube playback failed. Press Play to try again.'); }
   };
   const acceptState = (state: number) => {
     if (!player || !snapshot.ready || disposed) return;
     const actualId = player.getVideoData().video_id;
     if (actualId && actualId !== videoId) return;
     // A state event cannot distinguish native Play from a stale start acknowledgement.
-    // After programmatic cancellation require explicit app Play/Retry; native-only
+    // After programmatic cancellation require explicit app Play; native-only
     // pause/play and blocked-play recovery remain available when not cancelled.
     if ((state === 1 || state === 3) && (cancelPendingStart || options.canPlay?.() === false)) {
       cancelPendingStart = true;
       awaitingPlay = false;
-      publish({ desiredPlaying: false, ...readAudio() });
       player.pauseVideo();
+      publish({ desiredPlaying: false, ...(snapshot.status !== 'error' && snapshot.status !== 'blocked' ? { status: 'paused' } : {}), ...readAudio() });
       return;
     }
     const ended = state === 0 && hasPlayed && snapshot.desiredPlaying;
@@ -162,20 +187,26 @@ export function createYouTubeController(host: HTMLElement, options: {
       readyTimer = setTimeout(() => {
         if (!current()) return;
         stopInstance();
-        fail('YouTube player did not become ready. Please retry.');
+        fail('YouTube player did not become ready. Press Play to try again.');
       }, 15000);
-      player = new sdk.Player(mount, {
+      const created = new sdk.Player(mount, {
         videoId, width: '100%', height: '100%',
-        playerVars: { autoplay: 0, controls: 1, playsinline: 1, rel: 0, origin: options.origin ?? window.location.origin },
+        playerVars: { autoplay: 0, controls: options.background ? 0 : 1, disablekb: options.background ? 1 : 0, playsinline: 1, rel: 0, origin: options.origin ?? window.location.origin },
         events: {
           onReady: ({ target }) => {
             if (!current()) return;
             player = target;
             clearTimeout(readyTimer);
+            if (options.background) target.getIframe().tabIndex = -1;
+            pendingVolume = audioIntent(volume);
+            pendingMuted = audioIntent(muted);
             applyVolume();
             publish({ ready: true, status: 'ready', volume, muted });
+            if (!current()) return;
+            readAudio();
             apply();
             if (!current()) return;
+            clearInterval(poll);
             poll = setInterval(() => {
               if (!current() || !player) return;
               const state = player.getPlayerState();
@@ -184,21 +215,25 @@ export function createYouTubeController(host: HTMLElement, options: {
             }, 500);
           },
           onStateChange: ({ data }) => { if (current()) acceptState(data); },
-          onError: ({ data }) => { if (current()) fail(`YouTube error ${data}. Retry or open this video on YouTube.`); },
+          onError: ({ data }) => { if (current()) fail(`YouTube error ${data}. Press Play to try again or choose another track.`); },
           onAutoplayBlocked: () => { if (current()) fail('Playback was blocked. Press Play again or use the video controls.', 'blocked'); },
         },
       });
-    }).catch(() => { if (current()) fail('YouTube could not load. Check your connection and retry.'); });
+      // onReady may synchronously trigger owner cleanup before the constructor returns.
+      if (!current()) { try { created.destroy(); } catch { /* Already destroyed. */ } return; }
+      player = created;
+    }).catch(() => { if (current()) fail('YouTube could not load. Check your connection and press Play.'); });
   };
   const controller = {
-    getSnapshot: () => snapshot,
+    getSnapshot: () => ({ ...snapshot, ...readAudio() }),
     setPlaying(next: boolean) {
       if (disposed) return;
       if (next && options.canPlay?.() === false) next = false;
       const retry = next && snapshot.status === 'error';
       cancelPendingStart = !next;
       awaitingPlay = next;
-      publish({ desiredPlaying: next, ...(next ? { error: '', status: snapshot.ready ? 'buffering' : 'loading' } : {}) });
+      publish({ desiredPlaying: next, ...(next ? { error: '', status: snapshot.ready ? 'buffering' : 'loading' } : snapshot.ready && snapshot.status !== 'error' && snapshot.status !== 'blocked' ? { status: 'paused' } : {}) });
+      if (disposed) return;
       if (retry) start();
       else apply();
     },
@@ -211,28 +246,22 @@ export function createYouTubeController(host: HTMLElement, options: {
       apply();
     },
     setVolume(next: number, preserveMute = false) {
-      if (disposed) return;
-      if (preserveMute) readAudio();
+      if (disposed || !Number.isFinite(next)) return;
+      readAudio();
       volume = Math.min(100, Math.max(0, next));
       muted = volume === 0 || (preserveMute && muted);
-      publish({ volume, muted });
+      pendingVolume = audioIntent(volume, observedVolume, pendingVolume);
+      pendingMuted = audioIntent(muted, observedMuted, pendingMuted);
       if (snapshot.ready && player) applyVolume();
+      publish(readAudio());
     },
     setMuted(next: boolean) {
       if (disposed) return;
       readAudio();
       muted = next;
-      publish({ volume, muted });
+      pendingMuted = audioIntent(muted, observedMuted, pendingMuted);
       if (snapshot.ready && player) { if (next) player.mute(); else player.unMute(); }
-    },
-    retry() {
-      if (disposed) return;
-      if (options.canPlay?.() === false) { this.setPlaying(false); return; }
-      const restart = !snapshot.ready || snapshot.status === 'error';
-      cancelPendingStart = false;
-      awaitingPlay = true;
-      publish({ desiredPlaying: true, error: '', status: 'loading' });
-      if (restart) start(); else apply();
+      publish(readAudio());
     },
     destroy() { if (!disposed) { disposed = true; stopInstance(); } },
   };

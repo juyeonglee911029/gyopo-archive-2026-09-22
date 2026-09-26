@@ -47,10 +47,12 @@ the peer-resolution setting required by the legacy Pages adapter; its declared
 Next.js range predates the patched Next.js version used here. Validate the
 complete Pages bundle after dependency updates, not just `next build`.
 
-The reference styles in `public/styles/release-aa09/` are loaded in a tested,
-fixed order. Do not add a second global Tailwind build or CSS override bundle.
-Music uses the official YouTube IFrame API and visible player controls; browser
-autoplay restrictions still require a user playback action.
+The reference shell styles in `public/styles/release-aa09/` are loaded in a
+tested, fixed order. The redesigned home body uses `src/app/home.module.css`;
+do not add a second global Tailwind build or sitewide CSS override bundle.
+Header playback and volume control the same background YouTube player through
+the official IFrame API, without a second player or popup. `/music` owns its
+in-page player instead. Playback starts only on user request.
 
 `next.config.ts` currently skips lint during the build, so run lint separately.
 External-service and emulator checks may need their own configuration; skipped

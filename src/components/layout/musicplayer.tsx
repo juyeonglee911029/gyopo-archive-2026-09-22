@@ -13,7 +13,7 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
   const [isCompactCall, setIsCompactCall] = useState(false);
   const user = useGlobalStore((state) => state.user);
   const playback = useMusicPlayback();
-  const { track, volume, panelOpen } = playback;
+  const { track, volume } = playback;
   const playing = playback.status === 'playing';
   const silenced = playback.muted || volume === 0;
   const lastVolumeRef = useRef(70);
@@ -28,9 +28,6 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
   const [favoriteMenuOpen, setFavoriteMenuOpen] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [popoverPosition, setPopoverPosition] = useState<ReturnType<typeof musicPopoverPosition> | null>(null);
-  const playerHostRef = useRef<HTMLDivElement>(null);
-  const playButtonRef = useRef<HTMLButtonElement>(null);
-  const [playerPosition, setPlayerPosition] = useState({ top: 80, left: 8, width: 320, maxHeight: 400 });
   const searchShellRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
@@ -45,46 +42,10 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
   const results = query.trim() ? (hasRemoteResults ? remoteResults : localResults.length ? localResults : MUSIC_TRACKS) : MUSIC_TRACKS;
 
   useLayoutEffect(() => {
-    musicPlayback.setRoute(pathname === '/music' ? 'video' : 'top');
     setIsCompactCall(pathname === '/webrtc' && new URLSearchParams(window.location.search).get('compact') === '1');
     setSearchFocused(false);
     setFavoriteMenuOpen(false);
   }, [pathname]);
-
-  useLayoutEffect(() => {
-    if (!panelOpen || pathname === '/music' || !playerHostRef.current) return;
-    return musicPlayback.mount('top', playerHostRef.current);
-  }, [panelOpen, pathname]);
-
-  useEffect(() => () => musicPlayback.close(), []);
-
-  useLayoutEffect(() => {
-    if (!panelOpen || pathname === '/music') return;
-    const update = () => {
-      const viewport = window.visualViewport;
-      const left = viewport?.offsetLeft || 0;
-      const top = viewport?.offsetTop || 0;
-      const width = Math.max(200, Math.min(320, (viewport?.width || window.innerWidth) - 16));
-      const height = viewport?.height || window.innerHeight;
-      const anchor = playButtonRef.current?.getBoundingClientRect();
-      const panelTop = Math.max(top + 8, Math.min((anchor?.bottom || top + 64) + 8, top + height - 310));
-      setPlayerPosition({ width, left: Math.max(left + 8, Math.min(anchor?.left || left + 8, left + (viewport?.width || window.innerWidth) - width - 8)), top: panelTop, maxHeight: Math.max(200, top + height - panelTop - 8) });
-    };
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { musicPlayback.close(); playButtonRef.current?.focus(); } };
-    update();
-    window.addEventListener('resize', update);
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('keydown', escape);
-    window.visualViewport?.addEventListener('resize', update);
-    window.visualViewport?.addEventListener('scroll', update);
-    return () => {
-      window.removeEventListener('resize', update);
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('keydown', escape);
-      window.visualViewport?.removeEventListener('resize', update);
-      window.visualViewport?.removeEventListener('scroll', update);
-    };
-  }, [panelOpen, pathname]);
 
   useEffect(() => {
     const pauseHidden = () => { if (document.hidden) musicPlayback.pause(); };
@@ -146,7 +107,7 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
   useEffect(() => {
     try {
       const nextVolume = readMusicVolume(window.localStorage.getItem('gyopo-music-volume'));
-      musicPlayback.setVolume(nextVolume);
+      musicPlayback.restoreVolume(nextVolume);
       if (nextVolume > 0) lastVolumeRef.current = nextVolume;
     } catch { /* Keep the default when storage is unavailable. */ }
   }, []);
@@ -247,7 +208,7 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
     };
     const sendCurrentMusic = () => {
       const current = musicPlayback.getSnapshot();
-      emitMusicEvent('gyopo-music-local', { source: 'local', player: current.owner, origin: 'top-player', track: current.track, playing: current.status === 'playing', position: current.currentTime, startedAt: Date.now(), volume: current.volume });
+      emitMusicEvent('gyopo-music-local', { source: 'local', player: current.owner ?? 'top', origin: 'top-player', track: current.track, playing: current.status === 'playing', position: current.currentTime, startedAt: Date.now(), volume: current.volume });
     };
     window.addEventListener('gyopo-music-sync', receiveMusicSync);
     window.addEventListener('gyopo-music-request-state', sendCurrentMusic);
@@ -323,7 +284,7 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
   };
 
   return (
-    <section hidden={isCompactCall} className={`music-player-shell music-player-refresh ${embedded ? 'music-player-embedded' : ''}`} aria-label="음악 플레이어" data-player-status={playback.status} data-player-state={playback.state} data-player-time={playback.currentTime} data-player-owner={playback.owner} data-player-muted={playback.muted}>
+    <section hidden={isCompactCall} className={`music-player-shell music-player-refresh ${embedded ? 'music-player-embedded' : ''}`} aria-label="음악 플레이어" data-player-status={playback.status} data-player-state={playback.state} data-player-time={playback.currentTime} data-player-owner={playback.owner} data-player-muted={playback.muted} data-player-volume={volume}>
       <div className="music-player-bar">
         <div className="music-player-track">
           <Music2 size={17} className="shrink-0 text-teal-300" />
@@ -334,7 +295,7 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
         </div>
         <div className="music-player-transport">
           <button type="button" onClick={() => selectRelativeTrack(-1)} aria-label="이전 곡" className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white"><SkipBack size={15} /></button>
-          <button ref={playButtonRef} type="button" onClick={togglePlaying} aria-label={playing ? '일시정지' : playback.desiredPlaying ? '재생 준비 취소' : '재생'} aria-busy={playback.desiredPlaying && !playing} aria-expanded={pathname === '/music' ? undefined : panelOpen} title={playbackMessage(playback)} style={{ color: '#5eead4' }} className="rounded-full bg-teal-300 p-2 text-slate-950 hover:bg-teal-200">
+          <button type="button" onClick={togglePlaying} disabled={!playback.mounted} aria-label={playing ? '일시정지' : playback.desiredPlaying ? '재생 준비 취소' : '재생'} aria-busy={playback.desiredPlaying && !playing} title={playbackMessage(playback)} style={{ color: '#5eead4' }} className="rounded-full bg-teal-300 p-2 text-slate-950 hover:bg-teal-200">
             {playing ? <Pause size={15} /> : playback.desiredPlaying ? <LoaderCircle size={15} /> : <Play size={15} />}
           </button>
           <button type="button" onClick={() => selectRelativeTrack(1)} aria-label="다음 곡" className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white"><SkipForward size={15} /></button>
@@ -367,20 +328,6 @@ export default function MusicPlayer({ embedded = false }: { embedded?: boolean }
            <button type="button" onClick={toggleFavoriteLoop} aria-pressed={favoriteLoop} aria-label={favoriteLoop ? '즐겨찾기 반복 끄기' : '즐겨찾기 반복 켜기'} className={`music-player-utility ${favoriteLoop ? 'text-rose-200' : 'text-slate-300'}`}><Repeat2 size={15} /></button>
         </div>
       </div>
-
-      {panelOpen && pathname !== '/music' && !isCompactCall && createPortal(
-        <div role="dialog" aria-label="YouTube 음악 플레이어" style={{ position: 'fixed', ...playerPosition, zIndex: 2147483000, background: '#101827', color: '#fff', border: '1px solid #475569', borderRadius: 8, boxShadow: '0 12px 40px #0008', padding: 0, overflowX: 'hidden', overflowY: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', minHeight: 32 }}>
-            <span style={{ fontSize: 12, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{track.title}</span>
-            <button type="button" aria-label="플레이어 닫기 및 일시정지" onClick={() => { musicPlayback.close(); playButtonRef.current?.focus(); }} style={{ background: 'transparent', color: '#fff', border: 0, padding: 4 }}><X size={18} /></button>
-          </div>
-          <div ref={playerHostRef} style={{ width: '100%', height: 200, minWidth: 200, minHeight: 200 }} />
-          <div style={{ padding: 8, fontSize: 12 }}>
-            <p role={playback.error ? 'alert' : 'status'} style={{ margin: '0 0 6px' }}>{playbackMessage(playback)}{silenced ? ' · 음소거' : ''}</p>
-            <button type="button" onClick={() => musicPlayback.retry()} style={{ border: '1px solid #5eead4', background: 'transparent', color: '#5eead4', padding: '4px 8px' }}>다시 재생</button>
-            <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(track.videoId)}`} target="_blank" rel="noreferrer" style={{ color: '#fff', marginLeft: 12 }}>YouTube에서 열기</a>
-          </div>
-        </div>, document.body)}
 
       {saveError && !searchFocused && !favoriteMenuOpen && <button type="button" className="music-save-error" onClick={toggleFavoriteMenu} role="alert">{saveError}</button>}
       {searchFocused && popoverPosition && !isCompactCall && createPortal(<div ref={searchPopoverRef} id="top-music-search" role="dialog" aria-label="음악 추천 및 검색" onKeyDown={navigatePopover} style={popoverPosition} className="music-anchored-popover">

@@ -1,38 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { MUSIC_TRACKS, type MusicSyncDetail } from '@/lib/music';
+import { useLayoutEffect, useRef } from 'react';
+import { musicPlayback, useMusicPlayback } from '@/lib/musicPlayback';
 
 export default function SiteBackgroundVideo() {
-  const [videoId, setVideoId] = useState(MUSIC_TRACKS[0].videoId);
+  const playerHostRef = useRef<HTMLDivElement>(null);
+  const playback = useMusicPlayback();
 
-  useEffect(() => {
-    const syncTrack = (event: Event) => {
-      const detail = (event as CustomEvent<MusicSyncDetail>).detail;
-      if (detail?.player === 'video') return;
-      const next = detail?.track?.videoId;
-      if (!next) return;
-      setVideoId(next);
-    };
-    window.addEventListener('gyopo-music-local', syncTrack);
-    window.addEventListener('gyopo-music-sync', syncTrack);
-    return () => {
-      window.removeEventListener('gyopo-music-local', syncTrack);
-      window.removeEventListener('gyopo-music-sync', syncTrack);
-    };
+  useLayoutEffect(() => {
+    if (!playerHostRef.current) return;
+    musicPlayback.setRoute('top');
+    return musicPlayback.mount('top', playerHostRef.current);
   }, []);
 
   return (
     <div className="site-background-video" aria-hidden="true">
-       {/* Decorative only: no API, audio commands, or interactive controls. */}
-       <iframe
-          key={videoId}
-          tabIndex={-1}
-          style={{ pointerEvents: 'none' }}
-          title="GYOPO background music video"
-          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&playsinline=1&rel=0&disablekb=1`}
-         allow="autoplay; encrypted-media"
-       />
+      <div id="music-background-player" ref={playerHostRef}
+        style={{ position: 'absolute', inset: 0, width: '100vw', height: '100dvh', minWidth: 200, minHeight: 200 }}
+        data-player-status={playback.status} data-player-state={playback.state} data-player-time={playback.currentTime}
+        data-player-owner={playback.owner} data-player-muted={playback.muted} data-player-volume={playback.volume} />
       <div className="site-background-video-shade" />
     </div>
   );

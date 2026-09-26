@@ -4,18 +4,18 @@ import { useSyncExternalStore } from 'react';
 import { MUSIC_TRACKS, type MusicSyncDetail, type MusicTrack } from './music.ts';
 import { createYouTubeController, IDLE_YOUTUBE, type YouTubeController, type YouTubeSnapshot } from './youtube.ts';
 
-type Owner = 'top' | 'video';
+type Owner = 'top' | 'video' | null;
 export type MusicPlaybackSnapshot = YouTubeSnapshot & {
-  track: MusicTrack; volume: number; owner: Owner; panelOpen: boolean;
+  track: MusicTrack; owner: Owner; mounted: boolean;
 };
-const INITIAL: MusicPlaybackSnapshot = { ...IDLE_YOUTUBE, track: MUSIC_TRACKS[0], volume: 70, owner: 'top', panelOpen: false };
+const INITIAL: MusicPlaybackSnapshot = { ...IDLE_YOUTUBE, track: MUSIC_TRACKS[0], owner: null, mounted: false };
 
 // Header and page controls share intent and feedback, not competing iframe event buses.
 export function createMusicPlayback(makeController = createYouTubeController) {
   let snapshot = INITIAL;
   let controller: YouTubeController | undefined;
-  let mountedOwner: Owner | undefined;
   let mountId = 0;
+  let volumeRestored = false;
   let favorites: MusicTrack[] = [];
   let favoriteLoop = false;
   const listeners = new Set<() => void>();
@@ -23,17 +23,17 @@ export function createMusicPlayback(makeController = createYouTubeController) {
     snapshot = { ...snapshot, ...patch };
     listeners.forEach((listener) => listener());
   };
-  const idle = () => ({ ...IDLE_YOUTUBE, volume: snapshot.volume, muted: snapshot.muted });
   const detach = () => {
+    const audio = controller?.getSnapshot() || snapshot;
     mountId++;
-    controller?.destroy();
+    const old = controller;
     controller = undefined;
-    mountedOwner = undefined;
+    old?.destroy();
+    return { ...IDLE_YOUTUBE, volume: audio.volume, muted: audio.muted, mounted: false };
   };
   const play = () => {
-    const retry = snapshot.status === 'error' || snapshot.status === 'blocked';
-    update({ desiredPlaying: true, panelOpen: snapshot.owner === 'top', error: '', status: 'loading' });
-    if (retry) controller?.retry(); else controller?.setPlaying(true);
+    if (!controller || !snapshot.owner) return;
+    controller.setPlaying(true);
   };
   const select = (track: MusicTrack, start = true) => {
     update({ track });
@@ -50,19 +50,20 @@ export function createMusicPlayback(makeController = createYouTubeController) {
     getServerSnapshot: () => INITIAL,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     setRoute(owner: Owner) {
-      controller?.setPlaying(false);
-      if (owner !== snapshot.owner) detach();
-      update({ ...idle(), owner, panelOpen: false });
+      if (owner === snapshot.owner) return;
+      update({ ...detach(), owner });
     },
-    mount(owner: Owner, host: HTMLElement) {
+    mount(owner: Exclude<Owner, null>, host: HTMLElement) {
       if (owner !== snapshot.owner) return () => {};
-      detach();
-      mountedOwner = owner;
+      const idle = detach();
       const ticket = mountId;
-      const desired = snapshot.desiredPlaying;
-      controller = makeController(host, {
+      update(idle);
+      if (ticket !== mountId) return () => {};
+      const nextController = makeController(host, {
         videoId: snapshot.track.videoId, volume: snapshot.volume, muted: snapshot.muted,
+        background: owner === 'top',
         canPlay() {
+          if (ticket !== mountId || snapshot.owner !== owner) return false;
           if (typeof document !== 'undefined' && document.hidden) return false;
           if (typeof window === 'undefined') return true;
           if (!host.isConnected) return false;
@@ -70,17 +71,18 @@ export function createMusicPlayback(makeController = createYouTubeController) {
           const viewport = window.visualViewport;
           const left = viewport?.offsetLeft || 0;
           const top = viewport?.offsetTop || 0;
-          return rect.width > 0 && rect.height > 0 && rect.bottom > top && rect.right > left && rect.top < top + (viewport?.height || window.innerHeight) && rect.left < left + (viewport?.width || window.innerWidth);
+          return rect.width >= 200 && rect.height >= 200 && rect.bottom > top && rect.right > left && rect.top < top + (viewport?.height || window.innerHeight) && rect.left < left + (viewport?.width || window.innerWidth);
         },
         onChange(next) { if (ticket === mountId) update(next); },
         onEnded() { if (ticket === mountId) relative(1); },
       });
-      if (desired) controller.setPlaying(true);
+      // A synchronous subscriber can navigate while the controller is being created.
+      if (ticket !== mountId) { nextController.destroy(); return () => {}; }
+      controller = nextController;
+      update({ mounted: true });
       return () => {
         if (ticket !== mountId) return;
-        detach();
-        // Preserve pending intent across StrictMode setup/cleanup/setup; no detached player survives.
-        update({ ...idle(), desiredPlaying: snapshot.desiredPlaying });
+        update(detach());
       };
     },
     play,
@@ -89,13 +91,12 @@ export function createMusicPlayback(makeController = createYouTubeController) {
       if (snapshot.desiredPlaying) this.pause();
       else play();
     },
-    close() {
-      controller?.setPlaying(false);
-      if (mountedOwner === 'top') detach();
-      update({ ...idle(), panelOpen: false });
-    },
-    retry() { update({ panelOpen: snapshot.owner === 'top', desiredPlaying: true }); if (controller) controller.retry(); else play(); },
     select, relative,
+    restoreVolume(volume: number) {
+      if (volumeRestored) return;
+      volumeRestored = true;
+      this.setVolume(volume, true);
+    },
     setVolume(volume: number, preserveMute = false) {
       if (!Number.isFinite(volume)) return;
       const bounded = Math.min(100, Math.max(0, volume));

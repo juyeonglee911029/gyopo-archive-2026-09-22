@@ -24,6 +24,8 @@ function fakeSDK() {
       this.time = 0;
       this.volume = 100;
       this.muted = false;
+      this.delayAudio = false;
+      this.iframe = { tabIndex: 0 };
       players.push(this);
     }
     ready() { this.options.events.onReady({ target: this }); }
@@ -32,9 +34,9 @@ function fakeSDK() {
     error(data) { this.options.events.onError({ data }); }
     playVideo() { this.calls.push(['play']); }
     pauseVideo() { this.calls.push(['pause']); }
-    mute() { this.muted = true; this.calls.push(['mute']); }
-    unMute() { this.muted = false; this.calls.push(['unmute']); }
-    setVolume(n) { this.volume = n; this.calls.push(['volume', n]); }
+    mute() { if (!this.delayAudio) this.muted = true; this.calls.push(['mute']); }
+    unMute() { if (!this.delayAudio) this.muted = false; this.calls.push(['unmute']); }
+    setVolume(n) { if (!this.delayAudio) this.volume = n; this.calls.push(['volume', n]); }
     cueVideoById(id) { this.id = id; this.calls.push(['cue', id]); }
     loadVideoById(id) { this.id = id; this.calls.push(['load', id]); }
     getPlayerState() { return this.state; }
@@ -42,6 +44,7 @@ function fakeSDK() {
     getVolume() { return this.volume; }
     isMuted() { return this.muted; }
     getVideoData() { return { video_id: this.id }; }
+    getIframe() { return this.iframe; }
     destroy() { this.calls.push(['destroy']); }
   }
   return { sdk: { Player }, players };
@@ -109,7 +112,7 @@ test('blocked playback stops intent, never loops, and permits explicit/native re
   assert.equal(starts(player).length, count);
   assert.equal(controller.getSnapshot().status, 'blocked');
   assert.equal(controller.getSnapshot().desiredPlaying, false);
-  controller.retry();
+  controller.setPlaying(true);
   assert.equal(starts(player).length, count + 1);
   player.blocked();
   player.stateChange(1); // Native YouTube Play is also a valid user-controlled recovery.
@@ -140,7 +143,7 @@ test('errors require retry; stale events from replaced players are ignored', asy
   assert.equal(controller.getSnapshot().status, 'error');
   assert.equal(controller.getSnapshot().desiredPlaying, false);
   assert.match(controller.getSnapshot().error, /150/);
-  controller.retry();
+  controller.setPlaying(true);
   players[0].stateChange(1);
   players[0].blocked();
   await flush();
@@ -173,7 +176,7 @@ test('SDK rejection is recoverable, but resolving after unmount creates no ifram
   const { controller } = setup(t, { loadSDK: () => ++attempts === 1 ? Promise.reject(new Error('offline')) : new Promise((r) => { resolve = r; }) });
   await flush();
   assert.equal(controller.getSnapshot().status, 'error');
-  controller.retry();
+  controller.setPlaying(true);
   controller.destroy();
   resolve(fake.sdk);
   await flush();
@@ -199,27 +202,34 @@ function sessionSetup(t) {
   const session = createMusicPlayback((element, options) => createYouTubeController(element, {
     ...options, origin: 'https://www.gyopo.kr', loadSDK: async () => fake.sdk,
   }));
-  t.after(() => session.setRoute('top'));
+  session.setRoute('top');
+  t.after(() => session.setRoute(null));
   return { ...fake, session };
 }
 
-test('header clicks queue before mount, rapid toggles and StrictMode keep latest intent', async (t) => {
+test('unmounted Play stays idle; mounted background queues clicks and StrictMode cleans up', async (t) => {
   const { session, players } = sessionSetup(t);
   session.toggle();
-  session.toggle();
-  session.toggle();
-  assert.equal(session.getSnapshot().panelOpen, true);
+  assert.equal(session.getSnapshot().mounted, false);
+  assert.equal(session.getSnapshot().status, 'idle');
+  assert.equal(session.getSnapshot().desiredPlaying, false);
   const cleanup = session.mount('top', host());
+  session.toggle();
   cleanup();
   const finalCleanup = session.mount('top', host());
   t.after(finalCleanup);
+  session.toggle();
+  session.toggle();
+  session.toggle();
+  assert.equal(session.getSnapshot().mounted, true);
   await flush();
   assert.equal(players.length, 1);
   players[0].ready();
   assert.equal(starts(players[0]).length, 1);
-  session.close();
+  finalCleanup();
   players[0].stateChange(1);
-  assert.equal(session.getSnapshot().panelOpen, false);
+  assert.equal(session.getSnapshot().mounted, false);
+  assert.equal(session.getSnapshot().desiredPlaying, false);
   assert.equal(session.getSnapshot().status, 'idle');
   assert.deepEqual(players[0].calls.at(-1), ['destroy']);
 });
@@ -244,13 +254,13 @@ test('page track selection never disables header transport; one player owns audi
   assert.deepEqual(player.calls.slice(-2), [['volume', 18], ['unmute']]);
   session.mount('top', host());
   assert.equal(players.length, 1);
-  assert.equal(session.getSnapshot().panelOpen, false);
+  assert.equal(session.getSnapshot().owner, 'video');
 });
 
 test('navigation destroys previous owner; stale cleanup cannot stop its replacement', async (t) => {
   const { session, players } = sessionSetup(t);
-  session.play();
   const oldCleanup = session.mount('top', host());
+  session.play();
   await flush();
   session.setRoute('video');
   assert.deepEqual(players[0].calls.at(-1), ['destroy']);
@@ -267,8 +277,8 @@ test('navigation destroys previous owner; stale cleanup cannot stop its replacem
 
 test('rapid pause/play uses latest intent even before the old pause acknowledgement', async (t) => {
   const { session, players } = sessionSetup(t);
-  session.play();
   const cleanup = session.mount('top', host());
+  session.play();
   t.after(cleanup);
   await flush();
   const player = players[0];
@@ -359,20 +369,30 @@ test('native controls inherit stored volume without an automatic play or unmute'
   assert.deepEqual(players[0].calls, [['volume', 0], ['mute'], ['pause'], ['cue', 'first']]);
 });
 
-test('components retain visible native controls and no raw-message or generic resume paths', async () => {
-  const [header, page, background] = await Promise.all([
-    '../components/layout/musicplayer.tsx', '../app/music/page.tsx', '../components/layout/sitebackgroundvideo.tsx',
+test('header controls the mounted viewport background, with no player popup or retry UI', async () => {
+  const [header, page, background, shell] = await Promise.all([
+    '../components/layout/musicplayer.tsx', '../app/music/page.tsx', '../components/layout/sitebackgroundvideo.tsx', '../components/layout/GlobalAppShell.tsx',
   ].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
   for (const source of [header, page, background]) assert.doesNotMatch(source, /postMessage|SITE_URL|resumeAudio|videoSelectedRef/);
-  assert.doesNotMatch(header, /h-px|opacity-0|syncTimerRef|autoAdvanceTimerRef/);
-  assert.match(header, /minWidth: 200, minHeight: 200/);
+  assert.doesNotMatch(header, /h-px|opacity-0|syncTimerRef|autoAdvanceTimerRef|panelOpen|playerPosition|playButtonRef|playerHostRef|musicPlayback\.(mount|close|setRoute)/);
+  assert.doesNotMatch(header + page, /musicPlayback\.retry|retryPlaying|YouTube에서 열기|youtube\.com\/watch/);
+  assert.doesNotMatch(background, /<iframe|autoplay=1|key=|usePathname|gyopo-music-/);
+  assert.match(background, /musicPlayback\.mount\('top', playerHostRef\.current\)/);
+  assert.match(background, /width: '100vw', height: '100dvh', minWidth: 200, minHeight: 200/);
   assert.match(header, /data-player-time=\{playback.currentTime\}/);
-  assert.match(header, /musicPlayback\.close\(\)/);
+  for (const source of [header, page, background]) {
+    assert.match(source, /data-player-volume=\{(?:playback\.)?volume\}/);
+    assert.match(source, /data-player-state=\{playback.state\}/);
+    assert.match(source, /data-player-muted=\{playback.muted\}/);
+  }
+  assert.match(header, /disabled=\{!playback.mounted\}/);
+  assert.match(header, /id="top-music-favorites"/);
+  assert.match(header, /id="top-music-search"/);
   assert.match(page, /musicPlayback\.mount\('video'/);
   assert.match(header, /musicPlayback\.toggle\(\)/);
   assert.match(page, /musicPlayback\.toggle\(\)/);
-  assert.match(background, /mute=1&controls=0/);
-  assert.doesNotMatch(background, /unMute|gyopo-background-music|enablejsapi/);
+  assert.match(shell, /musicOwner === 'top' && <SiteBackgroundVideo \/>/);
+  assert.match(shell, /musicPlayback\.setRoute\(musicOwner\); \}, \[musicOwner\]\)/);
 });
 
 test('buffering -> pause -> pause -> late PLAYING stays cancelled until explicit Play', async (t) => {
@@ -411,7 +431,7 @@ test('native pause/play works without cancellation, but cannot override an app s
   player.stateChange(2);
   player.stateChange(1);
   assert.equal(controller.getSnapshot().desiredPlaying, false);
-  controller.retry();
+  controller.setPlaying(true);
   player.stateChange(1);
   assert.equal(controller.getSnapshot().desiredPlaying, true);
 });
@@ -436,7 +456,7 @@ test('visibility is a persistent gate even with no new visibility/observer callb
   t.mock.timers.tick(500);
   assert.equal(session.getSnapshot().desiredPlaying, false);
   session.pause();
-  session.retry();
+  session.play();
   player.stateChange(1);
   assert.equal(session.getSnapshot().desiredPlaying, false);
   doc.hidden = false;
@@ -448,7 +468,7 @@ test('visibility is a persistent gate even with no new visibility/observer callb
   t.mock.timers.tick(500);
   assert.equal(session.getSnapshot().desiredPlaying, false);
   const count = starts(player).length;
-  session.retry();
+  session.play();
   session.play();
   assert.equal(starts(player).length, count);
   top = 10;
@@ -457,7 +477,7 @@ test('visibility is a persistent gate even with no new visibility/observer callb
   assert.equal(session.getSnapshot().desiredPlaying, true);
 });
 
-test('the actual /music Retry handler reveals the pane before requesting playback', async (t) => {
+test('the ordinary /music Play handler reveals the pane before recovering blocked playback', async (t) => {
   setGlobal(t, 'document', { hidden: false });
   setGlobal(t, 'window', { innerWidth: 1024, innerHeight: 768 });
   let top = 1000;
@@ -474,11 +494,11 @@ test('the actual /music Retry handler reveals the pane before requesting playbac
   players[0].ready();
   players[0].blocked();
   session.pause();
-  session.retry();
+  session.play();
   assert.equal(starts(players[0]).length, 0);
   const source = await readFile(new URL('../app/music/page.tsx', import.meta.url), 'utf8');
-  const body = source.match(/const retryPlaying = \(\) => \{([\s\S]*?)\n  \};/)[1];
-  assert.match(source, /onClick=\{retryPlaying\}/);
+  const body = source.match(/const togglePlaying = \(\) => \{([\s\S]*?)\n  \};/)[1];
+  assert.match(source, /onClick=\{togglePlaying\}/);
   runInNewContext(body, { revealMusicPlayer, playerHostRef: { current: element }, musicPlayback: session });
   assert.equal(starts(players[0]).length, 1);
   players[0].stateChange(1);
@@ -488,8 +508,8 @@ test('the actual /music Retry handler reveals the pane before requesting playbac
 test('native mute and volume reach shared UI state and survive play, retry and remount', async (t) => {
   t.mock.timers.enable({ apis: ['setInterval'] });
   const { session, players } = sessionSetup(t);
-  session.play();
   const cleanup = session.mount('top', host());
+  session.play();
   t.after(cleanup);
   await flush();
   const player = players[0];
@@ -505,13 +525,12 @@ test('native mute and volume reach shared UI state and survive play, retry and r
   player.stateChange(2);
   session.play();
   player.blocked();
-  session.retry();
+  session.play();
   assert.equal(player.calls.slice(before).some(([name]) => ['volume', 'unmute'].includes(name)), false);
-  session.close();
+  session.setRoute('video');
   assert.equal(session.getSnapshot().volume, 23);
   assert.equal(session.getSnapshot().muted, true);
-  session.play();
-  const nextCleanup = session.mount('top', host());
+  const nextCleanup = session.mount('video', host());
   t.after(nextCleanup);
   await flush();
   players[1].ready();
@@ -540,7 +559,7 @@ test('real games producer payload reaches receiver without granting playback con
   assert.equal(session.getSnapshot().track.videoId, 'room-video');
   assert.equal(session.getSnapshot().volume, 19);
   assert.equal(session.getSnapshot().desiredPlaying, false);
-  assert.equal(session.getSnapshot().panelOpen, false);
+  assert.equal(session.getSnapshot().mounted, false);
   const cleanup = session.mount('top', host());
   t.after(cleanup);
   await flush();
@@ -558,4 +577,322 @@ test('real games producer payload reaches receiver without granting playback con
   player.stateChange(1);
   assert.equal(starts(player).length, count);
   assert.equal(session.getSnapshot().desiredPlaying, false);
+});
+
+test('top means one paused background player, not an on-demand audible popup', async (t) => {
+  const { session, players } = sessionSetup(t);
+  t.after(session.mount('top', host()));
+  await flush();
+  const player = players[0];
+  player.ready();
+  assert.equal(players.length, 1);
+  assert.equal(session.getSnapshot().owner, 'top');
+  assert.equal(session.getSnapshot().mounted, true);
+  assert.equal(session.getSnapshot().ready, true);
+  assert.equal(session.getSnapshot().desiredPlaying, false);
+  assert.equal('panelOpen' in session.getSnapshot(), false);
+  assert.deepEqual(starts(player), []);
+  session.play();
+  assert.deepEqual(starts(player), [['play']]);
+  player.stateChange(1);
+  session.pause();
+  player.stateChange(2);
+  assert.equal(session.getSnapshot().status, 'paused');
+  assert.equal(players.length, 1);
+});
+
+test('/ -> /community -> /games leaves the same background instance and timeline running', async (t) => {
+  const source = await readFile(new URL('../components/layout/GlobalAppShell.tsx', import.meta.url), 'utf8');
+  const ownerExpression = source.match(/const musicOwner = ([^;]+);/)[1];
+  const { session, players } = sessionSetup(t);
+  t.after(session.mount('top', host()));
+  await flush();
+  const player = players[0];
+  player.ready();
+  session.play();
+  player.time = 37;
+  player.stateChange(1);
+  const before = session.getSnapshot();
+  const commands = player.calls.length;
+  for (const pathname of ['/', '/community', '/games']) {
+    session.setRoute(runInNewContext(ownerExpression, { mode: 'public', isCallRoute: false, pathname }));
+    assert.equal(session.getSnapshot(), before);
+    assert.equal(player.calls.length, commands);
+  }
+  assert.equal(players.length, 1);
+  assert.equal(session.getSnapshot().currentTime, 37);
+  assert.equal(session.getSnapshot().status, 'playing');
+});
+
+test('volume, mute, next, previous and chosen tracks all command the same background', async (t) => {
+  const { session, players } = sessionSetup(t);
+  t.after(session.mount('top', host()));
+  await flush();
+  const player = players[0];
+  player.ready();
+  session.setVolume(28);
+  session.setMuted(true);
+  session.relative(1);
+  player.stateChange(1);
+  assert.equal(player.id, MUSIC_TRACKS[1].videoId);
+  assert.equal(player.volume, 28);
+  assert.equal(player.muted, true);
+  session.relative(-1);
+  assert.equal(player.id, MUSIC_TRACKS[0].videoId);
+  session.select(MUSIC_TRACKS[3]);
+  assert.equal(player.id, MUSIC_TRACKS[3].videoId);
+  session.setMuted(false);
+  assert.equal(player.muted, false);
+  session.setVolume(0);
+  assert.equal(player.muted, true);
+  session.setVolume(64);
+  assert.equal(player.volume, 64);
+  assert.equal(player.muted, false);
+  session.setPlaylist([MUSIC_TRACKS[2], MUSIC_TRACKS[3]], true);
+  session.relative(1);
+  assert.equal(player.id, MUSIC_TRACKS[2].videoId);
+  assert.equal(players.length, 1);
+  assert.equal(player.calls.some(([name]) => name === 'destroy'), false);
+});
+
+test('owner handoff captures native audio immediately and rejects every late old-owner event', async (t) => {
+  const { session, players } = sessionSetup(t);
+  const oldCleanup = session.mount('top', host());
+  await flush();
+  const old = players[0];
+  old.ready();
+  session.play();
+  old.stateChange(1);
+  old.volume = 17;
+  old.muted = true; // Navigate before the next native-volume poll.
+  session.setRoute('video');
+  t.after(session.mount('video', host()));
+  await flush();
+  const current = players[1];
+  current.ready();
+  const before = session.getSnapshot();
+  oldCleanup();
+  old.ready();
+  old.stateChange(1);
+  old.stateChange(0);
+  old.error(150);
+  old.blocked();
+  assert.equal(session.getSnapshot(), before);
+  assert.deepEqual(old.calls.at(-1), ['destroy']);
+  assert.deepEqual(current.calls.slice(0, 2), [['volume', 17], ['mute']]);
+  assert.equal(starts(current).length, 0);
+  session.play();
+  current.stateChange(1);
+  session.setRoute('top');
+  t.after(session.mount('top', host()));
+  await flush();
+  players[2].ready();
+  assert.equal(starts(players[2]).length, 0);
+  assert.equal(players[2].volume, 17);
+  assert.equal(players[2].muted, true);
+});
+
+test('compact, admin and both video-call routes suspend ownership; disabled Play cannot load', async (t) => {
+  const source = await readFile(new URL('../components/layout/GlobalAppShell.tsx', import.meta.url), 'utf8');
+  const ownerExpression = source.match(/const musicOwner = ([^;]+);/)[1];
+  const { session, players } = sessionSetup(t);
+  t.after(session.mount('top', host()));
+  await flush();
+  players[0].ready();
+  session.play();
+  players[0].stateChange(1);
+  for (const [mode, pathname] of [['admin', '/admin'], ['admin', '/master'], ['compact', '/webrtc'], ['public', '/webrtc'], ['public', '/apps/random-chat']]) {
+    const owner = runInNewContext(ownerExpression, { mode, pathname, isCallRoute: pathname === '/webrtc' || pathname === '/apps/random-chat' });
+    assert.equal(owner, null);
+    session.setRoute(owner);
+    session.play();
+    session.toggle();
+    session.select(MUSIC_TRACKS[1]);
+    session.sync({ player: 'top', track: MUSIC_TRACKS[2], playing: true });
+    session.mount('top', host());
+    players[0].stateChange(1);
+    assert.equal(session.getSnapshot().mounted, false);
+    assert.equal(session.getSnapshot().desiredPlaying, false);
+    assert.equal(session.getSnapshot().status, 'idle');
+  }
+  assert.equal(players.length, 1);
+  assert.deepEqual(players[0].calls.at(-1), ['destroy']);
+});
+
+test('header remount cannot overwrite native volume and mute with stale local storage', async (t) => {
+  const { session, players } = sessionSetup(t);
+  session.restoreVolume(41);
+  t.after(session.mount('top', host()));
+  await flush();
+  players[0].ready();
+  players[0].volume = 13;
+  players[0].muted = true;
+  session.setRoute(null);
+  session.restoreVolume(41);
+  assert.equal(session.getSnapshot().volume, 13);
+  assert.equal(session.getSnapshot().muted, true);
+});
+
+test('owner change during controller creation destroys the unassigned ghost controller', async (t) => {
+  const { session, players } = sessionSetup(t);
+  const unsubscribe = session.subscribe(() => {
+    if (session.getSnapshot().status === 'loading') session.setRoute(null);
+  });
+  t.after(unsubscribe);
+  session.mount('top', host());
+  await flush();
+  assert.equal(players.length, 0);
+  assert.equal(session.getSnapshot().owner, null);
+  assert.equal(session.getSnapshot().mounted, false);
+  assert.equal(session.getSnapshot().status, 'idle');
+});
+
+test('synchronous SDK onReady cleanup cannot resurrect a ghost iframe or polling timer', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const fake = fakeSDK();
+  class ImmediatePlayer extends fake.sdk.Player {
+    constructor(element, options) { super(element, options); this.ready(); }
+  }
+  let controller;
+  let updates = 0;
+  controller = createYouTubeController(host(), {
+    videoId: 'ghost', volume: 70, origin: 'https://preview.example',
+    loadSDK: async () => ({ Player: ImmediatePlayer }),
+    onChange(snapshot) { updates++; if (snapshot.ready) controller.destroy(); },
+  });
+  t.after(() => controller.destroy());
+  controller.setPlaying(true);
+  await flush();
+  const before = updates;
+  t.mock.timers.tick(20000);
+  fake.players[0].stateChange(1);
+  fake.players[0].ready();
+  assert.equal(updates, before);
+  assert.deepEqual(starts(fake.players[0]), []);
+  assert.deepEqual(fake.players[0].calls.at(-1), ['destroy']);
+});
+
+test('delayed and intermediate SDK audio acknowledgements cannot roll back newer commands', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'] });
+  const { controller, players } = setup(t);
+  await flush();
+  const player = players[0];
+  player.ready();
+  player.delayAudio = true;
+  controller.setVolume(18);
+  controller.setMuted(true);
+  assert.equal(controller.getSnapshot().volume, 18);
+  assert.equal(controller.getSnapshot().muted, true);
+  assert.equal(player.volume, 70);
+  assert.equal(player.muted, false);
+  controller.setVolume(32, true);
+  player.volume = 18; // Only the previous command has reached the SDK cache.
+  t.mock.timers.tick(500);
+  assert.equal(controller.getSnapshot().volume, 32);
+  assert.equal(controller.getSnapshot().muted, true);
+  player.volume = 32;
+  t.mock.timers.tick(500);
+  assert.equal(controller.getSnapshot().muted, true);
+  player.muted = true;
+  t.mock.timers.tick(500);
+  player.volume = 47; // After acknowledgement, native controls remain authoritative.
+  player.muted = false;
+  t.mock.timers.tick(500);
+  assert.equal(controller.getSnapshot().volume, 47);
+  assert.equal(controller.getSnapshot().muted, false);
+});
+
+test('rapid commands returning to the old getter value wait through intermediate acknowledgements', async (t) => {
+  const { controller, players } = setup(t);
+  await flush();
+  const player = players[0];
+  player.ready();
+  player.delayAudio = true;
+  controller.setVolume(18);
+  controller.setMuted(true);
+  controller.setVolume(70);
+  assert.equal(controller.getSnapshot().volume, 70);
+  assert.equal(controller.getSnapshot().muted, false);
+  player.volume = 18;
+  player.muted = true;
+  assert.equal(controller.getSnapshot().volume, 70);
+  assert.equal(controller.getSnapshot().muted, false);
+  player.volume = 70;
+  player.muted = false;
+  controller.getSnapshot();
+  player.volume = 26;
+  player.muted = true;
+  assert.equal(controller.getSnapshot().volume, 26);
+  assert.equal(controller.getSnapshot().muted, true);
+});
+
+test('unacknowledged commands do not suppress native audio readings indefinitely', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'] });
+  const { controller, players } = setup(t);
+  await flush();
+  const player = players[0];
+  player.ready();
+  player.delayAudio = true;
+  controller.setVolume(18);
+  controller.setMuted(true);
+  player.volume = 46;
+  t.mock.timers.tick(1500);
+  assert.equal(controller.getSnapshot().volume, 18);
+  assert.equal(controller.getSnapshot().muted, true);
+  const commands = player.calls.length;
+  t.mock.timers.tick(1000);
+  assert.equal(controller.getSnapshot().volume, 46);
+  assert.equal(controller.getSnapshot().muted, false);
+  assert.equal(player.calls.length, commands);
+});
+
+test('pending volume and mute survive immediate owner handoff and an SDK retry', async (t) => {
+  const { session, players } = sessionSetup(t);
+  session.mount('top', host());
+  await flush();
+  const old = players[0];
+  old.ready();
+  old.delayAudio = true;
+  session.setVolume(18);
+  session.setMuted(true);
+  session.setRoute('video');
+  assert.equal(session.getSnapshot().volume, 18);
+  assert.equal(session.getSnapshot().muted, true);
+  t.after(session.mount('video', host()));
+  await flush();
+  const page = players[1];
+  page.delayAudio = true;
+  page.ready();
+  assert.deepEqual(page.calls.slice(0, 2), [['volume', 18], ['mute']]);
+  assert.equal(starts(page).length, 0);
+  page.error(150);
+  session.play();
+  await flush();
+  const replacement = players[2];
+  replacement.ready();
+  assert.deepEqual(replacement.calls.slice(0, 2), [['volume', 18], ['mute']]);
+  assert.equal(session.getSnapshot().volume, 18);
+  assert.equal(session.getSnapshot().muted, true);
+  assert.deepEqual(page.calls.at(-1), ['destroy']);
+});
+
+test('only the generated background iframe loses focus and native keyboard controls', async (t) => {
+  const { session, players } = sessionSetup(t);
+  const backgroundHost = host();
+  session.mount('top', backgroundHost);
+  await flush();
+  const background = players[0];
+  background.ready();
+  assert.equal(background.options.playerVars.controls, 0);
+  assert.equal(background.options.playerVars.disablekb, 1);
+  assert.equal(background.getIframe().tabIndex, -1);
+  assert.equal(backgroundHost.tabIndex, undefined);
+  session.setRoute('video');
+  t.after(session.mount('video', host()));
+  await flush();
+  const page = players[1];
+  page.ready();
+  assert.equal(page.options.playerVars.controls, 1);
+  assert.equal(page.options.playerVars.disablekb, 0);
+  assert.equal(page.getIframe().tabIndex, 0);
 });

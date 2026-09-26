@@ -120,11 +120,6 @@ export default function MusicPage() {
     musicPlayback.toggle();
   };
 
-  const retryPlaying = () => {
-    revealMusicPlayer(playerHostRef.current);
-    musicPlayback.retry();
-  };
-
   const changeVolume = (next: number) => {
     musicPlayback.setVolume(next);
     try { window.localStorage.setItem('gyopo-music-volume', String(next)); } catch { /* Playback works without storage. */ }
@@ -159,11 +154,9 @@ export default function MusicPage() {
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_330px]">
           <section style={{ minWidth: 0 }} className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#10182b] shadow-2xl">
-            <div id="music-video-player" ref={playerHostRef} className="aspect-video bg-black" style={{ minWidth: 200, minHeight: 200 }} data-player-status={playback.status} data-player-state={playback.state} data-player-time={playback.currentTime} data-player-muted={playback.muted} />
+            <div id="music-video-player" ref={playerHostRef} className="aspect-video bg-black" style={{ minWidth: 200, minHeight: 200 }} data-player-status={playback.status} data-player-state={playback.state} data-player-time={playback.currentTime} data-player-muted={playback.muted} data-player-volume={volume} data-player-owner={playback.owner} />
             <div style={{ padding: '8px 20px', fontSize: 13 }}>
               <p role={playback.error ? 'alert' : 'status'}>{playbackMessage(playback)}{playback.muted || volume === 0 ? ' · 음소거' : ''}</p>
-              {(playback.status === 'blocked' || playback.status === 'error') && <button type="button" onClick={retryPlaying} style={{ color: '#5eead4', marginRight: 16 }}>다시 재생</button>}
-              <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(track.videoId)}`} target="_blank" rel="noreferrer">YouTube에서 열기</a>
             </div>
                <div className="flex flex-wrap items-center justify-between gap-3 p-5 md:p-7"><div><div className="text-xs font-black uppercase tracking-[0.2em] text-teal-300">Now playing</div><h2 className="mt-2 text-3xl font-black">{track.title}</h2><p className="mt-1 text-sm font-bold text-slate-400">{track.artist}</p><div className="mt-3 flex flex-wrap gap-2 text-[11px] font-bold text-slate-500"><span className="border border-white/10 bg-white/[.04] px-2.5 py-1.5">조회수 · {track.views || '조회 중'}</span><span className="border border-white/10 bg-white/[.04] px-2.5 py-1.5">발매일 · {track.published || '조회 중'}</span></div></div><div className="flex flex-wrap items-center gap-3"><button type="button" onClick={() => toggleFavorite(track)} className={`border px-3 py-2 text-xs font-black ${favoriteIds.includes(track.id) ? 'border-rose-300/50 text-rose-200' : 'border-white/10 text-slate-300'}`}><Heart size={14} fill={favoriteIds.includes(track.id) ? 'currentColor' : 'none'} /></button><button type="button" onClick={togglePlaying} className="flex items-center gap-2 border border-teal-300/30 bg-teal-300 px-3 py-2 text-xs font-black text-slate-950">{playing ? <Pause size={14} /> : <Play size={14} />}{playing ? '일시정지' : '재생'}</button><label className="flex items-center gap-2 text-xs text-slate-400">볼륨<input type="range" min="0" max="100" value={volume} onChange={(event) => changeVolume(Number(event.target.value))} className="accent-teal-300" /></label></div></div>
           </section>

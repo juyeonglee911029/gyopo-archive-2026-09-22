@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useId, useState, useSyncExternalStore, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { Suspense, useEffect, useId, useLayoutEffect, useState, useSyncExternalStore, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import Header from './Header';
 import Footer from './footer';
@@ -17,6 +17,7 @@ import SiteBackgroundVideo from './sitebackgroundvideo';
 import { AdSenseScript } from '@/components/ads/AdSense';
 import RouteExperience from './RouteExperience';
 import { PageContainer } from '@/components/ui/Primitives';
+import { musicPlayback } from '@/lib/musicPlayback';
 
 const subscribeToDocument = () => () => {};
 
@@ -43,9 +44,9 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
   const isCompact = mode === 'compact';
   const isCallRoute = pathname === '/webrtc' || pathname === '/apps/random-chat';
   const mediaRoute = pathname === '/music' || pathname === '/watch';
-  // Keep the background iframe mounted while routes change, including the music page.
-  // Music-video playback controls its audio separately and must not restart this video.
-  const backgroundVideoRoute = !isCompact;
+  const musicOwner = mode !== 'public' || isCallRoute ? null : pathname === '/music' ? 'video' : 'top';
+  // Ordinary routes retain the same background host and controller, without pausing.
+  useLayoutEffect(() => { musicPlayback.setRoute(musicOwner); }, [musicOwner]);
 
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
 
@@ -73,7 +74,7 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
 
   return <div className={`global-app-shell${isCompact ? ' is-compact' : ''}${mediaRoute ? ' is-media-route' : ''}`} data-shell-mode={mode} data-media-route={mediaRoute ? pathname.slice(1) : undefined}>
     {isCallRoute && <Suspense fallback={null}><CompactCallMode onChange={setCompact} /></Suspense>}
-      {backgroundVideoRoute && <SiteBackgroundVideo />}
+    {musicOwner === 'top' && <SiteBackgroundVideo />}
     {!isCompact && <AdSenseScript />}
     {!isCompact && <GoogleTranslate />}
     {!isCompact && <a href="#global-main" className="global-skip-link">본문 바로가기</a>}

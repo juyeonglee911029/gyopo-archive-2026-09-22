@@ -44,11 +44,12 @@ test('root head owns exactly four core links in selected order', () => {
 test('page styles are route-owned, not persistent React stylesheet resources', () => {
   const component = read('src/components/layout/ReleaseRouteStyles.tsx');
   assert.match(component, /^'use client';/);
-  assert.match(component, /page === 'home' \? '2a6ljh5jdhtlj\.css' : '2haazg539gb52\.css'/);
+  assert.match(component, /const file = '2haazg539gb52\.css'/);
   assert.match(component, /<link\s+rel="stylesheet"/);
   assert.match(component, /onLoad=\{\(\) => \{\}\}/);
   assert.doesNotMatch(component, /\bprecedence=|createPortal|document\.head|useEffect/);
-  assert.match(read('src/app/page.tsx'), /<ReleaseRouteStyles page="home"\s*\/>/);
+  assert.match(read('src/app/page.tsx'), /import styles from '\.\/home\.module\.css'/);
+  assert.doesNotMatch(read('src/app/page.tsx'), /ReleaseRouteStyles|home-refresh/);
   assert.match(read('src/app/games/layout.tsx'), /<ReleaseRouteStyles page="games"\s*\/>/);
   assert.match(read('src/app/apps/tetris/page.tsx'), /<ReleaseRouteStyles page="games"\s*\/>/);
   assert.doesNotMatch(read('src/components/layout/GlobalAppShell.tsx'), /ReleaseRouteStyles/);
