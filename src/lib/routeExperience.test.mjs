@@ -60,3 +60,26 @@ test('a route that becomes ready after its timeout clears the stale error', () =
   assert.equal(experience.getSnapshot().error, null);
   experience.dispose();
 });
+
+test('a timed-out route recovers when its last pending readiness reporter is removed', () => {
+  const fake = createFakeClock();
+  const experience = createRouteExperience(fake.clock);
+  const destination = '/';
+  experience.commit(destination);
+  experience.report('route-pending', { destination, loading: true, error: false });
+  experience.report('home-feed', { destination, loading: true, error: false });
+  fake.flushFrames();
+
+  fake.advance(ROUTE_TIMEOUT);
+  assert.equal(experience.getSnapshot().phase, 'ERROR');
+
+  experience.remove('route-pending');
+  fake.flushFrames();
+  assert.equal(experience.getSnapshot().phase, 'ERROR');
+
+  experience.remove('home-feed');
+  fake.flushFrames();
+  assert.equal(experience.getSnapshot().phase, 'COMPLETE');
+  assert.equal(experience.getSnapshot().error, null);
+  experience.dispose();
+});
