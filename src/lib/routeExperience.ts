@@ -144,6 +144,12 @@ export function createRouteExperience(clock: Clock = {
     check();
     return true;
   };
+  const resumeTimedOutRoute = (destination: string) => {
+    if (state.phase !== 'ERROR' || state.error !== 'timeout' || destination !== state.destination) return false;
+    const current = [...reports.values()].filter((report) => report.destination === destination);
+    if (current.some((report) => report.loading || report.error)) return false;
+    return start(destination);
+  };
   return {
     getSnapshot: () => state,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -158,12 +164,16 @@ export function createRouteExperience(clock: Clock = {
     report(id: string, report: Readiness) {
       const previous = reports.get(id);
       reports.set(id, report);
-      if (state.phase === 'ERROR' && state.error === 'timeout' && report.destination === state.destination && !report.loading && !report.error) start(state.destination);
-      else if (report.destination === committed && report.loading && !previous?.loading && !isRouteBusy(state)) start(committed);
+      if (!resumeTimedOutRoute(report.destination) && report.destination === committed && report.loading && !previous?.loading && !isRouteBusy(state)) start(committed);
       else if (report.destination === state.destination && report.error && state.phase === 'COMPLETE') start(committed);
       check();
     },
-    remove(id: string) { reports.delete(id); check(); },
+    remove(id: string) {
+      const previous = reports.get(id);
+      reports.delete(id);
+      if (previous) resumeTimedOutRoute(previous.destination);
+      check();
+    },
     dispose() { clear(); reports.clear(); committed = ''; state = initialRouteState; },
   };
 }
