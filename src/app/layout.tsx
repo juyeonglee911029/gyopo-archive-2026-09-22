@@ -44,6 +44,11 @@ export default function RootLayout({
         <link rel="stylesheet" href="/styles/release-aa09/0obc4wf2u8iey.css" />
         <link rel="stylesheet" href="/styles/release-aa09/3p_9c1a7v-yp3.css" />
         <link rel="stylesheet" href="/styles/release-aa09/38nmym_0ssd2g.css" />
+        <style>{`@media (max-width: 767px) {
+          .global-header-wrap {
+            background: #070e1a !important;
+          }
+        }`}</style>
       </head>
       <body className="font-sans min-h-screen">
         <AppRuntime>
