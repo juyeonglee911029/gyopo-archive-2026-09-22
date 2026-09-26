@@ -56,6 +56,17 @@ test('page styles are route-owned, not persistent React stylesheet resources', (
   assert.doesNotMatch(read('src/components/layout/GlobalAppShell.tsx'), /ReleaseRouteStyles/);
 });
 
+test('homepage panels use translucent backgrounds', () => {
+  const home = read('src/app/home.module.css');
+  for (const name of ['intro', 'region', 'quickLinks', 'categories', 'feed', 'connect']) {
+    const block = home.match(new RegExp(`\\.${name} \\{([^}]*)\\}`))?.[1];
+    assert.ok(block, `${name} panel exists`);
+    assert.match(block, /#[\da-f]{8}/i, `${name} panel has an alpha color`);
+  }
+  assert.match(home, /\.search \{[^}]*background: #[\da-f]{8}/i);
+  assert.match(home, /\.regionSelect select \{[^}]*background: #[\da-f]{8}/i);
+});
+
 test('superseded global CSS and Tailwind entry imports cannot return', () => {
   const banned = /(?:globals(?:final|fix)?|design-system|music-popover|route-experience|call-ui|home-refresh|game-workspace)\.css$/;
   const files = readdirSync(join(root, 'src'), { recursive: true });
@@ -93,10 +104,19 @@ test('shared markup delegates geometry to the selected stylesheet', () => {
   assert.match(read('src/components/layout/MobileDrawer.tsx'), /min-width: 769px/);
 });
 
-test('sidebar friends action keeps guest navigation and signed-in dock behavior', () => {
+test('sidebar friends action keeps guest navigation and opens an anchored dock', () => {
   const sidebar = read('src/components/layout/GlobalSidebar.tsx');
   assert.match(sidebar, /className="global-friends-link"/);
+  assert.match(sidebar, /style=\{\{ borderRadius: 0 \}\}/);
   assert.match(sidebar, /if \(!user\)\s*\{[\s\S]*?router\.push\('\/users'\)/);
-  assert.match(sidebar, /window\.dispatchEvent\(new Event\('gyopo-friends-open'\)\)/);
+  assert.match(sidebar, /window\.dispatchEvent\(new CustomEvent\('gyopo-friends-open'/);
+  assert.match(sidebar, /bottom: rect\.bottom/);
   assert.match(sidebar, /onNavigate\?\.\(\)/);
+
+  const dock = read('src/components/layout/FriendDock.tsx');
+  assert.match(dock, /listOnlineUsers/);
+  assert.match(dock, /상태 확인 중/);
+  assert.match(dock, /온라인/);
+  assert.match(dock, /오프라인/);
+  assert.match(dock, /max-h-48/);
 });

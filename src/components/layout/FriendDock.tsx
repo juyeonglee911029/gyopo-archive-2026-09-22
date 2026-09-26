@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react';
 import { Check, FileText, MessageCircle, Paperclip, PhoneCall, Send, UserRoundCheck, Video, X } from 'lucide-react';
-import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFreshSessionToken, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
+import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFreshSessionToken, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, listOnlineUsers, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
 
 type FriendMember = Partial<PublicProfile> & { id: string; friendshipId: string };
@@ -32,6 +32,8 @@ export default function FriendDock() {
   const isKorean = language === 'ko';
   const [open, setOpen] = useState(false);
   const [friends, setFriends] = useState<FriendMember[]>([]);
+  const [friendsLoading, setFriendsLoading] = useState(false);
+  const [onlineFriendIds, setOnlineFriendIds] = useState<Set<string> | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const [videoCall, setVideoCall] = useState<{ id: string; friendId: string } | null>(null);
   const [videoClosing, setVideoClosing] = useState(false);
@@ -57,6 +59,7 @@ export default function FriendDock() {
   const callOperationRef = useRef(0);
   const callBusyRef = useRef(false);
   const closingRef = useRef(false);
+  const friendOwnerIdRef = useRef('');
 
   const closeVideoCall = () => {
     if (!videoCall || closingRef.current) return;
@@ -94,8 +97,19 @@ export default function FriendDock() {
 
   useEffect(() => {
     const show = (event: Event) => {
-      const friendId = (event as CustomEvent<{ friendId?: string }>).detail?.friendId;
-      if (friendId) setSelectedId(friendId);
+      const detail = (event as CustomEvent<{ friendId?: string; anchor?: { left: number; bottom: number } }>).detail;
+      if (detail?.friendId) setSelectedId(detail.friendId);
+      if (detail?.anchor && window.matchMedia('(min-width: 769px)').matches) {
+        const panel = document.getElementById('friend-dock')?.getBoundingClientRect();
+        const width = panel?.width || 430;
+        const height = panel?.height || 360;
+        setDockPosition({
+          left: Math.max(8, Math.min(window.innerWidth - width - 8, detail.anchor.left)),
+          top: Math.max(8, Math.min(window.innerHeight - height - 8, detail.anchor.bottom + 8)),
+        });
+      } else {
+        setDockPosition(null);
+      }
       setOpen(true);
     };
     window.addEventListener('gyopo-friends-open', show);
@@ -123,29 +137,54 @@ export default function FriendDock() {
 
   useEffect(() => {
     if (!user) {
+      friendOwnerIdRef.current = '';
       setFriends([]);
       setSelectedId('');
       setVideoCall(null);
       setPendingCall(null);
+      setOnlineFriendIds(null);
+      setFriendsLoading(false);
       return;
     }
+    if (friendOwnerIdRef.current !== user.id) {
+      friendOwnerIdRef.current = user.id;
+      setFriends([]);
+      setSelectedId('');
+      setOnlineFriendIds(null);
+    }
+    if (!open) return;
     let active = true;
+    let loading = false;
+    setFriendsLoading(true);
     const load = async () => {
-      const token = await getFreshSessionToken();
-      if (!token) {
-        if (active) setMessageError('다시 로그인해주세요.');
-        return;
+      if (loading) return;
+      loading = true;
+      try {
+        const token = await getFreshSessionToken();
+        if (!token) {
+          if (active) setMessageError('다시 로그인해주세요.');
+          return;
+        }
+        const [connections, onlineUsers] = await Promise.all([
+          listFriendConnections(user.id, token).catch(() => []),
+          listOnlineUsers().catch(() => null),
+        ]);
+        const accepted = connections.filter((item) => item.status === 'accepted');
+        const rows = await Promise.all(accepted.map(async (connection) => {
+          const id = connection.requesterId === user.id ? connection.addresseeId : connection.requesterId;
+          const profile = await getDocument<PublicProfile>('publicProfiles', id, token).catch(() => null);
+          return { id, friendshipId: connection.id, ...(profile || {}) } as FriendMember;
+        }));
+        if (!active) return;
+        setFriends(rows);
+        if (onlineUsers !== null) setOnlineFriendIds(new Set(onlineUsers.map((online) => online.id)));
+        setSelectedId((current) => rows.some((friend) => friend.id === current) ? current : rows[0]?.id || '');
+      } catch (loadError) {
+        if (active) setMessageError(loadError instanceof Error ? loadError.message : '친구 목록을 불러오지 못했습니다.');
+      } finally {
+        loading = false;
+        if (active) setFriendsLoading(false);
       }
-      const connections = await listFriendConnections(user.id, token).catch(() => []);
-      const accepted = connections.filter((item) => item.status === 'accepted');
-      const rows = await Promise.all(accepted.map(async (connection) => {
-        const id = connection.requesterId === user.id ? connection.addresseeId : connection.requesterId;
-        const profile = await getDocument<PublicProfile>('publicProfiles', id, token).catch(() => null);
-        return { id, friendshipId: connection.id, ...(profile || {}) } as FriendMember;
-      }));
-      if (!active) return;
-      setFriends(rows);
-      setSelectedId((current) => rows.some((friend) => friend.id === current) ? current : rows[0]?.id || '');
     };
     void load();
     const timer = window.setInterval(load, 5_000);
@@ -153,7 +192,7 @@ export default function FriendDock() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [user?.id]);
+  }, [open, user?.id]);
 
   useEffect(() => {
     if (!user || !pendingCall) return;
@@ -423,13 +462,34 @@ export default function FriendDock() {
 
          {videoCall && <div className="friend-call-video relative mx-3 mb-3 overflow-hidden rounded-xl bg-black"><iframe ref={callFrameRef} key={videoCall.id} title="친구 영상 통화" src={`/webrtc?friend=${encodeURIComponent(videoCall.friendId)}&auto=1&compact=1&callKind=friend&callId=${encodeURIComponent(videoCall.id)}`} allow="camera; microphone; autoplay; display-capture" className="h-full w-full border-0" /></div>}
 
-         {friends.length === 0 ? (
-           <div className="p-8 text-center"><UserRoundCheck size={28} className="mx-auto text-slate-600" /><p className="mt-3 text-sm font-bold text-slate-300">수락된 친구가 없습니다.</p><p className="mt-1 text-xs text-slate-500">유저 목록에서 친구 요청을 보내보세요.</p></div>
-         ) : (
-           <>
-              <div className="flex gap-2 overflow-x-auto border-0 p-2.5">
-               {friends.map((friend) => <button key={friend.id} type="button" onClick={() => setSelectedId(friend.id)} className={`flex shrink-0 items-center gap-2 border-0 px-2.5 py-2 text-xs font-black ${friend.id === selectedId ? 'bg-cyan-300 text-slate-950' : 'bg-white/5 text-slate-300'}`}>{friend.image ? <img src={friend.image} alt="" className="h-6 w-6 rounded-lg object-cover" /> : <span className="grid h-6 w-6 place-items-center bg-white/10">{friend.name?.slice(0, 1) || '?'}</span>}<span className="max-w-24 truncate">{friend.name || '친구'}</span></button>)}
-            </div>
+          {friendsLoading && friends.length === 0 ? (
+            <div className="px-6 py-5 text-center text-xs font-bold text-slate-400">{isKorean ? '친구 목록을 불러오는 중입니다...' : 'Loading friends...'}</div>
+          ) : friends.length === 0 ? (
+            <div className="p-8 text-center"><UserRoundCheck size={28} className="mx-auto text-slate-600" /><p className="mt-3 text-sm font-bold text-slate-300">수락된 친구가 없습니다.</p><p className="mt-1 text-xs text-slate-500">유저 목록에서 친구 요청을 보내보세요.</p></div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between border-y border-white/10 px-3 py-2 text-[10px] font-black text-slate-400">
+                <span>{isKorean ? '친구 목록' : 'Friends'}</span>
+                <span>{isKorean ? `${friends.length}명 · 최근 90초 기준` : `${friends.length} friends · active within 90 sec`}</span>
+              </div>
+              <div className="max-h-48 space-y-1 overflow-y-auto px-2.5 py-2">
+                {friends.map((friend) => {
+                  const online = onlineFriendIds?.has(friend.id) || false;
+                  const statusLabel = onlineFriendIds === null
+                    ? (isKorean ? '상태 확인 중' : 'Checking status')
+                    : online ? (isKorean ? '온라인' : 'Online') : (isKorean ? '오프라인' : 'Offline');
+                  return <button key={friend.id} type="button" aria-pressed={friend.id === selectedId} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')}: ${statusLabel}`} onClick={() => setSelectedId(friend.id)} className={`flex w-full items-center gap-2.5 border-0 px-2.5 py-2 text-left text-xs font-black ${friend.id === selectedId ? 'bg-cyan-300 text-slate-950' : 'bg-white/5 text-slate-300'}`}>
+                    {friend.image ? <img src={friend.image} alt="" className="h-8 w-8 shrink-0 object-cover" /> : <span className="grid h-8 w-8 shrink-0 place-items-center bg-white/10 text-[11px]">{friend.name?.slice(0, 1) || '?'}</span>}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{friend.name || (isKorean ? '친구' : 'Friend')}</span>
+                      <span className={`mt-0.5 flex items-center gap-1.5 text-[9px] font-bold ${onlineFriendIds === null ? 'text-slate-500' : online ? 'text-emerald-300' : 'text-slate-500'}`}>
+                        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${onlineFriendIds === null ? 'bg-slate-500' : online ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                        {statusLabel}
+                      </span>
+                    </span>
+                  </button>;
+                })}
+              </div>
 
             {selected && <div className="p-3">
                {videoCall ? null : pendingCall?.friendId === selected.id ? (
