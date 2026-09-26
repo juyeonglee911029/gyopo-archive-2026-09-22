@@ -159,7 +159,7 @@ export default function GlobalSidebar({ onNavigate }: { onNavigate?: () => void 
         if (beginRoute('/users')) router.push('/users');
         return;
       }
-      const anchor = window.matchMedia('(min-width: 769px)').matches ? { left: rect.left, bottom: rect.bottom } : undefined;
+      const anchor = window.matchMedia('(min-width: 769px)').matches ? { left: rect.left, top: rect.top, bottom: rect.bottom } : undefined;
       window.dispatchEvent(new CustomEvent('gyopo-friends-open', { detail: { anchor } }));
     }}><UserRoundCheck size={18} aria-hidden="true" /><span>{language === 'ko' ? '친구·통화' : 'Friends & calls'}</span></button>
   </div>;

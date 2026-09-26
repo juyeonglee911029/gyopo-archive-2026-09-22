@@ -6,6 +6,7 @@ import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequ
 import { useGlobalStore } from '@/store/useGlobalStore';
 
 type FriendMember = Partial<PublicProfile> & { id: string; friendshipId: string };
+type DockAnchor = { left: number; top: number; bottom: number };
 type FriendMessage = {
   id: string;
   friendshipId: string;
@@ -50,6 +51,7 @@ export default function FriendDock() {
   const [incomingCalls, setIncomingCalls] = useState<FriendCallRequest[]>([]);
   const [pendingCall, setPendingCall] = useState<{ id: string; friendId: string; expiresAt: string } | null>(null);
   const [dockPosition, setDockPosition] = useState<{ left: number; top: number } | null>(null);
+  const dockAnchorRef = useRef<DockAnchor | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragRef = useRef<{ offsetX: number; offsetY: number; width: number; height: number } | null>(null);
@@ -97,17 +99,22 @@ export default function FriendDock() {
 
   useEffect(() => {
     const show = (event: Event) => {
-      const detail = (event as CustomEvent<{ friendId?: string; anchor?: { left: number; bottom: number } }>).detail;
+      const detail = (event as CustomEvent<{ friendId?: string; anchor?: DockAnchor }>).detail;
       if (detail?.friendId) setSelectedId(detail.friendId);
       if (detail?.anchor && window.matchMedia('(min-width: 769px)').matches) {
+        dockAnchorRef.current = detail.anchor;
         const panel = document.getElementById('friend-dock')?.getBoundingClientRect();
         const width = panel?.width || 430;
         const height = panel?.height || 360;
+        const below = detail.anchor.bottom + 8;
         setDockPosition({
           left: Math.max(8, Math.min(window.innerWidth - width - 8, detail.anchor.left)),
-          top: Math.max(8, Math.min(window.innerHeight - height - 8, detail.anchor.bottom + 8)),
+          top: height <= window.innerHeight - below - 8
+            ? below
+            : Math.max(8, Math.min(window.innerHeight - height - 8, detail.anchor.top - height - 8)),
         });
       } else {
+        dockAnchorRef.current = null;
         setDockPosition(null);
       }
       setOpen(true);
@@ -115,6 +122,39 @@ export default function FriendDock() {
     window.addEventListener('gyopo-friends-open', show);
     return () => window.removeEventListener('gyopo-friends-open', show);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const panel = document.getElementById('friend-dock');
+    if (!panel) return;
+    const updatePosition = () => {
+      if (!window.matchMedia('(min-width: 769px)').matches) {
+        dockAnchorRef.current = null;
+        setDockPosition(null);
+        return;
+      }
+      const rect = panel.getBoundingClientRect();
+      setDockPosition((current) => {
+        if (!current) return current;
+        const anchor = dockAnchorRef.current;
+        const left = Math.max(8, Math.min(window.innerWidth - rect.width - 8, anchor?.left ?? current.left));
+        const top = anchor
+          ? rect.height <= window.innerHeight - anchor.bottom - 16
+            ? anchor.bottom + 8
+            : Math.max(8, Math.min(window.innerHeight - rect.height - 8, anchor.top - rect.height - 8))
+          : Math.max(8, Math.min(window.innerHeight - rect.height - 8, current.top));
+        return left === current.left && top === current.top ? current : { left, top };
+      });
+    };
+    const observer = new ResizeObserver(updatePosition);
+    observer.observe(panel);
+    window.addEventListener('resize', updatePosition);
+    updatePosition();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [open]);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -282,6 +322,7 @@ export default function FriendDock() {
     const panel = document.getElementById('friend-dock');
     if (!panel) return;
     const rect = panel.getBoundingClientRect();
+    dockAnchorRef.current = null;
     setDockPosition((current) => current || { left: rect.left, top: rect.top });
     dragRef.current = { offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top, width: rect.width, height: rect.height };
     setDragging(true);
@@ -451,7 +492,7 @@ export default function FriendDock() {
          {messageNotice && <span className="absolute bottom-14 right-0 whitespace-nowrap rounded-lg bg-emerald-300 px-3 py-2 text-[11px] font-black text-slate-950 shadow-lg">{messageNotice}</span>}
        </button>
 
-       <aside id="friend-dock" style={dockPosition ? { left: dockPosition.left, top: dockPosition.top, right: 'auto', bottom: 'auto' } : undefined} className={`gyopo-friend-dock fixed bottom-4 left-3 right-3 z-[70] overflow-hidden rounded-[1.5rem] border-0 bg-[#091120] text-white shadow-[0_25px_100px_rgba(0,0,0,.7)] transition ${dragging ? 'cursor-grabbing select-none transition-none' : 'cursor-default'} lg:left-[17rem] lg:right-auto lg:w-[430px] ${videoCall ? 'friend-dock-call-active' : ''} ${videoClosing ? 'friend-dock-call-closing' : ''} ${open ? 'visible translate-y-0 opacity-100' : videoClosing ? 'visible translate-y-5 opacity-0' : 'invisible translate-y-5 opacity-0'}`}>
+        <aside id="friend-dock" style={{ ...(dockPosition ? { left: dockPosition.left, top: dockPosition.top, right: 'auto', bottom: 'auto' } : {}), maxHeight: 'calc(100dvh - 16px)' }} className={`gyopo-friend-dock fixed bottom-4 left-3 right-3 z-[70] overflow-x-hidden overflow-y-auto rounded-[1.5rem] border-0 bg-[#091120] text-white shadow-[0_25px_100px_rgba(0,0,0,.7)] transition ${dragging ? 'cursor-grabbing select-none transition-none' : 'cursor-default'} lg:left-[17rem] lg:right-auto lg:w-[430px] ${videoCall ? 'friend-dock-call-active' : ''} ${videoClosing ? 'friend-dock-call-closing' : ''} ${open ? 'visible translate-y-0 opacity-100' : videoClosing ? 'visible translate-y-5 opacity-0' : 'invisible translate-y-5 opacity-0'}`}>
            <header onPointerDown={startDockDrag} onPointerMove={moveDock} onPointerUp={stopDockDrag} onPointerCancel={stopDockDrag} className={`flex items-center justify-between border-0 px-4 py-3 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}>
             <div className="flex items-center gap-2 text-sm font-black"><UserRoundCheck size={17} className="text-cyan-300" /> {isKorean ? '친구 채팅·통화' : 'Friends Chat & Call'}</div>
             <button type="button" onClick={() => videoCall ? closeVideoCall() : setOpen(false)} aria-label="친구 패널 닫기" className="border-0 p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><X size={17} /></button>
