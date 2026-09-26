@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useEffectEvent, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useEffectEvent } from '@/lib/useeffectevent';
 import { Check, ExternalLink, RefreshCw, Save, Search, ShieldCheck } from 'lucide-react';
 import { getFreshSessionToken, isMasterUser } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
