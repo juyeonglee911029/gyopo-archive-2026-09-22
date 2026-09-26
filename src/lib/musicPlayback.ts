@@ -37,8 +37,7 @@ export function createMusicPlayback(makeController = createYouTubeController) {
   };
   const select = (track: MusicTrack, start = true) => {
     update({ track });
-    controller?.setTrack(track.videoId);
-    if (start) play();
+    controller?.setTrack(track.videoId, start);
   };
   const relative = (direction: -1 | 1) => {
     const pool = favoriteLoop && favorites.length ? favorites : MUSIC_TRACKS;

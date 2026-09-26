@@ -237,13 +237,17 @@ export function createYouTubeController(host: HTMLElement, options: {
       if (retry) start();
       else apply();
     },
-    setTrack(next: string) {
-      if (disposed || next === videoId) return;
-      videoId = next;
-      hasPlayed = false;
-      awaitingPlay = snapshot.desiredPlaying;
-      publish({ currentTime: 0, state: -1 });
-      apply();
+    setTrack(next: string, start = false) {
+      if (disposed) return;
+      if (next !== videoId) {
+        videoId = next;
+        hasPlayed = false;
+        awaitingPlay = snapshot.desiredPlaying;
+        publish({ currentTime: 0, state: -1 });
+        // Starting a selection must load directly, not race an asynchronous cue with Play.
+        if (!start) apply();
+      }
+      if (start) this.setPlaying(true);
     },
     setVolume(next: number, preserveMute = false) {
       if (disposed || !Number.isFinite(next)) return;
