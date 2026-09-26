@@ -110,10 +110,14 @@ test('sidebar friends action keeps guest navigation and opens an anchored dock',
   assert.match(sidebar, /style=\{\{ borderRadius: 0 \}\}/);
   assert.match(sidebar, /if \(!user\)\s*\{[\s\S]*?router\.push\('\/users'\)/);
   assert.match(sidebar, /window\.dispatchEvent\(new CustomEvent\('gyopo-friends-open'/);
+  assert.match(sidebar, /top: rect\.top/);
   assert.match(sidebar, /bottom: rect\.bottom/);
   assert.match(sidebar, /onNavigate\?\.\(\)/);
 
   const dock = read('src/components/layout/FriendDock.tsx');
+  assert.match(dock, /new ResizeObserver\(updatePosition\)/);
+  assert.match(dock, /anchor\.top - rect\.height - 8/);
+  assert.match(dock, /maxHeight: 'calc\(100dvh - 16px\)'/);
   assert.match(dock, /listOnlineUsers/);
   assert.match(dock, /상태 확인 중/);
   assert.match(dock, /온라인/);
