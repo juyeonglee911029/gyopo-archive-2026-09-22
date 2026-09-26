@@ -246,15 +246,15 @@ async function clientHarness({ storage = memoryStorage(), initialSession } = {})
   });
   const html = await documentRoute.GET().text();
   const script = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
-  const module = new SourceTextModule(script + '\nexport {state, loadLive, openAsset, groupQueries};', {
+  const clientModule = new SourceTextModule(script + '\nexport {state, loadLive, openAsset, groupQueries};', {
     context,
     importModuleDynamically: (specifier) => {
       throw new Error('Unexpected SDK or external module: ' + specifier);
     },
   });
-  await module.link(() => {}); await module.evaluate();
+  await clientModule.link(() => {}); await clientModule.evaluate();
   await new Promise(setImmediate);
-  return { ...module.namespace, element, portal, storage, network, provider, emit, opened, document, advanceClock(ms) {
+  return { ...clientModule.namespace, element, portal, storage, network, provider, emit, opened, document, advanceClock(ms) {
     clock.now += ms;
     for (const [id, timer] of [...timers]) if (timer.at <= clock.now) { timers.delete(id); timer.callback(); }
   } };

@@ -38,6 +38,7 @@ test('root head owns exactly four core links in selected order', () => {
   const links = [...head.matchAll(/<link\s+rel="stylesheet"\s+href="\/styles\/release-aa09\/([^"/]+)"\s*\/>/g)];
   assert.deepEqual(links.map((match) => match[1]), core);
   assert.equal((head.match(/<link\b/g) || []).length, 4);
+  assert.match(layout, /@media \(max-width: 767px\)[\s\S]*?\.global-header-wrap[\s\S]*?background: #070e1a !important;/);
   assert.doesNotMatch(layout, /2a6ljh5jdhtlj|2haazg539gb52/);
 });
 

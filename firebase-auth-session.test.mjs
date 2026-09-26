@@ -35,10 +35,10 @@ async function harness(initial = session()) {
       return pending.promise;
     },
   });
-  const module = new SourceTextModule(source, { context });
-  await module.link(() => { throw new Error('Unexpected source import'); });
-  await module.evaluate();
-  return { api: module.namespace, requests, events, storage,
+  const sourceModule = new SourceTextModule(source, { context });
+  await sourceModule.link(() => { throw new Error('Unexpected source import'); });
+  await sourceModule.evaluate();
+  return { api: sourceModule.namespace, requests, events, storage,
     read: () => JSON.parse(storage.getItem(key) || 'null'),
     replace: (value) => storage.setItem(key, JSON.stringify(value)),
   };
