@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useEffectEvent, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useEffectEvent } from '@/lib/useeffectevent';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, Check, ChevronRight, CircleGauge, ExternalLink, FilePenLine, Gauge, LockKeyhole, RefreshCw, Search, Settings2, ShieldCheck, Target, TrendingDown, TrendingUp } from 'lucide-react';
 import { getFreshSessionToken, isMasterUser } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
