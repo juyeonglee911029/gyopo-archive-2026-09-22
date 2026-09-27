@@ -410,7 +410,7 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
           </form>
           ) : null}
        </dialog>
-      {profileOpen && user && <div className="fixed inset-0 z-[260] flex items-center justify-center bg-[#050812]/85 p-4 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && setProfileOpen(false)}>
+      {profileOpen && user && <div className="fixed inset-0 flex items-center justify-center bg-[#050812]/85 p-4 backdrop-blur-sm" style={{ zIndex: 280 }} onMouseDown={(event) => event.target === event.currentTarget && setProfileOpen(false)}>
          <section role="dialog" aria-modal="true" aria-label="프로필 편집 / Edit profile" className="profile-edit-panel max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-none border-0 bg-[rgba(8,16,31,.86)] p-6 text-white shadow-none md:p-8">
           <div className="flex items-start justify-between gap-4">
             <div><p className="text-[10px] font-black uppercase tracking-[.24em] text-cyan-300">Profile / 프로필</p><h2 className="mt-2 text-2xl font-black">내 프로필 편집</h2><p className="mt-1 text-xs text-slate-500">Edit your public member profile</p></div>
