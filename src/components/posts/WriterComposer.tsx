@@ -83,7 +83,7 @@ export default function WriterComposer({ userId, initial, editing = false, onClo
     finally { setSaving(false); }
   };
 
-  return <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/70 p-3 sm:p-6" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+  return <div className="fixed inset-0 flex items-center justify-center bg-black/70 p-3 sm:p-6" style={{ zIndex: 280 }} onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <form onSubmit={save} className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#0f172a] shadow-2xl">
       <div className="flex items-center justify-between border-b border-white/10 px-5 py-4"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-300">Writer Studio</p><h2 className="mt-1 text-xl font-black text-white">{editing ? '게시글 다듬기' : '작가용 새 글 작성'}</h2></div><button type="button" onClick={onClose} aria-label="작성창 닫기" className="rounded-full p-2 text-slate-400 hover:bg-white/10 hover:text-white"><X size={20} /></button></div>
       <div className="grid min-h-0 gap-5 overflow-y-auto p-5 lg:grid-cols-[minmax(0,1fr)_300px]">
