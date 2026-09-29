@@ -12,3 +12,7 @@ export function parseEntryFee(value: unknown): number | null {
 export function shouldReserveTetrisStake(amount: number) {
   return amount > 0;
 }
+
+export function canReadyTetrisMatch(amount: number) {
+  return amount === 0;
+}

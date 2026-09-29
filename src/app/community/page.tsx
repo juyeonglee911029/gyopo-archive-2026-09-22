@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, CarFront, GraduationCap, House, Landmark, MapPin, ShieldCheck } from 'lucide-react';
+import { ArrowRight, BookOpen, CarFront, GraduationCap, House, Landmark, ShieldCheck } from 'lucide-react';
 import { RouteErrorState, RouteSkeleton, useRouteReadiness } from '@/components/layout/RouteExperience';
 import { fetchRouteJson, withRouteTimeout } from '@/lib/routeExperience';
 import { createDocument, deleteDocument, getDocument, getSessionToken, isMasterUser, listDocuments, mergeDocument } from '@/lib/firebase';
@@ -211,13 +211,20 @@ export default function CommunityPage() {
 
   return (
      <div className="category-page community-page container mx-auto max-w-5xl px-4 py-8 text-slate-100">
-       <nav className="mb-5 overflow-x-auto border-y border-white/10 py-3" aria-label={language === 'ko' ? '생활 필수 메뉴' : 'Life essentials'}>
-         <div className="flex min-w-max gap-2">
-           {LIFE_ESSENTIAL_TABS.map(({ id, href, label, english, icon: Icon }) => <Link key={id} href={getNavigationHref(href, id, pathname, selectedCountry)} className="inline-flex min-h-10 items-center gap-2 border border-white/10 bg-white/[.04] px-3 text-xs font-bold text-slate-300 transition hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-white">
-             <Icon size={15} aria-hidden="true" />{language === 'ko' ? label : english}
-           </Link>)}
-         </div>
-       </nav>
+        <section className="mb-6 border border-cyan-200/15 bg-[#081221]/80 p-4 sm:p-5" aria-label={language === 'ko' ? '생활 필수 메뉴' : 'Life essentials'}>
+          <div className="mb-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200/70">{language === 'ko' ? 'GYOPO 생활 정보' : 'GYOPO LIFE & ESSENTIALS'}</p>
+            <h2 className="mt-1 text-lg font-black text-white">{language === 'ko' ? '생활 필수 메뉴' : 'Life essentials'}</h2>
+            <p className="mt-1 text-xs text-slate-400">{language === 'ko' ? '이민부터 주거·교육까지 필요한 정보를 바로 찾아보세요.' : 'Quick links for immigration, housing, education, and more.'}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+            {LIFE_ESSENTIAL_TABS.map(({ id, href, label, english, icon: Icon }) => <Link key={id} href={getNavigationHref(href, id, pathname, selectedCountry)} className="group flex min-h-[4.25rem] min-w-0 items-center gap-2.5 border border-white/10 bg-white/[.035] px-3 py-2.5 text-left transition hover:border-cyan-200/35 hover:bg-cyan-300/[.09] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200">
+              <span className="grid h-9 w-9 shrink-0 place-items-center border border-cyan-200/15 bg-cyan-300/[.08] text-cyan-100"><Icon size={17} aria-hidden="true" /></span>
+              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-black text-slate-100">{language === 'ko' ? label : english}</span><span className="mt-0.5 block truncate text-[10px] text-slate-500">{language === 'ko' ? english : label}</span></span>
+              <ArrowRight size={14} aria-hidden="true" className="shrink-0 text-cyan-200/60 transition group-hover:translate-x-0.5 group-hover:text-cyan-100" />
+            </Link>)}
+          </div>
+        </section>
        <div className="category-header">
         <div className="category-heading">
           <h1 className="text-3xl font-black text-white">교민 커뮤니티</h1>

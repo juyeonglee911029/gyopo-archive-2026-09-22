@@ -8,7 +8,7 @@ import { useEffect, useReducer, useRef, useState, type FormEvent, type TouchEven
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowRightLeft, ArrowUp, Camera, Gamepad2, MessageCircle, Pause, Play, RotateCw, Send, Shield, Sparkles, Swords, Timer, Users, X, Zap } from 'lucide-react';
 import { claimTetrisLobbyRoom, claimTetrisMatch, createDocument, deleteDocument, deleteExpiredChatMessages, getDocument, getSessionToken, getSessionUserId, heartbeatTetrisLobbyRoom, joinTetrisLobbyRoom, listDocuments, listOnlineUsers, mergeDocument, OnlineUser, queryDocuments, queryDocumentsWhere, refreshStoredUser, refundGameStake, releaseTetrisLobbyRoom, reserveGameStake, reserveTetrisLobbyRoom, settleTetrisMatch, startTetrisCountdown, upsertDocument, type TetrisLobbyRoom, type TetrisQueueProfile } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
-import { DEFAULT_ENTRY_FEE, MAX_ENTRY_FEE, MIN_ENTRY_FEE, parseEntryFee, shouldReserveTetrisStake } from '@/lib/tetrisEntryFee';
+import { canReadyTetrisMatch, DEFAULT_ENTRY_FEE, MAX_ENTRY_FEE, MIN_ENTRY_FEE, parseEntryFee, shouldReserveTetrisStake } from '@/lib/tetrisEntryFee';
 
 function formatUsd(value: number | string) {
   return Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1165,6 +1165,10 @@ export default function GamesPage() {
        window.alert(`참가비는 ${MIN_ENTRY_FEE}~${MAX_ENTRY_FEE} USD 사이로 입력해주세요.`);
       return;
     }
+    if (!canReadyTetrisMatch(amount)) {
+      setMatchStatus('테트리스 대전은 무료로만 진행됩니다. 참가비를 0 USD로 설정해주세요.');
+      return;
+    }
     if (matchRole === 'B' && roomAmount === null) {
       window.alert('상대방이 참가비를 먼저 설정해야 합니다. 잠시 후 다시 시도해주세요.');
       return;
@@ -1495,8 +1499,8 @@ export default function GamesPage() {
         if (nextOpponent) setOpponent(nextOpponent);
         if (nextOpponent && matchPhase === 'waiting' && room.phase !== 'playing' && room.phase !== 'countdown' && room.phase !== 'finished') {
           setMatchPhase(room.startRequestedBy || room.phase === 'holding' ? 'holding' : 'betting');
-          setMatchStatus(room.startRequestedBy ? '참가비를 자동으로 홀딩하는 중입니다...' : '상대 입장 완료 · 배팅금액을 설정해주세요');
-          setInviteStatus('상대가 방에 입장했습니다. 양쪽 모두 배팅금액을 확정하면 자동으로 시작합니다.');
+          setMatchStatus(room.startRequestedBy ? '참가비를 자동으로 홀딩하는 중입니다...' : '상대 입장 완료 · 무료 대전으로 준비해주세요');
+          setInviteStatus('양쪽 모두 0 USD 무료 대전을 준비하면 자동으로 시작합니다.');
         }
          const roomFee = parseEntryFee(room.betAmount ?? betAmount);
          if (roomFee === null) {
@@ -1699,7 +1703,13 @@ export default function GamesPage() {
                  </div>
                  {inviteStatus && <p className="rounded-lg bg-cyan-300/[0.07] px-2 py-1.5 leading-4 text-cyan-100">{inviteStatus}</p>}
                  {matchId && <div className="grid grid-cols-2 gap-1.5"><div className={`rounded-lg px-2 py-1.5 text-center ${readyForBattle ? 'bg-emerald-300/10 text-emerald-200' : 'bg-white/[0.04] text-slate-500'}`}><b className="block">나</b>{readyForBattle ? '준비 완료' : '준비 전'}</div><div className={`rounded-lg px-2 py-1.5 text-center ${opponentReady ? 'bg-emerald-300/10 text-emerald-200' : 'bg-white/[0.04] text-slate-500'}`}><b className="block">상대방</b>{opponentReady ? '준비 완료' : '준비 전'}</div></div>}
-                  {!['holding', 'countdown', 'playing', 'finished'].includes(matchPhase) && <div className="tetris-settings-row"><label className="min-w-0"><span className="mb-1 block text-amber-100">참가비 (USD · 0은 무료)</span>{matchRole === 'B' ? <div className="flex h-full items-center rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1.5 font-black text-amber-100">{betAmount === 0 ? '무료 대전' : `${formatUsd(betAmount)} USD`}</div> : <input type="number" min={MIN_ENTRY_FEE} max={MAX_ENTRY_FEE} step="1" value={betAmount} onChange={(event) => setBetAmount(Number(event.target.value))} aria-label="대전 참가비" className="w-full rounded-lg border border-amber-300/30 bg-black/30 px-2 py-1.5 font-black text-white outline-none focus:border-amber-300" />}</label><button type="button" onClick={() => void confirmBet()} disabled={!matchId || matchPhase !== 'betting' || readyForBattle} className="self-end rounded-lg bg-amber-300 px-2 py-1.5 font-black text-slate-950 disabled:opacity-45">{readyForBattle ? '준비 완료' : matchPhase === 'waiting' ? '수락 대기' : matchRole === 'B' ? (betAmount === 0 ? '무료 수락' : '수락·준비') : matchId ? (betAmount === 0 ? '무료 준비' : '준비하기') : '대전 후 준비'}</button></div>}
+                  {!['holding', 'countdown', 'playing', 'finished'].includes(matchPhase) && <div className="space-y-1">
+                    <div className="tetris-settings-row">
+                      <label className="min-w-0"><span className="mb-1 block text-amber-100">참가비 (USD · 무료 대전만 가능)</span>{matchRole === 'B' ? <div className="flex h-full items-center rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1.5 font-black text-amber-100">{betAmount === 0 ? '무료 대전 · 0 USD' : `${formatUsd(betAmount)} USD`}</div> : <input type="number" min={MIN_ENTRY_FEE} max={MAX_ENTRY_FEE} step="1" value={betAmount} onChange={(event) => setBetAmount(Number(event.target.value))} aria-label="대전 참가비" aria-describedby={!canReadyTetrisMatch(betAmount) ? 'tetris-entry-warning' : undefined} className="w-full rounded-lg border border-amber-300/30 bg-black/30 px-2 py-1.5 font-black text-white outline-none focus:border-amber-300" />}</label>
+                      <button type="button" onClick={() => void confirmBet()} disabled={!matchId || matchPhase !== 'betting' || readyForBattle || !canReadyTetrisMatch(betAmount)} title={!canReadyTetrisMatch(betAmount) ? '무료 대전만 가능합니다. 참가비를 0 USD로 설정해주세요.' : undefined} className="self-end rounded-lg bg-amber-300 px-2 py-1.5 font-black text-slate-950 disabled:opacity-45">{readyForBattle ? '준비 완료' : !canReadyTetrisMatch(betAmount) ? '무료만 가능' : matchPhase === 'waiting' ? '수락 대기' : matchRole === 'B' ? '무료 수락' : matchId ? '무료 준비' : '대전 후 준비'}</button>
+                    </div>
+                    {!canReadyTetrisMatch(betAmount) && <p id="tetris-entry-warning" role="status" className="text-[10px] leading-4 text-amber-200">무료 대전만 가능합니다. {matchRole === 'B' ? '상대에게 참가비를 0 USD로 조정해 달라고 요청해주세요.' : '참가비를 0 USD로 낮춰주세요.'}</p>}
+                  </div>}
                   {matchPhase === 'holding' && <div className="rounded-lg bg-emerald-300/10 px-2 py-1.5 text-center font-bold text-emerald-200">{betAmount === 0 ? '무료 대전 · 자동 시작 대기' : '양쪽 참가비 홀딩 중 · 자동 시작 대기'}</div>}
                  {matchPhase === 'finished' && <button type="button" onClick={() => void requestRematch()} className="w-full rounded-lg bg-cyan-300 px-2 py-1.5 font-black text-slate-950">승패 결과 · 다시 신청하기</button>}
                  {matchId && <div className="flex gap-1.5"><button type="button" onClick={toggleTogetherListening} className={`flex-1 rounded-lg border px-2 py-1.5 font-black ${togetherListening ? 'border-teal-300/40 bg-teal-300/15 text-teal-200' : 'border-white/10 bg-white/5 text-slate-300'}`}>{togetherListening ? '같이 듣기 켜짐' : '같이 듣기'}</button><button type="button" onClick={() => void requestBattleStart()} disabled={!readyForBattle || !opponentReady || !['betting', 'holding'].includes(matchPhase)} className="flex-1 rounded-lg bg-cyan-300 px-2 py-1.5 font-black text-slate-950 disabled:opacity-40">자동 시작 확인</button></div>}
