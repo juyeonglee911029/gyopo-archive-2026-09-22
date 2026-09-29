@@ -692,5 +692,9 @@
     position: static;
   }
 
+  .directory-detail-placeholder {
+    display: none;
+  }
+
   .directory-summary { margin-bottom: 0 !important; }
 }
