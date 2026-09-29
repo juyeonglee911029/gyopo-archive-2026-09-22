@@ -48,6 +48,31 @@
   background: rgba(12, 20, 35, 0.78) !important;
 }
 
+.global-public-docks #global-lounge.global-lounge:not([data-minimized="true"]) {
+  border: 1px solid rgba(226, 232, 240, 0.1) !important;
+  border-radius: 0 !important;
+  background: rgba(12, 20, 35, 0.12) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.global-public-docks #global-lounge.global-lounge[data-minimized="true"] {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.global-public-docks #global-lounge.global-lounge .global-lounge-header,
+.global-public-docks #global-lounge.global-lounge .global-lounge-composer {
+  border-color: rgba(226, 232, 240, 0.12) !important;
+  background: rgba(12, 20, 35, 0.78) !important;
+  background-image: none !important;
+}
+
 .global-lounge .global-chat-message-bubble {
   background: rgba(8, 14, 27, 0.78) !important;
   padding: 0.4rem 0.5rem;
