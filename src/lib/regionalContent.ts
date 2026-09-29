@@ -2,6 +2,7 @@ import 'server-only';
 import { normalizeEditorial, type EditorialContent } from './editorialContent';
 import { cache } from 'react';
 import { isPublicArticle, publicArticleCategory } from './publicArticle';
+import { parseGoogleMapsUrl, resolvedGooglePlaceId } from './directoryMaps';
 import { cityRegionalPostHref, countryForRegion, getCityRoute, getCountryRoute, isRegionalPostId, regionalPostHref, REGIONAL_CATEGORIES, COUNTRY_LIFE_CATEGORIES, type CityRoute, type CountryRoute, type RegionalCategory } from './regionRoutes';
 
 // The same public project as firebase.ts; no user token or admin credentials are used.
@@ -29,6 +30,8 @@ export type RegionalPost = {
   updatedAt?: string;
   sourceUrl?: string;
   sourceName?: string;
+  mapsUrl?: string;
+  placeId?: string;
   sourceBacked: boolean;
   images: string[];
   editorial: EditorialContent;
@@ -87,6 +90,8 @@ export function regionalPostFromRecord(collection: PublicCollection, id: string,
 
   const sourceBacked = Boolean(record.sourceUrl || record.sourceId || record.sourceContentId || id.startsWith('source-'));
   const sourceUrl = publicHttpUrl(record.sourceUrl);
+  const maps = parseGoogleMapsUrl(text(record.mapsUrl));
+  const placeId = resolvedGooglePlaceId(record.placeId, record.mapsUrl, record.sourceUrl);
   if (sourceBacked) {
     if (!sourceUrl) return null;
     const url = new URL(sourceUrl);
@@ -112,6 +117,7 @@ export function regionalPostFromRecord(collection: PublicCollection, id: string,
     createdAt: date(record.createdAt),
     updatedAt: date(record.updatedAt),
     sourceBacked, sourceUrl, sourceName: text(record.sourceName) || undefined,
+    mapsUrl: maps?.url, placeId,
     images: [...new Set(images)].slice(0, 12), facts,
     editorial: normalizeEditorial(record.editorial),
   };

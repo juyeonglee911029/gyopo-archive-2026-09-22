@@ -488,7 +488,7 @@ export default function FriendDock() {
     <>
        <button id="friend-dock-launch" type="button" aria-controls="friend-dock" aria-expanded={open} onClick={() => setOpen(true)} aria-label="친구 채팅과 통화 열기" className="friend-dock-launch-control fixed bottom-4 right-4 z-[75] inline-flex min-h-12 items-center gap-2 rounded-full border border-cyan-300/30 bg-[#0b1729] px-4 text-cyan-100 shadow-[0_12px_40px_rgba(0,0,0,.45)] transition hover:border-cyan-200/60 hover:bg-[#10213b]">
          <UserRoundCheck size={19} />
-         <span className="hidden text-xs font-black sm:inline">친구·통화</span>
+          <span className="sr-only">친구·통화</span>
          {messageNotice && <span className="absolute bottom-14 right-0 whitespace-nowrap rounded-lg bg-emerald-300 px-3 py-2 text-[11px] font-black text-slate-950 shadow-lg">{messageNotice}</span>}
        </button>
 
@@ -501,7 +501,7 @@ export default function FriendDock() {
 
           {incomingCalls.length > 0 && <div className="mx-3 mt-3 border-0 bg-emerald-300/[.08] p-3"><div className="flex items-center gap-2 text-xs font-black text-emerald-100"><PhoneCall size={14} /> {isKorean ? '영상 통화 요청' : 'Incoming call'}</div>{incomingCalls.map((request) => <div key={request.id} className="mt-3 flex items-center gap-2"><img src={request.callerImage} alt="" className="h-8 w-8 rounded-lg object-cover" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-white">{request.callerName}</p><p className="text-[10px] text-emerald-100/65">{isKorean ? '친구가 영상 통화를 요청했습니다.' : 'Your friend requested a video call.'}</p></div><button type="button" onClick={() => void answerVideoCall(request, 'accepted')} aria-label={isKorean ? '통화 수락' : 'Accept call'} className="border-0 bg-emerald-300 p-2 text-slate-950"><Check size={14} /></button><button type="button" onClick={() => void answerVideoCall(request, 'declined')} aria-label={isKorean ? '통화 거절' : 'Decline call'} className="border-0 bg-white/10 p-2 text-slate-300"><X size={14} /></button></div>)}</div>}
 
-         {videoCall && <div className="friend-call-video relative mx-3 mb-3 overflow-hidden rounded-xl bg-black"><iframe ref={callFrameRef} key={videoCall.id} title="친구 영상 통화" src={`/webrtc?friend=${encodeURIComponent(videoCall.friendId)}&auto=1&compact=1&callKind=friend&callId=${encodeURIComponent(videoCall.id)}`} allow="camera; microphone; autoplay; display-capture" className="h-full w-full border-0" /></div>}
+         {videoCall && <div className="friend-call-video relative mx-3 mb-3 overflow-hidden bg-black"><iframe ref={callFrameRef} key={videoCall.id} title="친구 영상 통화" src={`/webrtc?friend=${encodeURIComponent(videoCall.friendId)}&compact=1&callKind=friend&callId=${encodeURIComponent(videoCall.id)}`} allow="camera; microphone; display-capture; fullscreen" allowFullScreen className="h-full w-full border-0" /></div>}
 
           {friendsLoading && friends.length === 0 ? (
             <div className="px-6 py-5 text-center text-xs font-bold text-slate-400">{isKorean ? '친구 목록을 불러오는 중입니다...' : 'Loading friends...'}</div>
@@ -509,9 +509,8 @@ export default function FriendDock() {
             <div className="p-8 text-center"><UserRoundCheck size={28} className="mx-auto text-slate-600" /><p className="mt-3 text-sm font-bold text-slate-300">수락된 친구가 없습니다.</p><p className="mt-1 text-xs text-slate-500">유저 목록에서 친구 요청을 보내보세요.</p></div>
           ) : (
             <>
-              <div className="flex items-center justify-between border-y border-white/10 px-3 py-2 text-[10px] font-black text-slate-400">
+              <div className="border-y border-white/10 px-3 py-2 text-[10px] font-black text-slate-400">
                 <span>{isKorean ? '친구 목록' : 'Friends'}</span>
-                <span>{isKorean ? `${friends.length}명 · 최근 90초 기준` : `${friends.length} friends · active within 90 sec`}</span>
               </div>
               <div className="friend-list max-h-40 space-y-1 overflow-y-auto px-2.5 py-2">
                 {friends.map((friend) => {

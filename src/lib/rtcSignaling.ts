@@ -1,6 +1,76 @@
 export const RTC_INITIAL_TIMEOUT = 60_000;
 export const RTC_DISCONNECT_GRACE = 12_000;
 export const RTC_RESTART_TIMEOUT = 45_000;
+export const CALL_MEDIA_LEASE_MS = 45_000;
+
+const FIRESTORE_PROJECT_ID = 'gyopo-live-portal-506019';
+
+// The updateTime precondition makes competing share requests resolve atomically.
+export async function updateCallMediaLease(
+  callId: string,
+  userId: string,
+  token: string,
+  mediaMode: 'camera' | 'screen',
+  systemAudio: boolean,
+  leaseId: string,
+  fetcher: typeof fetch = fetch,
+) {
+  if (!callId || !userId || !token || !leaseId) return false;
+  const base = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents`;
+  const documentUrl = `${base}/webrtcCalls/${encodeURIComponent(callId)}`;
+  const documentName = `projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/webrtcCalls/${callId}`;
+  const fieldPaths = ['mediaOwnerId', 'mediaLeaseId', 'mediaMode', 'systemAudio'];
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetcher(documentUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (response.status === 404) return false;
+    if (!response.ok) throw new Error(`Firestore call media read failed (${response.status})`);
+    const document = await response.json() as {
+      updateTime?: string;
+      fields?: Record<string, { stringValue?: string; timestampValue?: string; nullValue?: null }>;
+    };
+    const fields = document.fields || {};
+    const callerId = fields.callerId?.stringValue;
+    const calleeId = fields.calleeId?.stringValue;
+    const ownerId = fields.mediaOwnerId?.stringValue || null;
+    const currentLeaseId = fields.mediaLeaseId?.stringValue || null;
+    if ((callerId !== userId && calleeId !== userId) || fields.status?.stringValue === 'ended' || !document.updateTime) return false;
+    if (mediaMode === 'camera' && (ownerId !== userId || currentLeaseId !== leaseId)) return false;
+    // A released lease ID is fenced out so an in-flight heartbeat cannot reacquire it.
+    if (mediaMode === 'screen' && currentLeaseId === leaseId && ownerId !== userId) return false;
+
+    const write = await fetcher(`${base}:commit`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({
+        writes: [{
+          update: {
+            name: documentName,
+            fields: {
+              mediaOwnerId: mediaMode === 'screen' ? { stringValue: userId } : { nullValue: null },
+              mediaLeaseId: { stringValue: leaseId },
+              mediaMode: { stringValue: mediaMode },
+              systemAudio: { booleanValue: mediaMode === 'screen' && systemAudio },
+            },
+          },
+          updateMask: { fieldPaths },
+          updateTransforms: [{ fieldPath: 'mediaUpdatedAt', setToServerValue: 'REQUEST_TIME' }],
+          currentDocument: { updateTime: document.updateTime },
+        }],
+      }),
+    });
+    if (write.ok) return true;
+    if (write.status === 403) return false;
+    const error = await write.json().catch(() => null) as { error?: { status?: string; message?: string } } | null;
+    if (write.status === 409 || error?.error?.status === 'ABORTED' || error?.error?.status === 'FAILED_PRECONDITION') continue;
+    throw new Error(error?.error?.message || `Firestore call media update failed (${write.status})`);
+  }
+  return false;
+}
 
 export type RtcDescription = RTCSessionDescriptionInit & { offerKey?: string; restartRequested?: boolean };
 export type RtcSignal = { offer?: RtcDescription; answer?: RtcDescription | null };

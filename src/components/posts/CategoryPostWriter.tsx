@@ -41,6 +41,6 @@ export default function CategoryPostWriter({ category, onSaved }: { category: 'l
   if (!user) return <Link href="/login" className="rounded-xl border border-cyan-300/35 bg-cyan-300/10 px-4 py-2.5 text-xs font-black text-cyan-100">로그인 후 {label}</Link>;
   return <>
     <button type="button" onClick={() => setOpen(true)} className="rounded-xl bg-cyan-300 px-4 py-2.5 text-xs font-black text-slate-950">{label}</button>
-    {open && <WriterComposer key={category} userId={user.id} onClose={() => setOpen(false)} onSave={save} />}
+    {open && <WriterComposer key={category} userId={user.id} category={category} onClose={() => setOpen(false)} onSave={save} />}
   </>;
 }

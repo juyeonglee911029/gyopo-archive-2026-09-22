@@ -1,12 +1,13 @@
 :root {
   --gyopo-glass: rgba(12, 20, 35, 0.55);
   --gyopo-glass-border: rgba(226, 232, 240, 0.14);
-  --category-glass: rgba(8, 14, 27, 0.55);
+  --category-glass: rgba(8, 14, 27, 0.45);
+  --dock-control-size: 44px;
+  --dock-control-gap: 10px;
 }
 
 .global-page-body {
   min-width: 0;
-  transition: margin-right 300ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .global-public-docks {
@@ -34,11 +35,6 @@
   background: rgba(12, 20, 35, 0.55) !important;
 }
 
-.global-lounge-online {
-  border: 0 !important;
-  background: transparent !important;
-}
-
 .global-lounge-expand {
   display: grid;
   width: 34px;
@@ -62,8 +58,8 @@
   right: 16px !important;
   bottom: 72px !important;
   left: auto !important;
-  width: min(54rem, calc(100vw - 32px)) !important;
-  max-width: calc(100vw - 32px);
+  width: min(54rem, max(22rem, calc(100vw - 32rem))) !important;
+  max-width: min(54rem, max(22rem, calc(100vw - 32rem)));
   border-radius: 12px !important;
 }
 
@@ -359,9 +355,30 @@
 .directory-summary { grid-column: 1; grid-row: 1; }
 .directory-results { grid-column: 1; grid-row: 2; min-width: 0; }
 
-@media (min-width: 769px) {
-  .global-app-shell.has-lounge-open .global-page-body {
-    margin-right: clamp(17rem, 23vw, 22rem);
+@media (min-width: 1024px) {
+  .global-app-shell.has-lounge-open {
+    --global-lounge-reserved-width: min(22rem, calc(100vw - 32px));
+  }
+
+  .global-app-shell.has-lounge-open.has-lounge-maximized {
+    --global-lounge-reserved-width: min(54rem, max(22rem, calc(100vw - 32rem)));
+  }
+
+  .global-app-shell.has-lounge-open > .global-page-body {
+    box-sizing: border-box;
+    width: calc(100% - var(--global-lounge-reserved-width) - 32px) !important;
+    margin-inline: 0 !important;
+    transition: width 300ms cubic-bezier(0.22, 1, 0.36, 1) !important;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1200px) {
+  .global-app-shell.has-lounge-open > .global-page-body.has-right-rail {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  }
+
+  .global-app-shell.has-lounge-open > .global-page-body.has-right-rail > .global-right-rail {
+    display: none;
   }
 }
 
@@ -386,23 +403,309 @@
   backdrop-filter: blur(22px) saturate(130%);
 }
 
-.global-mobile-lounge-launch {
-  align-self: flex-end;
-  margin-right: 58px;
+.global-chat-message-bubble {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow-wrap: anywhere;
 }
 
-@media (max-width: 768px) {
-  .global-app-shell.has-lounge-open .global-page-body {
-    margin-right: 0;
-  }
+.global-mobile-lounge-launch {
+  align-self: flex-end;
+  margin-right: 0;
+}
 
+@media (max-width: 1023px) {
   .global-lounge-launch-control {
     display: none !important;
+  }
+
+  .global-mobile-lounge {
+    right: calc(14px + var(--dock-control-size) + var(--dock-control-gap)) !important;
+  }
+
+  .global-mobile-lounge-panel {
+    position: fixed !important;
+    right: 14px !important;
+    bottom: calc(14px + var(--dock-control-size) + var(--dock-control-gap)) !important;
+    left: 14px !important;
+    margin: 0 !important;
+  }
+
+  .global-mobile-lounge-launch {
+    margin-right: 0 !important;
   }
 
   .friend-row-actions {
     opacity: 1;
     pointer-events: auto;
+  }
+}
+
+.gyopo-friend-dock.friend-dock-call-active {
+  top: 16px !important;
+  right: 16px !important;
+  bottom: 16px !important;
+  left: auto !important;
+  width: min(960px, calc(100vw - 32px)) !important;
+  max-height: calc(100dvh - 32px) !important;
+}
+
+.friend-dock-call-active .friend-call-video {
+  height: min(72dvh, 760px) !important;
+  min-height: min(420px, calc(100dvh - 240px));
+  aspect-ratio: auto !important;
+  border-radius: 0 !important;
+}
+
+.gyopo-compact-call {
+  background: #000 !important;
+}
+
+.gyopo-compact-call:fullscreen {
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  border-radius: 0 !important;
+}
+
+.compact-call-stage {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+  background: #000;
+}
+
+.compact-call-stage.has-shared-screen {
+  grid-template-rows: minmax(0, 1fr) minmax(72px, 0.36fr);
+}
+
+.compact-call-shared-screen,
+.compact-call-camera-row,
+.compact-call-video-tile {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.compact-call-shared-screen {
+  display: grid;
+  place-items: center;
+}
+
+.compact-call-shared-screen video,
+.compact-call-video-tile video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+.compact-call-shared-screen video {
+  object-fit: contain;
+}
+
+.compact-call-camera-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.compact-call-video-tile video {
+  object-fit: cover;
+}
+
+.compact-call-video-label {
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 3px 6px;
+  color: #e2e8f0;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.compact-call-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: #050914;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.call-compact-controls {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.call-fullscreen-toggle:disabled,
+.call-compact-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.call-compact-note {
+  color: #94a3b8;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.webrtc-stage {
+  display: flex;
+  aspect-ratio: 16 / 9;
+  min-height: 320px;
+  flex-direction: column;
+  background: #000;
+}
+
+.webrtc-stage:fullscreen {
+  width: 100vw;
+  height: 100dvh;
+  max-height: none;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+
+.webrtc-stage-shared-screen,
+.webrtc-stage-camera-row,
+.webrtc-stage-camera-tile {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.webrtc-stage-shared-screen {
+  display: grid;
+  flex: 1;
+  place-items: center;
+}
+
+.webrtc-stage-shared-screen video,
+.webrtc-stage-camera-tile video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+.webrtc-stage-shared-screen video { object-fit: contain; }
+
+.webrtc-stage-camera-row {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.webrtc-stage-camera-row.has-shared-screen {
+  flex: 0 0 28%;
+  min-height: 110px;
+  max-height: 220px;
+}
+
+.webrtc-stage-camera-tile video { object-fit: cover; }
+
+.webrtc-stage-label {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  left: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 3px 6px;
+  color: #e2e8f0;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.webrtc-stage-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: #050914;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.webrtc-stage-status {
+  position: absolute;
+  z-index: 3;
+  top: 12px;
+  right: 56px;
+  display: flex;
+  max-width: calc(100% - 80px);
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 7px 10px;
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.webrtc-stage-fullscreen {
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+}
+
+.webrtc-stage-fullscreen:disabled { cursor: not-allowed; opacity: 0.42; }
+
+@media (max-width: 768px) {
+  .webrtc-stage {
+    height: min(70dvh, 620px);
+    min-height: 300px;
+    aspect-ratio: auto;
+  }
+
+  .webrtc-stage:fullscreen { height: 100dvh; }
+
+  .webrtc-stage-camera-row.has-shared-screen {
+    flex-basis: 28%;
+    min-height: 88px;
+  }
+
+  .gyopo-friend-dock.friend-dock-call-active {
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+  }
+
+  .friend-dock-call-active .friend-call-video {
+    height: min(72dvh, 760px) !important;
+    min-height: min(360px, calc(100dvh - 180px));
   }
 }
 

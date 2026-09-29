@@ -200,13 +200,14 @@ function NextBlock({ piece, compact = false }: { piece: Piece; compact?: boolean
   );
 }
 
-function BattleMetrics({ state, elapsed }: { state: Pick<GameState, 'attackTotal' | 'lines' | 'lastAttack' | 'combo'> | null; elapsed: string }) {
+function BattleMetrics({ state, elapsed }: { state: Pick<GameState, 'score' | 'attackTotal' | 'lines' | 'lastAttack' | 'combo'> | null; elapsed: string }) {
   return (
     <div className="tetris-battle-metrics mt-2">
-      <div className="rounded-lg border border-cyan-300/15 bg-cyan-300/[0.06] px-1 py-1.5"><span className="block text-[8px] font-black text-slate-500">보낸 줄</span><b className="text-xs text-cyan-100">{state?.attackTotal || 0}</b></div>
-      <div className="rounded-lg border border-violet-300/15 bg-violet-300/[0.06] px-1 py-1.5"><span className="block text-[8px] font-black text-slate-500">깬 줄</span><b className="text-xs text-violet-100">{state?.lines || 0}</b></div>
-      <div className="rounded-lg border border-amber-300/15 bg-amber-300/[0.06] px-1 py-1.5"><span className="block text-[8px] font-black text-slate-500">공격</span><b className="text-xs text-amber-100">+{state?.lastAttack || 0}</b></div>
-      <div className="rounded-lg border border-emerald-300/15 bg-emerald-300/[0.06] px-1 py-1.5"><span className="block text-[8px] font-black text-slate-500">콤보</span><b className="text-xs text-emerald-100">{state?.combo || 0}</b></div>
+      <div className="tetris-battle-stat rounded-lg border border-cyan-300/15 bg-cyan-300/[0.06] px-1 py-1.5"><span className="block text-[8px] font-black text-slate-500">보낸 줄</span><b className="text-xs text-cyan-100">{state?.attackTotal || 0}</b></div>
+      <div className="tetris-battle-stat rounded-lg border border-violet-300/15 bg-violet-300/[0.06] px-1 py-1.5"><span className="block text-[8px] font-black text-slate-500">깬 줄</span><b className="text-xs text-violet-100">{state?.lines || 0}</b></div>
+      <div className="tetris-battle-stat rounded-lg border border-amber-300/15 bg-amber-300/[0.06] px-1 py-1.5"><span className="block text-[8px] font-black text-slate-500">공격</span><b className="text-xs text-amber-100">+{state?.lastAttack || 0}</b></div>
+      <div className="tetris-battle-stat rounded-lg border border-cyan-300/15 bg-cyan-300/[0.06] px-1 py-1.5"><span className="block text-[8px] font-black text-slate-500">점수</span><b className="text-xs text-cyan-100">{state?.score.toLocaleString() || 0}</b></div>
+      <div className="tetris-battle-stat rounded-lg border border-emerald-300/15 bg-emerald-300/[0.06] px-1 py-1.5"><span className="block text-[8px] font-black text-slate-500">콤보</span><b className="text-xs text-emerald-100">{state?.combo || 0}</b></div>
       <div className="tetris-battle-time"><Timer size={10} /> TIME: {elapsed}</div>
     </div>
   );
@@ -763,6 +764,7 @@ export default function GamesPage() {
     const token = getSessionToken();
     if (!token) return window.alert('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
     const profile: TetrisQueueProfile = { id: currentUserId, name: user.name, image: user.image, country: user.country || 'Global' };
+    setBetAmount(DEFAULT_ENTRY_FEE);
     setOpponentState(null);
     setOpponent(null);
     setMatchId(null);
@@ -918,6 +920,7 @@ export default function GamesPage() {
       }, token);
       await deleteDocument('tetrisQueue', currentUserId, token).catch(() => undefined);
       setSelectedOnlineUserId(null);
+      setBetAmount(DEFAULT_ENTRY_FEE);
       setSentInviteId(inviteId);
       setMatchId(matchId);
       setMatchRole('A');
@@ -1021,6 +1024,7 @@ export default function GamesPage() {
     }
     handledInviteIds.current.add(invite.id);
     setIncomingInvite(null);
+    setBetAmount(DEFAULT_ENTRY_FEE);
     setMatchId(invite.matchId);
     setMatchRole('B');
     setRoomNumber(invite.roomNumber || null);
@@ -1219,6 +1223,7 @@ export default function GamesPage() {
     const profile: TetrisQueueProfile = { id: currentUserId, name: user.name, image: user.image, country: user.country || 'Global' };
     const applyMatch = (record: TetrisQueueRecord) => {
       if (stopped || !record.matchId || !record.role || !record.opponent) return;
+      setBetAmount(DEFAULT_ENTRY_FEE);
       setMatchId(record.matchId);
       setMatchRole(record.role);
        setOpponent(record.opponent);
@@ -1285,6 +1290,7 @@ export default function GamesPage() {
             autoStartRequestedRef.current = false;
             holdRequestedRef.current = false;
             dispatch({ type: 'RESET' });
+            setBetAmount(DEFAULT_ENTRY_FEE);
             setMatchId(currentLobby.activeMatchId);
             setMatchRole('A');
             setOpponent(null);
@@ -1676,10 +1682,10 @@ export default function GamesPage() {
            <div className="tetris-focused-workspace" aria-label="Tetris workspace">
              <aside className="tetris-social-column" aria-label="웹캠, 대전 준비 및 채팅">
                <section className="tetris-focus-panel tetris-camera-panel" data-tetris-panel="camera" aria-label="웹캠 연결">
-                 <header className="tetris-focus-header"><b className="flex items-center gap-1.5"><Camera size={13} /> Video Only</b><span>입장 수락 시 자동 연결</span></header>
-                 <div className="tetris-focus-camera">
-                   {videoRoomActive && videoRoomUrl ? <iframe key={`${matchId}-${opponent?.id}`} title="게임 상대방 영상 (마이크 사용 안 함)" src={videoRoomUrl} allow="camera; autoplay; microphone 'none'; display-capture 'none'" className="block h-full w-full border-0" /> : <div className="grid h-full place-items-center p-4 text-center"><div><Camera size={22} className="mx-auto text-cyan-200" /><p className="mt-2 text-xs font-black text-slate-300">{matchPhase === 'finished' ? '게임방 영상 연결 종료' : matchId && opponent ? '상대의 입장 수락을 기다리는 중' : '상대가 입장하면 영상이 연결됩니다'}</p><p className="mt-1 text-xs leading-4 text-slate-400">카메라만 연결합니다. 마이크와 상대 음성은 사용하지 않습니다.</p></div></div>}
-                 </div>
+                  <header className="tetris-focus-header"><b className="flex items-center gap-1.5"><Camera size={13} /> Video Only</b><span>각자 직접 시작</span></header>
+                  <div className="tetris-focus-camera">
+                    {videoRoomActive && videoRoomUrl ? <iframe key={`${matchId}-${opponent?.id}`} title="게임 상대방 영상 (마이크 사용 안 함)" src={videoRoomUrl} allow="camera; autoplay; microphone 'none'; display-capture 'none'" className="block h-full w-full border-0" /> : <div className="grid h-full place-items-center p-4 text-center"><div><Camera size={22} className="mx-auto text-cyan-200" /><p className="mt-2 text-xs font-black text-slate-300">{matchPhase === 'finished' ? '게임방 영상 연결 종료' : matchId && opponent ? '상대의 입장 수락을 기다리는 중' : '상대가 입장하면 영상이 연결됩니다'}</p><p className="mt-1 text-xs leading-4 text-slate-400">각자 카메라를 직접 시작해야 연결됩니다. 마이크와 화면 공유는 사용하지 않습니다.</p></div></div>}
+                  </div>
                </section>
                <section id="tetris-settings" className="tetris-focus-panel tetris-focus-settings space-y-1 text-xs" data-tetris-panel="settings" tabIndex={0} aria-label="대전 및 배팅 설정">
                  <b className="block text-amber-100">대전 · 배팅 설정</b>

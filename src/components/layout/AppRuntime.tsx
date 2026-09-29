@@ -8,7 +8,7 @@ import { getCountryRoute } from '@/lib/regionRoutes';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { trackGrowth } from '@/lib/growthTracking';
 import { startSerialPoll } from '@/lib/rtcSignaling';
-import { MAX_AI_WRITING_PROMPT_LENGTH, normalizeAiWritingPrompt } from '@/lib/writerPreferences';
+import { DEFAULT_AI_WRITING_PROMPT, MAX_AI_WRITING_PROMPT_LENGTH, normalizeAiWritingPrompt } from '@/lib/writerPreferences';
 import StartupExperience from '@/components/layout/StartupExperience';
 import { FloatingRoomTitle, LiveRoomPlayer, RoomChatPanel, type LiveRoom } from '@/app/theater/liveRoomShared';
 
@@ -64,7 +64,7 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState('');
-  const [profileForm, setProfileForm] = useState({ name: '', country: '', image: '', defaultAiWritingPrompt: '' });
+  const [profileForm, setProfileForm] = useState({ name: '', country: '', image: '', defaultAiWritingPrompt: DEFAULT_AI_WRITING_PROMPT });
   const [floatingRoom, setFloatingRoom] = useState<LiveRoom | null>(null);
   const [floatingMinimized, setFloatingMinimized] = useState(false);
   const [floatingOffset, setFloatingOffset] = useState({ x: 0, y: 0 });
@@ -174,7 +174,7 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     const openProfile = () => {
       if (!user) return;
-        setProfileForm({ name: user.name, country: user.country || '', image: user.image, defaultAiWritingPrompt: user.defaultAiWritingPrompt || '' });
+        setProfileForm({ name: user.name, country: user.country || '', image: user.image, defaultAiWritingPrompt: normalizeAiWritingPrompt(user.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT });
       setProfileError('');
       setProfileOpen(true);
     };
@@ -299,7 +299,7 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
     setProfileSaving(true);
     setProfileError('');
     try {
-      const nextUser = { ...user, name, country, image: profileForm.image, defaultAiWritingPrompt: normalizeAiWritingPrompt(profileForm.defaultAiWritingPrompt) };
+      const nextUser = { ...user, name, country, image: profileForm.image, defaultAiWritingPrompt: normalizeAiWritingPrompt(profileForm.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT };
       await saveProfile(nextUser, getSessionToken());
       setUser(nextUser);
       setProfileOpen(false);

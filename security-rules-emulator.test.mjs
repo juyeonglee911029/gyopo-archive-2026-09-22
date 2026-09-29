@@ -87,6 +87,18 @@ test('Firestore emulator authorization regressions', {
   }
   const fields = (data) => Object.fromEntries(Object.entries(data).map(([key, data]) => [key, value(data)]));
   const write = (path, data, uid) => request(`${documents}/${path}`, 'PATCH', { fields: fields(data) }, uid);
+  const writeMedia = (path, data, uid) => {
+    const media = Object.fromEntries(Object.entries(data).filter(([key]) => key.startsWith('media') || key === 'systemAudio'));
+    delete media.mediaUpdatedAt;
+    return request(`${documents}:commit`, 'POST', {
+      writes: [{
+        update: { name: `projects/${projectId}/databases/(default)/documents/${path}`, fields: fields(media) },
+        updateMask: { fieldPaths: Object.keys(media) },
+        updateTransforms: [{ fieldPath: 'mediaUpdatedAt', setToServerValue: 'REQUEST_TIME' }],
+        currentDocument: { exists: true },
+      }],
+    }, uid);
+  };
   const remove = (path, uid) => request(`${documents}/${path}`, 'DELETE', undefined, uid);
   const read = (path, uid) => request(`${documents}/${path}`, 'GET', undefined, uid);
   async function allowed(result) {
@@ -199,6 +211,70 @@ test('Firestore emulator authorization regressions', {
     await denied(write('friendMessages/guest', message));
     await denied(write('friendMessages/alice-message', { ...message, text: 'edited' }, 'alice'));
     await allowed(remove('friendMessages/alice-message', 'bob'));
+  });
+
+  await t.test('WebRTC screen sharing is participant-bound, leased, and exclusive', async () => {
+    await seed('profiles/alice', { age: 30 });
+    await seed('profiles/bob', { age: 30 });
+    await seed('profiles/stranger', { age: 30 });
+    const call = { callId: 'media-call', callerId: 'alice', calleeId: 'bob', offer: { type: 'offer', sdp: 'offer' }, answer: null };
+    const screenState = (ownerId, leaseId, systemAudio = false) => ({
+      ...call,
+      mediaOwnerId: ownerId,
+      mediaLeaseId: leaseId,
+      mediaMode: ownerId ? 'screen' : 'camera',
+      systemAudio: ownerId ? systemAudio : false,
+      mediaUpdatedAt: Date.now(),
+    });
+
+    await allowed(write('webrtcCalls/media-call', call, 'alice'));
+    await denied(write('webrtcCalls/extra-metadata', { ...call, callId: 'extra-metadata', injected: true }, 'alice'));
+    await denied(writeMedia('webrtcCalls/media-call', screenState(null, 'alice-lease', true), 'alice'));
+    await allowed(writeMedia('webrtcCalls/media-call', screenState('alice', 'alice-lease', true), 'alice'));
+    await denied(writeMedia('webrtcCalls/media-call', {
+      ...screenState('alice', 'alice-lease', true),
+      mediaMode: 'camera',
+    }, 'alice'));
+    await denied(writeMedia('webrtcCalls/media-call', screenState('bob', 'bob-lease'), 'bob'));
+    await denied(writeMedia('webrtcCalls/media-call', screenState(null, 'alice-lease'), 'bob'));
+    await denied(writeMedia('webrtcCalls/media-call', screenState('stranger', 'stranger-lease'), 'stranger'));
+    await allowed(writeMedia('webrtcCalls/media-call', screenState(null, 'alice-lease'), 'alice'));
+    await denied(writeMedia('webrtcCalls/media-call', screenState('alice', 'alice-lease', true), 'alice'));
+    await allowed(writeMedia('webrtcCalls/media-call', screenState('bob', 'bob-lease'), 'bob'));
+
+    const expired = {
+      ...call,
+      callId: 'expired-media-call',
+      ...screenState('alice', 'old-lease'),
+      mediaUpdatedAt: new Date(Date.now() - 50_000),
+    };
+    await seed('webrtcCalls/expired-media-call', expired);
+    await allowed(writeMedia('webrtcCalls/expired-media-call', {
+      ...expired,
+      ...screenState('bob', 'reclaimed-lease'),
+    }, 'bob'));
+
+    const ended = { ...call, callId: 'ended-media-call', status: 'ended' };
+    await seed('webrtcCalls/ended-media-call', ended);
+    await denied(writeMedia('webrtcCalls/ended-media-call', {
+      ...ended,
+      ...screenState('alice', 'late-lease'),
+    }, 'alice'));
+    await denied(write('webrtcCalls/media-call', { ...call, calleeId: 'stranger' }, 'alice'));
+  });
+
+  await t.test('suspended adult accounts cannot access existing call signaling or ICE', async () => {
+    await seed('profiles/restricted', { age: 30 });
+    await seed('accountModeration/restricted', { status: 'banned' });
+    const call = { callId: 'restricted-call', callerId: 'restricted', calleeId: 'bob', offer: { type: 'offer', sdp: 'sdp' }, answer: null, status: 'offer' };
+    await seed('webrtcCalls/restricted-call', call);
+    await seed('webrtcCandidates/restricted-candidate', { callId: call.callId, fromUserId: 'bob', candidate: { candidate: 'candidate' } });
+
+    await denied(write('webrtcCalls/new-restricted-call', { ...call, callId: 'new-restricted-call' }, 'restricted'));
+    await denied(read('webrtcCalls/restricted-call', 'restricted'));
+    await denied(write('webrtcCalls/restricted-call', { ...call, status: 'ended', endedAt: new Date() }, 'restricted'));
+    await denied(read('webrtcCandidates/restricted-candidate', 'restricted'));
+    await denied(write('webrtcCandidates/new-restricted-candidate', { callId: call.callId, fromUserId: 'restricted', candidate: { candidate: 'candidate' } }, 'restricted'));
   });
 
   await t.test('financial writes stay denied for members and master clients', async () => {

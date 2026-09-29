@@ -126,18 +126,54 @@ test('sidebar friends action keeps guest navigation and opens an anchored dock',
   assert.match(dock, /friend-list max-h-40/);
   assert.match(dock, /friend-row-action/);
   assert.match(dock, /friend-message-bubble/);
+  assert.match(dock, /className="sr-only">친구·통화/);
+  assert.doesNotMatch(dock, /friends\.length\}명|friends\.length\} friends/);
   assert.doesNotMatch(dock, /<b className="block text-\[9px\] opacity-65">\{message\.user\}<\/b>/);
 
   const lounge = read('src/components/layout/GlobalChat.tsx');
   assert.match(lounge, /global-lounge-launch-control/);
   assert.match(lounge, /global-mobile-lounge-launch/);
-  assert.doesNotMatch(lounge, /memberCount|회원 \$\{memberCount\}|members/);
-  assert.match(read('src/app/experience-refinements.css'), /\.global-app-shell\.has-lounge-open \.global-page-body/);
+  assert.doesNotMatch(lounge, /memberCount|onlineCount|api\/online-count|\{message\.user\}/);
+  assert.match(lounge, /detail: \{ open, maximized: open && maximized \}/);
+  const styles = read('src/app/experience-refinements.css');
+  assert.match(styles, /\.global-app-shell\.has-lounge-open\s*>\s*\.global-page-body/);
+  assert.match(styles, /--global-lounge-reserved-width/);
+  assert.match(styles, /--category-glass: rgba\(8, 14, 27, 0\.45\)/);
+  assert.match(styles, /@media \(min-width: 1024px\)\s*\{[\s\S]*?--global-lounge-reserved-width/);
+  assert.match(styles, /@media \(max-width: 1023px\)\s*\{[\s\S]*?\.global-lounge-launch-control\s*\{[^}]*display: none !important;/);
+  assert.match(styles, /\.global-chat-message-bubble\s*\{[^}]*border: 0 !important;[^}]*background: transparent !important;/);
+  assert.doesNotMatch(styles, /margin-right:\s*58px/);
+});
+
+test('friend-call capture and remote playback require explicit actions', () => {
+  const dock = read('src/components/layout/FriendDock.tsx');
+  const call = read('src/app/webrtc/page.tsx');
+  assert.doesNotMatch(dock, /&auto=1|allow="[^"]*autoplay/i);
+  assert.doesNotMatch(call, /\bautoStart\b|setAutoStart/);
+  assert.match(call, /onClick=\{startMatchFromUi\}/);
+  assert.match(call, /const retryRemotePlayback = async/);
+  const chooser = call.indexOf('display = await navigator.mediaDevices.getDisplayMedia');
+  const leaseClaim = call.indexOf("await updateCallMediaLease(callId, ownerId, token, 'screen', Boolean(systemAudioTrack)");
+  assert.ok(chooser >= 0 && leaseClaim > chooser, 'the native share picker opens before the server lease request');
+  assert.match(call, /screenAudioTransceiverRef\.current = connection\.addTransceiver\('audio', \{ direction: 'sendrecv' \}\)/);
+  assert.doesNotMatch(call, /createMediaStreamDestination|mixedAudioTrackRef/);
+  assert.match(call, /stage\.requestFullscreen\(\)/);
+  assert.match(call, /document\.exitFullscreen\(\)/);
+  assert.match(call, /함께보기/);
+  assert.match(call, /함께듣기/);
+  assert.match(call, /sharedScreenVisible && <div className="webrtc-stage-shared-screen"/);
+  assert.match(call, /webrtc-stage-camera-row/);
+  assert.doesNotMatch(call, /webrtc-sidebar-screen/);
+  assert.match(read('src/app/experience-refinements.css'), /\.webrtc-stage-camera-row\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/s);
+  assert.doesNotMatch(call, /<video ref=\{remoteVideoRef\}[^>]*autoPlay/);
+  assert.doesNotMatch(call, /<video ref=\{sidebarVideoRef\}[^>]*autoPlay/);
+  assert.match(dock, /allow="camera; microphone; display-capture; fullscreen" allowFullScreen/);
 });
 
 test('leaving the public shell clears lounge spacing and the directory map action opens its map tab', () => {
   const shell = read('src/components/layout/GlobalAppShell.tsx');
-  assert.match(shell, /if \(mode !== 'public'\) setLoungeOpen\(false\)/);
+  assert.match(shell, /if \(mode !== 'public'\) \{[\s\S]*?setLoungeOpen\(false\);[\s\S]*?setLoungeMaximized\(false\)/);
+  assert.match(shell, /has-lounge-maximized/);
   const directory = read('src/app/directory/page.tsx');
   assert.match(directory, /selectDirectory\(biz, 'map'\)/);
 });

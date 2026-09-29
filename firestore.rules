@@ -457,37 +457,103 @@ service cloud.firestore {
              && request.resource.data.matchedBy == request.auth.uid));
        allow delete: if request.auth != null && (request.auth.uid == userId || isMaster());
      }
-     match /webrtcCalls/{callId} {
-       allow read: if request.auth != null
-         && isAdultUser(request.auth.uid)
-         && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid);
-       allow create: if request.auth != null
-         && isAdultUser(request.auth.uid)
-         && isAccountAllowed(request.auth.uid)
-         && request.resource.data.callerId == request.auth.uid
-         && request.resource.data.calleeId is string
-         && isAdultUser(request.resource.data.calleeId);
-       allow update: if request.auth != null
-         && isAdultUser(request.auth.uid)
-         && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid)
-         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['callId', 'callerId', 'calleeId', 'offer', 'answer', 'status', 'endedAt']);
-       allow delete: if request.auth != null && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid || isMaster());
-     }
+      match /webrtcCalls/{callId} {
+        function hasValidCallMediaState(data) {
+          return data.keys().hasAll(['mediaOwnerId', 'mediaLeaseId', 'mediaMode', 'systemAudio', 'mediaUpdatedAt'])
+            && data.mediaMode in ['camera', 'screen']
+            && data.systemAudio is bool
+            && data.mediaUpdatedAt is timestamp
+            && data.mediaUpdatedAt == request.time
+            && (
+              (data.mediaOwnerId == null
+                && data.mediaLeaseId is string
+                && data.mediaLeaseId.size() > 0
+                && data.mediaMode == 'camera'
+                && data.systemAudio == false)
+              || (data.mediaOwnerId is string
+                && data.mediaOwnerId in [data.callerId, data.calleeId]
+                && data.mediaLeaseId is string
+                && data.mediaLeaseId.size() > 0
+                && data.mediaMode == 'screen'
+                && data.mediaUpdatedAt + duration.value(45, 's') > request.time)
+            );
+        }
+        function canUpdateCallMedia() {
+          let oldOwner = resource.data.get('mediaOwnerId', null);
+          let oldLeaseId = resource.data.get('mediaLeaseId', null);
+          let oldMediaUpdatedAt = resource.data.get('mediaUpdatedAt', null);
+          let oldLeaseExpired = !(oldMediaUpdatedAt is timestamp)
+            || request.time >= oldMediaUpdatedAt + duration.value(45, 's');
+          return request.auth != null
+            && isAdultUser(request.auth.uid)
+            && isAccountAllowed(request.auth.uid)
+            && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid)
+            && resource.data.get('status', '') != 'ended'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'mediaOwnerId', 'mediaLeaseId', 'mediaMode', 'systemAudio', 'mediaUpdatedAt'
+            ])
+            && hasValidCallMediaState(request.resource.data)
+            && (
+              (request.resource.data.mediaOwnerId == request.auth.uid
+                && ((oldOwner == request.auth.uid && oldLeaseId == request.resource.data.mediaLeaseId)
+                  || ((oldOwner == null || oldLeaseExpired)
+                    && oldLeaseId != request.resource.data.mediaLeaseId)))
+              || (request.resource.data.mediaOwnerId == null
+                && oldOwner == request.auth.uid
+                && request.resource.data.mediaLeaseId == oldLeaseId)
+            );
+        }
+        function canUpdateCallSignal() {
+          return request.auth != null
+            && isAdultUser(request.auth.uid)
+            && isAccountAllowed(request.auth.uid)
+            && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offer', 'answer', 'status', 'endedAt'])
+            && request.resource.data.callerId == resource.data.callerId
+            && request.resource.data.calleeId == resource.data.calleeId
+            && request.resource.data.get('callId', null) == resource.data.get('callId', null)
+            && (!request.resource.data.keys().hasAny(['status'])
+              || request.resource.data.status in ['offer', 'answer', 'connected', 'ended'])
+            && (resource.data.get('status', '') != 'ended' || request.resource.data.get('status', '') == 'ended');
+        }
+        allow read: if request.auth != null
+          && isAdultUser(request.auth.uid)
+          && isAccountAllowed(request.auth.uid)
+          && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid);
+        allow create: if request.auth != null
+          && isAdultUser(request.auth.uid)
+          && isAccountAllowed(request.auth.uid)
+          && request.resource.data.keys().hasOnly(['callId', 'callerId', 'calleeId', 'offer', 'answer', 'status', 'endedAt'])
+          && request.resource.data.callerId == request.auth.uid
+          && request.resource.data.calleeId is string
+          && request.resource.data.calleeId != request.auth.uid
+          && (!request.resource.data.keys().hasAny(['callId']) || request.resource.data.callId == callId)
+          && (!request.resource.data.keys().hasAny(['status'])
+            || request.resource.data.status in ['offer', 'answer', 'connected', 'ended'])
+          && isAdultUser(request.resource.data.calleeId)
+          && isAccountAllowed(request.resource.data.calleeId);
+        allow update: if canUpdateCallSignal() || canUpdateCallMedia();
+        allow delete: if request.auth != null && (isMaster()
+          || (isAccountAllowed(request.auth.uid)
+            && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid)));
+      }
       match /webrtcCandidates/{candidateId} {
-       allow read: if request.auth != null
-         && isAdultUser(request.auth.uid)
-         && exists(/databases/$(database)/documents/webrtcCalls/$(resource.data.callId))
+        allow read: if request.auth != null
+          && isAdultUser(request.auth.uid)
+          && isAccountAllowed(request.auth.uid)
+          && exists(/databases/$(database)/documents/webrtcCalls/$(resource.data.callId))
          && (get(/databases/$(database)/documents/webrtcCalls/$(resource.data.callId)).data.callerId == request.auth.uid
            || get(/databases/$(database)/documents/webrtcCalls/$(resource.data.callId)).data.calleeId == request.auth.uid);
-       allow create: if request.auth != null
-         && isAdultUser(request.auth.uid)
-         && request.resource.data.fromUserId == request.auth.uid
+        allow create: if request.auth != null
+          && isAdultUser(request.auth.uid)
+          && isAccountAllowed(request.auth.uid)
+          && request.resource.data.fromUserId == request.auth.uid
          && exists(/databases/$(database)/documents/webrtcCalls/$(request.resource.data.callId))
          && (get(/databases/$(database)/documents/webrtcCalls/$(request.resource.data.callId)).data.callerId == request.auth.uid
            || get(/databases/$(database)/documents/webrtcCalls/$(request.resource.data.callId)).data.calleeId == request.auth.uid);
-       allow update: if false;
-       allow delete: if request.auth != null
-         && (isMaster() || resource.data.fromUserId == request.auth.uid);
+        allow update: if false;
+        allow delete: if request.auth != null
+          && (isMaster() || (isAccountAllowed(request.auth.uid) && resource.data.fromUserId == request.auth.uid));
      }
        match /liveRooms/{roomId} {
          allow read: if true;
