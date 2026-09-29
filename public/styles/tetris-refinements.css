@@ -217,13 +217,13 @@
   }
 
   .tetris-focused-workspace {
-    grid-template-columns: minmax(220px, 0.8fr) repeat(2, minmax(0, 1fr)) !important;
+    grid-template-columns: minmax(200px, 0.6fr) repeat(2, minmax(0, 1.2fr)) !important;
     grid-template-rows: minmax(0, 1fr);
   }
 
   .tetris-social-column {
     min-height: 0;
-    grid-template-rows: minmax(6.5rem, 0.75fr) minmax(0, max-content) minmax(12rem, 1.4fr) !important;
+    grid-template-rows: minmax(13rem, 1.7fr) minmax(0, max-content) minmax(12rem, 1fr) !important;
   }
 
   .tetris-camera-panel,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DEFAULT_ENTRY_FEE, MAX_ENTRY_FEE, MIN_ENTRY_FEE, parseEntryFee, shouldReserveTetrisStake } from './tetrisEntryFee.ts';
+import { canReadyTetrisMatch, DEFAULT_ENTRY_FEE, MAX_ENTRY_FEE, MIN_ENTRY_FEE, parseEntryFee, shouldReserveTetrisStake } from './tetrisEntryFee.ts';
 
 test('Tetris defaults to a free match and accepts zero as the minimum', () => {
   assert.equal(DEFAULT_ENTRY_FEE, 0);
@@ -8,6 +8,8 @@ test('Tetris defaults to a free match and accepts zero as the minimum', () => {
   assert.equal(parseEntryFee(0), 0);
   assert.equal(parseEntryFee('0'), 0);
   assert.equal(shouldReserveTetrisStake(0), false);
+  assert.equal(canReadyTetrisMatch(0), true);
+  assert.equal(canReadyTetrisMatch(1), false);
 });
 
 test('Tetris rejects malformed entry fee values', () => {
@@ -23,4 +25,5 @@ test('Tetris accepts the bounded whole-dollar stake range and reserves positive 
   }
   assert.equal(shouldReserveTetrisStake(1), true);
   assert.equal(shouldReserveTetrisStake(MAX_ENTRY_FEE), true);
+  assert.equal(canReadyTetrisMatch(MAX_ENTRY_FEE), false);
 });

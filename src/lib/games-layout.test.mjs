@@ -38,19 +38,29 @@ test('fresh Tetris match entry paths reset the entry fee to its zero default', (
   assert.match(lobbyReset, /setBetAmount\(DEFAULT_ENTRY_FEE\)/);
 });
 
+test('new Tetris ready confirmations require a zero-dollar match', () => {
+  const page = read('src/app/games/page.tsx');
+  const confirmation = section(page, 'const confirmBet = async () => {', '// Manual fallback');
+
+  assert.match(confirmation, /canReadyTetrisMatch\(amount\)/);
+  assert.match(confirmation, /무료로만 진행됩니다/);
+  assert.match(page, /disabled=\{!matchId \|\| matchPhase !== 'betting' \|\| readyForBattle \|\| !canReadyTetrisMatch\(betAmount\)\}/);
+  assert.match(page, /role="status" className="text-\[10px\] leading-4 text-amber-200"/);
+});
+
 test('Tetris boards, compact metrics, and chat share responsive layout invariants', () => {
   const css = read('public/styles/tetris-refinements.css');
   const page = read('src/app/games/page.tsx');
 
   assert.match(page, /state\?\.score\.toLocaleString\(\)/);
-  assert.match(css, /grid-template-columns: minmax\(220px, 0\.8fr\) repeat\(2, minmax\(0, 1fr\)\) !important;/);
+  assert.match(css, /grid-template-columns: minmax\(200px, 0\.6fr\) repeat\(2, minmax\(0, 1\.2fr\)\) !important;/);
   assert.match(css, /\.tetris-own-panel,\s*\.tetris-opponent-panel\s*\{[^}]*width: 100%;[^}]*align-self: stretch;/s);
   assert.match(css, /\.tetris-own-panel > \.tetris-focus-header,\s*\.tetris-opponent-panel > \.tetris-focus-header\s*\{[^}]*grid-template-columns: minmax\(4\.5rem, 0\.8fr\) minmax\(0, 1fr\) 3\.25rem !important;[^}]*height: 3\.25rem;/s);
   assert.match(css, /\.tetris-battle-metrics\s*\{[^}]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/s);
   assert.match(css, /grid-template-rows: 3\.25rem minmax\(0, 1fr\) 5\.75rem !important;/);
   assert.match(css, /grid-template-rows: 3\.25rem minmax\(0, 1fr\) 6\.5rem !important;/);
   assert.match(css, /\.tetris-battle-stat > b\s*\{[^}]*font-size: 0\.68rem !important;/s);
-  assert.match(css, /grid-template-rows: minmax\(6\.5rem, 0\.75fr\) minmax\(0, max-content\) minmax\(12rem, 1\.4fr\) !important;/);
+  assert.match(css, /grid-template-rows: minmax\(13rem, 1\.7fr\) minmax\(0, max-content\) minmax\(12rem, 1fr\) !important;/);
   assert.match(css, /\.tetris-focus-messages\s*\{[^}]*flex: 1;[^}]*overflow-y: auto;/s);
   assert.match(css, /\.tetris-chat-panel\s*\{[^}]*height: clamp\(16rem,[^}]*env\(safe-area-inset-bottom\)/s);
   assert.match(css, /padding-bottom: calc\(4\.5rem \+ env\(safe-area-inset-bottom\)\)/);

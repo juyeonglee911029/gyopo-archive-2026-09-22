@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { BriefcaseBusiness, CalendarDays, CarFront, ChevronDown, Film, Gamepad2, GraduationCap, Home, Landmark, MapPin, MessageCircle, Music2, Newspaper, ShieldCheck, ShoppingBag, Store, UserRoundCheck, Video } from 'lucide-react';
+import { BriefcaseBusiness, CalendarDays, ChevronDown, Film, Gamepad2, Home, MessageCircle, Music2, Newspaper, ShoppingBag, Store, UserRoundCheck, Video } from 'lucide-react';
 import { COUNTRY_ROUTES, cityHref, countryHref, countryForRegion, getCityRoute, getCountryRoute, getPublicServiceRoute, getRegionalCategory } from '@/lib/regionRoutes';
 import { REGIONS } from '@/lib/regions';
 import { PUBLIC_CATEGORIES } from '@/lib/publicCategories';
@@ -19,15 +19,6 @@ const navigationGroups = [
     { id: 'market', href: '/market', label: '장터', english: 'Market', icon: ShoppingBag },
     { id: 'news', href: '/news', label: '뉴스', english: 'News', icon: Newspaper },
     { id: 'events', href: '/regions', label: '행사', english: 'Events', icon: CalendarDays },
-  ] },
-  { title: 'LIFE ESSENTIALS', links: [
-    { id: 'life', href: '/life', label: '생활 가이드', english: 'Life guides', icon: MapPin },
-    { id: 'immigration', href: '/regions', label: '이민·비자', english: 'Immigration', icon: Landmark },
-    { id: 'housing', href: '/regions', label: '주거', english: 'Housing', icon: Home },
-    { id: 'education', href: '/regions', label: '교육', english: 'Education', icon: GraduationCap },
-    { id: 'cars', href: '/regions', label: '자동차', english: 'Cars', icon: CarFront },
-    { id: 'tax-finance', href: '/regions', label: '세금·금융', english: 'Tax & finance', icon: Landmark },
-    { id: 'safety', href: '/regions', label: '안전', english: 'Safety', icon: ShieldCheck },
   ] },
   { title: 'DISCOVER', links: [
     { id: 'music', href: '/music', label: '음악', english: 'Music', icon: Music2 },

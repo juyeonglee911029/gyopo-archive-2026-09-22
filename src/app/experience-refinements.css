@@ -17,9 +17,10 @@
 }
 
 .global-lounge {
-  right: 16px !important;
-  bottom: 72px !important;
-  width: min(20rem, calc(100vw - 32px)) !important;
+  top: var(--header-height, 96px) !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: min(18rem, calc(100vw - 32px)) !important;
   border: 1px solid var(--gyopo-glass-border) !important;
   border-radius: 0 !important;
   background: var(--gyopo-glass) !important;
@@ -334,7 +335,7 @@
 
   @media (min-width: 1024px) {
   .global-app-shell.has-lounge-open {
-    --global-lounge-reserved-width: min(20rem, calc(100vw - 32px));
+    --global-lounge-reserved-width: min(18rem, calc(100vw - 32px));
   }
 
   .global-app-shell.has-lounge-open > .global-page-body {
@@ -400,6 +401,10 @@
 }
 
 @media (max-width: 768px) {
+  .global-header-search {
+    display: none !important;
+  }
+
   .global-mobile-lounge-panel {
     bottom: calc(var(--bottom-nav-height, 68px) + 14px + env(safe-area-inset-bottom)) !important;
   }
