@@ -8,6 +8,7 @@ import { getCountryRoute } from '@/lib/regionRoutes';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { trackGrowth } from '@/lib/growthTracking';
 import { startSerialPoll } from '@/lib/rtcSignaling';
+import { DEFAULT_AI_WRITING_PROMPT, MAX_AI_WRITING_PROMPT_LENGTH, normalizeAiWritingPrompt } from '@/lib/writerPreferences';
 import StartupExperience from '@/components/layout/StartupExperience';
 import { FloatingRoomTitle, LiveRoomPlayer, RoomChatPanel, type LiveRoom } from '@/app/theater/liveRoomShared';
 
@@ -63,7 +64,7 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState('');
-  const [profileForm, setProfileForm] = useState({ name: '', country: '', image: '' });
+  const [profileForm, setProfileForm] = useState({ name: '', country: '', image: '', defaultAiWritingPrompt: DEFAULT_AI_WRITING_PROMPT });
   const [floatingRoom, setFloatingRoom] = useState<LiveRoom | null>(null);
   const [floatingMinimized, setFloatingMinimized] = useState(false);
   const [floatingOffset, setFloatingOffset] = useState({ x: 0, y: 0 });
@@ -173,7 +174,7 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     const openProfile = () => {
       if (!user) return;
-       setProfileForm({ name: user.name, country: user.country || '', image: user.image });
+        setProfileForm({ name: user.name, country: user.country || '', image: user.image, defaultAiWritingPrompt: normalizeAiWritingPrompt(user.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT });
       setProfileError('');
       setProfileOpen(true);
     };
@@ -298,7 +299,7 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
     setProfileSaving(true);
     setProfileError('');
     try {
-        const nextUser = { ...user, name, country, image: profileForm.image };
+      const nextUser = { ...user, name, country, image: profileForm.image, defaultAiWritingPrompt: normalizeAiWritingPrompt(profileForm.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT };
       await saveProfile(nextUser, getSessionToken());
       setUser(nextUser);
       setProfileOpen(false);
@@ -422,7 +423,8 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
                <div><p className="text-sm font-black">프로필 사진 / Photo</p><p className="mt-1 text-xs leading-5 text-slate-500">정사각형으로 자동 정리됩니다. JPG, PNG, GIF 지원.</p><label className="mt-3 inline-flex cursor-pointer rounded-none bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 hover:bg-cyan-200">사진 선택<input type="file" accept="image/*" onChange={handleProfileImage} className="sr-only" /></label></div>
             </div>
              <label className="block text-sm font-bold text-slate-200">이름 / Name<input value={profileForm.name} onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))} maxLength={40} className="mt-2 w-full rounded-none border-0 bg-[#070b17] px-4 py-3 text-white outline-none focus:bg-[#0b1221]" /></label>
-             <label className="block text-sm font-bold text-slate-200">국가·지역 / Country<input value={profileForm.country} onChange={(event) => setProfileForm((current) => ({ ...current, country: event.target.value }))} list="profile-country-options" className="mt-2 w-full rounded-none border-0 bg-[#070b17] px-4 py-3 text-white outline-none focus:bg-[#0b1221]" /><datalist id="profile-country-options">{REGIONS.filter((region) => region.id !== 'Global').map((region) => <option key={region.id} value={region.id}>{region.flag} {region.label}</option>)}</datalist></label>
+              <label className="block text-sm font-bold text-slate-200">국가·지역 / Country<input value={profileForm.country} onChange={(event) => setProfileForm((current) => ({ ...current, country: event.target.value }))} list="profile-country-options" className="mt-2 w-full rounded-none border-0 bg-[#070b17] px-4 py-3 text-white outline-none focus:bg-[#0b1221]" /><datalist id="profile-country-options">{REGIONS.filter((region) => region.id !== 'Global').map((region) => <option key={region.id} value={region.id}>{region.flag} {region.label}</option>)}</datalist></label>
+              <label className="block text-sm font-bold text-slate-200">AI 글쓰기 기본 지침 <span className="font-normal text-slate-500">비공개 · {profileForm.defaultAiWritingPrompt.length}/{MAX_AI_WRITING_PROMPT_LENGTH}</span><textarea value={profileForm.defaultAiWritingPrompt} onChange={(event) => setProfileForm((current) => ({ ...current, defaultAiWritingPrompt: event.target.value }))} maxLength={MAX_AI_WRITING_PROMPT_LENGTH} rows={4} placeholder="예: 교민 독자에게 친절하고 간결한 말투, 확인되지 않은 정보는 추측하지 말고 표시" className="mt-2 w-full resize-y border-0 bg-[#070b17] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-slate-600 focus:bg-[#0b1221]" /><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">커뮤니티·뉴스·생활 글의 AI 초안에만 사용됩니다. 비밀번호나 민감한 개인정보는 넣지 마세요.</span></label>
               <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-bold text-slate-200">성별 / Gender<input disabled value={user.gender === 'male' ? '남성 / Male' : '여성 / Female'} className="mt-2 w-full cursor-not-allowed rounded-none border-0 bg-white/5 px-4 py-3 text-slate-500" /></label><label className="block text-sm font-bold text-slate-200">나이 / Age<input disabled value={user.age ? `${user.age}세 / years` : ''} className="mt-2 w-full cursor-not-allowed rounded-none border-0 bg-white/5 px-4 py-3 text-slate-500" /></label></div>
              <p className="bg-amber-300/[.06] p-3 text-xs leading-5 text-amber-100/70">성별과 나이는 최초 가입 시 저장되며 변경할 수 없습니다. Gender and age are locked after signup.</p>
              {profileError && <p role="alert" className="bg-rose-400/10 p-3 text-sm font-bold text-rose-200">{profileError}</p>}

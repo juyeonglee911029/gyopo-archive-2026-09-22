@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { COUNTRY_LOCATIONS } from './locations.ts';
 import { REGIONS } from './regions.ts';
-import { COMMUNITY_FILTERS, EMPTY_JOB_FILTERS, communityTopic, createFilterLocations, listingLocation, matchesCommunityFilters, matchesJobFilters, paginateListings, parseSavedJobIds } from './listingFilters.ts';
+import { COMMUNITY_FILTERS, EMPTY_JOB_FILTERS, communityTopic, createFilterLocations, jobDetailHref, listingLocation, matchesCommunityFilters, matchesJobFilters, paginateListings, parseSavedJobIds } from './listingFilters.ts';
 
 const locations = createFilterLocations(COUNTRY_LOCATIONS, REGIONS);
 const now = Date.parse('2026-09-14T12:00:00Z');
@@ -59,6 +59,11 @@ test('all job filters combine with AND and preserve original IDs and order', () 
   assert.deepEqual(jobs.filter((job) => matchesJob(job)), jobs);
   assert.equal(matchesJob(complete, { local: true }, {}), false);
   assert.equal(matchesJob(complete, { local: true }, { country: 'USA' }), true);
+});
+
+test('native and imported job links point to their readable detail route', () => {
+  assert.equal(jobDetailHref({ id: 'native-job' }), '/content/native-job?collection=jobs');
+  assert.equal(jobDetailHref({ id: 'source-job', sourceContentId: 'imported job', sourceId: 'partner', sourceUrl: 'https://example.test/job?a=1&b=2' }), '/content/imported%20job?source=partner&category=jobs&url=https%3A%2F%2Fexample.test%2Fjob%3Fa%3D1%26b%3D2');
 });
 
 test('optional job flags fail closed; only exact affirmative tags or boolean true qualify', () => {

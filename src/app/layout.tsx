@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import GlobalAppShell from '@/components/layout/GlobalAppShell';
 import AppRuntime from '@/components/layout/AppRuntime';
 import { SITE_URL } from '@/lib/seo';
+import './experience-refinements.css';
+import './post-workflow-refinements.css';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

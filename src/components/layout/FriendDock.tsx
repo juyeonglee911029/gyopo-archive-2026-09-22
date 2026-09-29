@@ -486,9 +486,9 @@ export default function FriendDock() {
 
   return (
     <>
-       <button id="friend-dock-launch" type="button" onClick={() => setOpen(true)} aria-label="친구 채팅과 통화 열기" className="fixed bottom-4 right-4 z-[75] inline-flex min-h-12 items-center gap-2 rounded-full border border-cyan-300/30 bg-[#0b1729] px-4 text-cyan-100 shadow-[0_12px_40px_rgba(0,0,0,.45)] transition hover:border-cyan-200/60 hover:bg-[#10213b]">
+       <button id="friend-dock-launch" type="button" aria-controls="friend-dock" aria-expanded={open} onClick={() => setOpen(true)} aria-label="친구 채팅과 통화 열기" className="friend-dock-launch-control fixed bottom-4 right-4 z-[75] inline-flex min-h-12 items-center gap-2 rounded-full border border-cyan-300/30 bg-[#0b1729] px-4 text-cyan-100 shadow-[0_12px_40px_rgba(0,0,0,.45)] transition hover:border-cyan-200/60 hover:bg-[#10213b]">
          <UserRoundCheck size={19} />
-         <span className="hidden text-xs font-black sm:inline">친구·통화</span>
+          <span className="sr-only">친구·통화</span>
          {messageNotice && <span className="absolute bottom-14 right-0 whitespace-nowrap rounded-lg bg-emerald-300 px-3 py-2 text-[11px] font-black text-slate-950 shadow-lg">{messageNotice}</span>}
        </button>
 
@@ -501,7 +501,7 @@ export default function FriendDock() {
 
           {incomingCalls.length > 0 && <div className="mx-3 mt-3 border-0 bg-emerald-300/[.08] p-3"><div className="flex items-center gap-2 text-xs font-black text-emerald-100"><PhoneCall size={14} /> {isKorean ? '영상 통화 요청' : 'Incoming call'}</div>{incomingCalls.map((request) => <div key={request.id} className="mt-3 flex items-center gap-2"><img src={request.callerImage} alt="" className="h-8 w-8 rounded-lg object-cover" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-white">{request.callerName}</p><p className="text-[10px] text-emerald-100/65">{isKorean ? '친구가 영상 통화를 요청했습니다.' : 'Your friend requested a video call.'}</p></div><button type="button" onClick={() => void answerVideoCall(request, 'accepted')} aria-label={isKorean ? '통화 수락' : 'Accept call'} className="border-0 bg-emerald-300 p-2 text-slate-950"><Check size={14} /></button><button type="button" onClick={() => void answerVideoCall(request, 'declined')} aria-label={isKorean ? '통화 거절' : 'Decline call'} className="border-0 bg-white/10 p-2 text-slate-300"><X size={14} /></button></div>)}</div>}
 
-         {videoCall && <div className="friend-call-video relative mx-3 mb-3 overflow-hidden rounded-xl bg-black"><iframe ref={callFrameRef} key={videoCall.id} title="친구 영상 통화" src={`/webrtc?friend=${encodeURIComponent(videoCall.friendId)}&auto=1&compact=1&callKind=friend&callId=${encodeURIComponent(videoCall.id)}`} allow="camera; microphone; autoplay; display-capture" className="h-full w-full border-0" /></div>}
+         {videoCall && <div className="friend-call-video relative mx-3 mb-3 overflow-hidden bg-black"><iframe ref={callFrameRef} key={videoCall.id} title="친구 영상 통화" src={`/webrtc?friend=${encodeURIComponent(videoCall.friendId)}&compact=1&callKind=friend&callId=${encodeURIComponent(videoCall.id)}`} allow="camera; microphone; display-capture; fullscreen" allowFullScreen className="h-full w-full border-0" /></div>}
 
           {friendsLoading && friends.length === 0 ? (
             <div className="px-6 py-5 text-center text-xs font-bold text-slate-400">{isKorean ? '친구 목록을 불러오는 중입니다...' : 'Loading friends...'}</div>
@@ -509,26 +509,31 @@ export default function FriendDock() {
             <div className="p-8 text-center"><UserRoundCheck size={28} className="mx-auto text-slate-600" /><p className="mt-3 text-sm font-bold text-slate-300">수락된 친구가 없습니다.</p><p className="mt-1 text-xs text-slate-500">유저 목록에서 친구 요청을 보내보세요.</p></div>
           ) : (
             <>
-              <div className="flex items-center justify-between border-y border-white/10 px-3 py-2 text-[10px] font-black text-slate-400">
+              <div className="border-y border-white/10 px-3 py-2 text-[10px] font-black text-slate-400">
                 <span>{isKorean ? '친구 목록' : 'Friends'}</span>
-                <span>{isKorean ? `${friends.length}명 · 최근 90초 기준` : `${friends.length} friends · active within 90 sec`}</span>
               </div>
-              <div className="max-h-48 space-y-1 overflow-y-auto px-2.5 py-2">
+              <div className="friend-list max-h-40 space-y-1 overflow-y-auto px-2.5 py-2">
                 {friends.map((friend) => {
                   const online = onlineFriendIds?.has(friend.id) || false;
                   const statusLabel = onlineFriendIds === null
                     ? (isKorean ? '상태 확인 중' : 'Checking status')
                     : online ? (isKorean ? '온라인' : 'Online') : (isKorean ? '오프라인' : 'Offline');
-                  return <button key={friend.id} type="button" aria-pressed={friend.id === selectedId} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')}: ${statusLabel}`} onClick={() => setSelectedId(friend.id)} className={`flex w-full items-center gap-2.5 border-0 px-2.5 py-2 text-left text-xs font-black ${friend.id === selectedId ? 'bg-cyan-300 text-slate-950' : 'bg-white/5 text-slate-300'}`}>
-                    {friend.image ? <img src={friend.image} alt="" className="h-8 w-8 shrink-0 object-cover" /> : <span className="grid h-8 w-8 shrink-0 place-items-center bg-white/10 text-[11px]">{friend.name?.slice(0, 1) || '?'}</span>}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{friend.name || (isKorean ? '친구' : 'Friend')}</span>
-                      <span className={`mt-0.5 flex items-center gap-1.5 text-[9px] font-bold ${onlineFriendIds === null ? 'text-slate-500' : online ? 'text-emerald-300' : 'text-slate-500'}`}>
-                        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${onlineFriendIds === null ? 'bg-slate-500' : online ? 'bg-emerald-400' : 'bg-slate-600'}`} />
-                        {statusLabel}
+                  return <div key={friend.id} className="friend-row" data-selected={friend.id === selectedId} role="group" aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')}: ${statusLabel}`}>
+                    <button type="button" aria-pressed={friend.id === selectedId} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '채팅 선택' : 'select chat'}`} onClick={() => setSelectedId(friend.id)} className="friend-row-select">
+                      {friend.image ? <img src={friend.image} alt="" /> : <span className="friend-row-avatar">{friend.name?.slice(0, 1) || '?'}</span>}
+                      <span className="friend-row-copy">
+                        <span className="friend-row-name">{friend.name || (isKorean ? '친구' : 'Friend')}</span>
+                        <span className={`friend-row-status ${onlineFriendIds === null ? 'is-unknown' : online ? 'is-online' : ''}`}>
+                          <span aria-hidden="true" />
+                          {statusLabel}
+                        </span>
                       </span>
+                    </button>
+                    <span className="friend-row-actions">
+                      <button type="button" onClick={() => setSelectedId(friend.id)} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '채팅 열기' : 'open chat'}`} title={isKorean ? '채팅 열기' : 'Open chat'} className="friend-row-action"><MessageCircle size={15} /></button>
+                      <button type="button" onClick={() => { setSelectedId(friend.id); void requestVideoCall(friend.id); }} disabled={Boolean(pendingCall || videoCall)} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '통화 요청' : 'call'}`} title={isKorean ? '통화 요청' : 'Call'} className="friend-row-action"><PhoneCall size={15} /></button>
                     </span>
-                  </button>;
+                  </div>;
                 })}
               </div>
 
@@ -540,7 +545,7 @@ export default function FriendDock() {
               )}
 
                 <div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[.16em] text-slate-500"><span className="flex items-center gap-1.5"><MessageCircle size={13} /> {isKorean ? '친구 채팅' : 'Friend chat'}</span></div>
-                <div className="h-32 space-y-1.5 overflow-y-auto bg-black/20 p-2">{messages.length === 0 ? <p className="py-10 text-center text-xs text-slate-600">첫 메시지를 보내보세요.</p> : messages.map((message) => <div key={message.id} className={`max-w-[85%] px-2.5 py-1.5 text-xs ${message.authorId === user.id ? 'ml-auto bg-emerald-300 text-slate-950' : 'bg-amber-300/15 text-amber-100'}`}><b className="block text-[9px] opacity-65">{message.user}</b>{message.attachmentData && (message.attachmentType?.startsWith('image/') ? <a href={message.attachmentData} target="_blank" rel="noreferrer" className="mt-1 block overflow-hidden bg-black/10"><img src={message.attachmentData} alt={message.attachmentName || '첨부 사진'} loading="lazy" className="max-h-28 w-full object-contain" /></a> : <a href={message.attachmentData} download={message.attachmentName} className="mt-1 flex items-center gap-1.5 bg-black/10 px-2 py-1.5 text-[10px] underline"><FileText size={13} /> <span className="truncate">{message.attachmentName || '첨부파일'}</span></a>)}{message.text && <span className="mt-1 block break-words">{message.text}</span>}</div>)}<div ref={messagesEndRef} /></div>
+                 <div className="friend-chat-thread h-32 space-y-1.5 overflow-y-auto p-2">{messages.length === 0 ? <p className="py-10 text-center text-xs text-slate-600">첫 메시지를 보내보세요.</p> : messages.map((message) => <div key={message.id} className={`friend-message-bubble max-w-[85%] px-2.5 py-1.5 text-xs ${message.authorId === user.id ? 'is-own ml-auto text-emerald-100' : 'is-other text-amber-100'}`}>{message.attachmentData && (message.attachmentType?.startsWith('image/') ? <a href={message.attachmentData} target="_blank" rel="noreferrer" className="mt-1 block overflow-hidden"><img src={message.attachmentData} alt={message.attachmentName || '첨부 사진'} loading="lazy" className="max-h-28 w-full object-contain" /></a> : <a href={message.attachmentData} download={message.attachmentName} className="mt-1 flex items-center gap-1.5 px-2 py-1.5 text-[10px] underline"><FileText size={13} /> <span className="truncate">{message.attachmentName || '첨부파일'}</span></a>)}{message.text && <span className="mt-1 block break-words">{message.text}</span>}</div>)}<div ref={messagesEndRef} /></div>
                {error && <p role="alert" className="mt-2 text-xs font-bold text-rose-300">{error}</p>}
                 <form onSubmit={sendMessage} aria-busy={sending} className="mt-2 space-y-2">
                  {attachment && <div className="flex items-center gap-2 bg-white/[.08] px-2 py-1.5 text-[10px] text-slate-200"><span className="grid h-7 w-7 shrink-0 place-items-center bg-black/20">{attachment.type.startsWith('image/') ? <img src={attachment.data} alt="첨부 미리보기" className="h-full w-full object-cover" /> : <FileText size={14} />}</span><span className="min-w-0 flex-1 truncate">{attachment.name}</span><button type="button" onClick={() => setAttachment(null)} aria-label="첨부파일 취소" className="p-1 text-slate-400 hover:text-white"><X size={13} /></button></div>}

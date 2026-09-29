@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Ban, Camera, CheckCircle2, Flag, LoaderCircle, Mic, MicOff, MonitorUp, PhoneCall, RefreshCcw, ShieldAlert, Users, VideoOff } from 'lucide-react';
+import { Ban, Camera, CheckCircle2, Flag, Headphones, LoaderCircle, Maximize2, Mic, MicOff, Minimize2, MonitorUp, PhoneCall, RefreshCcw, ShieldAlert, Users, VideoOff } from 'lucide-react';
 import {
   deleteDocument,
   claimWebrtcMatch,
@@ -28,7 +28,7 @@ import {
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { allowClientAction, getVideoAlias, inspectSafetyText, RANDOM_VIDEO_MIN_AGE } from '@/lib/safety';
 import { callMediaConstraints, isVideoOnlyCall, createMirroredCamera, mergeRemoteTrack, playCallMedia } from '@/lib/callMedia';
-import { createCandidateQueue, createRtcSignaling, startSerialPoll, RTC_INITIAL_TIMEOUT, RTC_DISCONNECT_GRACE, RTC_RESTART_TIMEOUT, type RtcDescription } from '@/lib/rtcSignaling';
+import { createCandidateQueue, createRtcSignaling, startSerialPoll, updateCallMediaLease, CALL_MEDIA_LEASE_MS, RTC_INITIAL_TIMEOUT, RTC_DISCONNECT_GRACE, RTC_RESTART_TIMEOUT, type RtcDescription } from '@/lib/rtcSignaling';
 import { rtcConfiguration, rtcFailureMessage } from '@/lib/rtcConfiguration';
 
 type QueueEntry = OnlineUser & {
@@ -45,7 +45,10 @@ type CallDocument = {
   offer?: RtcDescription;
   answer?: RtcDescription | null;
   mediaMode?: 'camera' | 'screen';
+  mediaOwnerId?: string | null;
+  mediaLeaseId?: string | null;
   systemAudio?: boolean;
+  mediaUpdatedAt?: string;
 };
 
 type CandidateDocument = {
@@ -90,6 +93,7 @@ export default function WebRTCPage() {
   const [status, setStatus] = useState('대기 중');
   const [peer, setPeer] = useState<QueueEntry | null>(null);
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
+  const [hasRemoteScreen, setHasRemoteScreen] = useState(false);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [videoOnly, setVideoOnly] = useState(true);
@@ -97,6 +101,15 @@ export default function WebRTCPage() {
   const [isSharingScreen, setIsSharingScreen] = useState(false);
   const [remoteSharingScreen, setRemoteSharingScreen] = useState(false);
   const [remoteSystemAudio, setRemoteSystemAudio] = useState(false);
+  const [hasRemoteScreenAudio, setHasRemoteScreenAudio] = useState(false);
+  const [screenAudioEnabled, setScreenAudioEnabled] = useState(false);
+  const [screenAudioListening, setScreenAudioListening] = useState(false);
+  const [mediaOwnerId, setMediaOwnerId] = useState<string | null>(null);
+  const [mediaLeaseId, setMediaLeaseId] = useState<string | null>(null);
+  const [screenShareBusy, setScreenShareBusy] = useState(false);
+  const [fullscreenSupported, setFullscreenSupported] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const screenShareBusyRef = useRef(false);
   const [flip, setFlip] = useState(true);
   const [active, setActive] = useState(false);
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
@@ -109,7 +122,6 @@ export default function WebRTCPage() {
   const [targetUserId, setTargetUserId] = useState('');
   const [callKind, setCallKind] = useState<'random' | 'friend' | 'game'>('random');
   const [compactMode, setCompactMode] = useState(false);
-  const [autoStart, setAutoStart] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [hasEnded, setHasEnded] = useState(false);
   const [callElapsed, setCallElapsed] = useState(0);
@@ -123,8 +135,13 @@ export default function WebRTCPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const sidebarVideoRef = useRef<HTMLVideoElement>(null);
+  const localScreenVideoRef = useRef<HTMLVideoElement>(null);
+  const sharedAudioRef = useRef<HTMLAudioElement>(null);
+  const compactStageRef = useRef<HTMLDivElement>(null);
+  const desktopStageRef = useRef<HTMLElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  const remoteScreenStreamRef = useRef<MediaStream | null>(null);
   const connectionRef = useRef<RTCPeerConnection | null>(null);
   const callRef = useRef<ActiveCall | null>(null);
   const connectionStartedAt = useRef<number | null>(null);
@@ -144,12 +161,17 @@ export default function WebRTCPage() {
   const outgoingVideoTrackRef = useRef<MediaStreamTrack | null>(null);
   const mirrorRef = useRef<ReturnType<typeof createMirroredCamera> | null>(null);
   const videoSenderRef = useRef<RTCRtpSender | null>(null);
+  const screenVideoSenderRef = useRef<RTCRtpSender | null>(null);
+  const screenVideoTransceiverRef = useRef<RTCRtpTransceiver | null>(null);
   const audioSenderRef = useRef<RTCRtpSender | null>(null);
+  const screenAudioSenderRef = useRef<RTCRtpSender | null>(null);
+  const screenAudioTransceiverRef = useRef<RTCRtpTransceiver | null>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenAudioTrackRef = useRef<MediaStreamTrack | null>(null);
-  const mixedAudioTrackRef = useRef<MediaStreamTrack | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const autoStartRef = useRef(false);
+  const remoteScreenAudioStreamRef = useRef<MediaStream | null>(null);
+  const mediaLeaseRef = useRef<{ callId: string; ownerId: string; leaseId: string } | null>(null);
+  const mediaLeaseUpdatedAtRef = useRef(0);
+  const remotePlaybackEnabledRef = useRef(false);
   const operationRef = useRef(0);
   const startedRef = useRef(false);
   const startingRef = useRef(false);
@@ -177,12 +199,15 @@ export default function WebRTCPage() {
     }
   };
 
-  const publishMediaState = async (mediaMode: 'camera' | 'screen', systemAudio: boolean) => {
-    const callId = callRef.current?.callId;
-    if (!callId || terminalRef.current) return;
-    const token = await getFreshSessionToken().catch(() => null);
-    if (!token) return;
-    await mergeDocument('webrtcCalls', callId, { mediaMode, systemAudio, mediaUpdatedAt: new Date() }, token).catch(() => undefined);
+  const releaseCallMediaLease = () => {
+    const lease = mediaLeaseRef.current;
+    if (!lease) return;
+    mediaLeaseRef.current = null;
+    mediaLeaseUpdatedAtRef.current = 0;
+    void (async () => {
+      const token = await getFreshSessionToken().catch(() => null);
+      if (token) await updateCallMediaLease(lease.callId, lease.ownerId, token, 'camera', false, lease.leaseId);
+    })().catch(() => undefined);
   };
 
   const queueWrite = <T,>(work: () => Promise<T>) => {
@@ -212,7 +237,6 @@ export default function WebRTCPage() {
     setTargetUserId(params.get('friend') || '');
     setCallKind(params.get('gameRoom') || params.get('callKind') === 'game' ? 'game' : params.get('friend') ? 'friend' : 'random');
     setCompactMode(params.get('compact') === '1');
-    setAutoStart(params.get('auto') === '1');
     callIdentityRef.current = {
       id: params.get('gameRoom') || params.get('callId') || '',
       kind: params.get('gameRoom') || params.get('callKind') === 'game' ? 'game' : params.get('friend') ? 'friend' : 'random',
@@ -224,6 +248,17 @@ export default function WebRTCPage() {
     if (!compactMode) return;
     document.body.classList.add('webrtc-compact-shell');
     return () => document.body.classList.remove('webrtc-compact-shell');
+  }, [compactMode]);
+
+  useEffect(() => {
+    const updateFullscreenState = () => {
+      const stages = [compactStageRef.current, desktopStageRef.current].filter((stage): stage is HTMLElement => Boolean(stage));
+      setFullscreenSupported(Boolean(document.fullscreenEnabled && stages.some((stage) => stage.requestFullscreen)));
+      setIsFullscreen(stages.some((stage) => document.fullscreenElement === stage));
+    };
+    updateFullscreenState();
+    document.addEventListener('fullscreenchange', updateFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', updateFullscreenState);
   }, [compactMode]);
 
   useEffect(() => {
@@ -296,26 +331,23 @@ export default function WebRTCPage() {
     screenTrackRef.current = null;
     if (screenTrack) screenTrack.onended = null;
     screenTrack?.stop();
-    const cameraTrack = outgoingVideoTrackRef.current || streamRef.current?.getVideoTracks()[0] || null;
-    const microphoneTrack = videoOnlyRef.current ? null : streamRef.current?.getAudioTracks()[0] || null;
-    if (videoSenderRef.current && cameraTrack) await videoSenderRef.current.replaceTrack(cameraTrack).catch(() => undefined);
+    if (screenVideoSenderRef.current) await screenVideoSenderRef.current.replaceTrack(null).catch(() => undefined);
     if (terminalRef.current || operation !== operationRef.current) return;
-    if (audioSenderRef.current && microphoneTrack) await audioSenderRef.current.replaceTrack(microphoneTrack).catch(() => undefined);
+    if (screenAudioSenderRef.current) await screenAudioSenderRef.current.replaceTrack(null).catch(() => undefined);
     if (terminalRef.current || operation !== operationRef.current) return;
     screenAudioTrackRef.current?.stop();
     screenAudioTrackRef.current = null;
-    mixedAudioTrackRef.current?.stop();
-    mixedAudioTrackRef.current = null;
-    await audioContextRef.current?.close().catch(() => undefined);
-    if (terminalRef.current || operation !== operationRef.current) return;
-    audioContextRef.current = null;
+    if (localScreenVideoRef.current) localScreenVideoRef.current.srcObject = null;
+    setScreenAudioEnabled(false);
     if (videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
       await videoRef.current.play().catch(() => undefined);
     }
     if (terminalRef.current || operation !== operationRef.current) return;
     setIsSharingScreen(false);
-    void publishMediaState('camera', false);
+    releaseCallMediaLease();
+    setMediaOwnerId(null);
+    setMediaLeaseId(null);
   };
 
   const toggleScreenShare = async () => {
@@ -326,49 +358,80 @@ export default function WebRTCPage() {
       await restoreCameraTrack();
       return;
     }
-    if (!videoSenderRef.current || !navigator.mediaDevices?.getDisplayMedia) {
+    if (!videoSenderRef.current || !screenVideoSenderRef.current || !navigator.mediaDevices?.getDisplayMedia) {
       setPermissionError('연결 후 화면 공유를 사용할 수 있습니다.');
       return;
     }
+    const ownsCurrentLease = mediaOwnerId === userRef.current?.id
+      && Boolean(mediaLeaseId && mediaLeaseRef.current?.leaseId === mediaLeaseId);
+    if (mediaOwnerId && !ownsCurrentLease) {
+      setPermissionError('현재 화면 공유 권한은 상대방 또는 다른 통화 창이 사용 중입니다.');
+      return;
+    }
+    if (screenShareBusyRef.current) return;
+    screenShareBusyRef.current = true;
+    setScreenShareBusy(true);
+    let display: MediaStream | null = null;
+    let leaseClaimed = false;
     try {
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
+      display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
       if (cancelled()) {
         display.getTracks().forEach((track) => track.stop());
         return;
       }
       const screenTrack = display.getVideoTracks()[0];
-      if (!screenTrack) { display.getTracks().forEach((track) => track.stop()); return; }
-      screenTrackRef.current = screenTrack;
-      const systemAudioTrack = display.getAudioTracks()[0] || null;
-      screenAudioTrackRef.current = systemAudioTrack;
-      await videoSenderRef.current!.replaceTrack(screenTrack);
-      if (cancelled()) return;
-      if (systemAudioTrack && audioSenderRef.current) {
-        const context = new AudioContext();
-        const destination = context.createMediaStreamDestination();
-        context.createMediaStreamSource(new MediaStream([systemAudioTrack])).connect(destination);
-        const microphoneTrack = streamRef.current?.getAudioTracks()[0];
-        if (microphoneTrack) context.createMediaStreamSource(new MediaStream([microphoneTrack])).connect(destination);
-        const mixedTrack = destination.stream.getAudioTracks()[0] || systemAudioTrack;
-        audioContextRef.current = context;
-        mixedAudioTrackRef.current = mixedTrack;
-        await audioSenderRef.current.replaceTrack(mixedTrack);
-        if (cancelled()) return;
+      if (!screenTrack) {
+        display.getTracks().forEach((track) => track.stop());
+        setPermissionError('공유할 화면을 찾지 못했습니다. 다시 선택해주세요.');
+        return;
       }
+      const callId = callRef.current?.callId;
+      const ownerId = userRef.current?.id;
+      const token = await getFreshSessionToken();
+      if (!callId || !ownerId || !token) throw new Error('통화 권한을 확인하지 못했습니다. 다시 연결해주세요.');
+      const leaseId = crypto.randomUUID();
+      const systemAudioTrack = display.getAudioTracks()[0] || null;
+      const claimed = await updateCallMediaLease(callId, ownerId, token, 'screen', Boolean(systemAudioTrack), leaseId);
+      if (cancelled()) {
+        if (claimed) {
+          mediaLeaseRef.current = { callId, ownerId, leaseId };
+          releaseCallMediaLease();
+        }
+        display.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      if (!claimed) {
+        display.getTracks().forEach((track) => track.stop());
+        setPermissionError('화면 공유 권한을 얻지 못했습니다. 상대방이 공유 중이거나 통화가 종료되었습니다.');
+        return;
+      }
+      leaseClaimed = true;
+      mediaLeaseRef.current = { callId, ownerId, leaseId };
+      mediaLeaseUpdatedAtRef.current = Date.now();
+      setMediaOwnerId(ownerId);
+      setMediaLeaseId(leaseId);
+      screenTrackRef.current = screenTrack;
+      screenAudioTrackRef.current = systemAudioTrack;
+      setScreenAudioEnabled(Boolean(systemAudioTrack));
       screenTrack.onended = () => { void restoreCameraTrack(); };
-      if (videoRef.current) {
-        videoRef.current.srcObject = new MediaStream([screenTrack, ...(streamRef.current?.getAudioTracks() || []), ...(systemAudioTrack ? [systemAudioTrack] : [])]);
-        await videoRef.current.play().catch(() => undefined);
+      await screenVideoSenderRef.current.replaceTrack(screenTrack);
+      if (cancelled()) return;
+      if (systemAudioTrack && screenAudioSenderRef.current) {
+        await screenAudioSenderRef.current.replaceTrack(systemAudioTrack);
+        if (cancelled()) return;
       }
       if (cancelled()) return;
       setIsSharingScreen(true);
-      void publishMediaState('screen', Boolean(systemAudioTrack));
+      setPermissionError('');
     } catch (error) {
-      if (cancelled()) return;
-      await restoreCameraTrack();
+      if (leaseClaimed) await restoreCameraTrack();
+      else display?.getTracks().forEach((track) => track.stop());
       if (cancelled()) return;
       if (error instanceof DOMException && error.name === 'NotAllowedError') return;
       setPermissionError('화면 공유를 시작하지 못했습니다. 브라우저 권한을 확인해주세요.');
+    } finally {
+      screenShareBusyRef.current = false;
+      if (mountedRef.current) setScreenShareBusy(false);
     }
   };
 
@@ -415,14 +478,33 @@ export default function WebRTCPage() {
     screenTrackRef.current = null;
     screenAudioTrackRef.current?.stop();
     screenAudioTrackRef.current = null;
-    mixedAudioTrackRef.current?.stop();
-    mixedAudioTrackRef.current = null;
-    void audioContextRef.current?.close().catch(() => undefined);
-    audioContextRef.current = null;
+    if (localScreenVideoRef.current) localScreenVideoRef.current.srcObject = null;
+    if (sharedAudioRef.current) {
+      sharedAudioRef.current.pause();
+      sharedAudioRef.current.srcObject = null;
+      sharedAudioRef.current.muted = true;
+    }
     audioSenderRef.current = null;
+    screenAudioSenderRef.current = null;
+    screenAudioTransceiverRef.current = null;
+    screenVideoSenderRef.current = null;
+    screenVideoTransceiverRef.current = null;
     setIsSharingScreen(false);
+    setScreenAudioEnabled(false);
+    setScreenAudioListening(false);
+    setHasRemoteScreenAudio(false);
+    setMediaOwnerId(null);
+    setMediaLeaseId(null);
+    remotePlaybackEnabledRef.current = false;
+    setPlaybackBlocked(false);
+    releaseCallMediaLease();
     remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
     remoteStreamRef.current = null;
+    remoteScreenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    remoteScreenStreamRef.current = null;
+    remoteScreenAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
+    remoteScreenAudioStreamRef.current = null;
+    if (localScreenVideoRef.current) localScreenVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     if (sidebarVideoRef.current) sidebarVideoRef.current.srcObject = null;
     if (videoRef.current && streamRef.current) void playCallMedia(videoRef.current, streamRef.current, true);
@@ -432,7 +514,8 @@ export default function WebRTCPage() {
     connectedRef.current = false;
     connectionStartedAt.current = null;
     setIsConnected(false);
-     setHasRemoteVideo(false);
+      setHasRemoteVideo(false);
+      setHasRemoteScreen(false);
      setRemoteSharingScreen(false);
      setRemoteSystemAudio(false);
     setPeer(null);
@@ -604,6 +687,16 @@ export default function WebRTCPage() {
     setPeer(null);
     setIsConnected(false);
     setHasRemoteVideo(false);
+    setHasRemoteScreen(false);
+    setRemoteSharingScreen(false);
+    setRemoteSystemAudio(false);
+    setHasRemoteScreenAudio(false);
+    setScreenAudioEnabled(false);
+    setScreenAudioListening(false);
+    setMediaOwnerId(null);
+    setMediaLeaseId(null);
+    setPlaybackBlocked(false);
+    remotePlaybackEnabledRef.current = false;
     setStatus(targetedCall ? '수락한 상대에게 연결하는 중' : '다른 인증 회원을 찾는 중');
     setIsMatching(true);
     queueNeedsResetRef.current = false;
@@ -662,17 +755,6 @@ export default function WebRTCPage() {
     else router.push('/');
   };
 
-  useEffect(() => {
-    if (!autoStart || !targetUserId || !user || active || autoStartRef.current || terminalRef.current) return;
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled || terminalRef.current) return;
-      autoStartRef.current = true;
-      void startMatch();
-    });
-    return () => { cancelled = true; };
-  }, [autoStart, callKind, targetUserId, user?.id, active]);
-
   function endMatch(message = '통화가 종료되었습니다.', notifyParent = true) {
     if (terminalRef.current) return;
     terminalRef.current = true;
@@ -681,16 +763,25 @@ export default function WebRTCPage() {
     stopPollRef.current?.();
     stopPollRef.current = null;
     const currentCall = callRef.current;
+    remotePlaybackEnabledRef.current = false;
+    releaseCallMediaLease();
     if (mountedRef.current) {
     setIsStarting(false);
     setHasEnded(true);
     setActive(false);
     setIsMatching(false);
-     setIsConnected(false);
-     setHasRemoteVideo(false);
-     setRemoteSharingScreen(false);
-     setRemoteSystemAudio(false);
-     setPlaybackBlocked(false);
+      setIsConnected(false);
+      setHasRemoteVideo(false);
+      setHasRemoteScreen(false);
+      setRemoteSharingScreen(false);
+      setRemoteSystemAudio(false);
+      setHasRemoteScreenAudio(false);
+      setScreenAudioEnabled(false);
+      setScreenAudioListening(false);
+      setMediaOwnerId(null);
+      setMediaLeaseId(null);
+      setScreenShareBusy(false);
+      setPlaybackBlocked(false);
     setPeer(null);
      setActiveCallId(null);
      setChatMessages([]);
@@ -713,12 +804,19 @@ export default function WebRTCPage() {
     screenTrackRef.current = null;
     screenAudioTrackRef.current?.stop();
     screenAudioTrackRef.current = null;
-    mixedAudioTrackRef.current?.stop();
-    mixedAudioTrackRef.current = null;
-    void audioContextRef.current?.close().catch(() => undefined);
-    audioContextRef.current = null;
+    screenShareBusyRef.current = false;
+    if (localScreenVideoRef.current) localScreenVideoRef.current.srcObject = null;
+    if (sharedAudioRef.current) {
+      sharedAudioRef.current.pause();
+      sharedAudioRef.current.srcObject = null;
+      sharedAudioRef.current.muted = true;
+    }
     videoSenderRef.current = null;
     audioSenderRef.current = null;
+    screenAudioSenderRef.current = null;
+    screenAudioTransceiverRef.current = null;
+    screenVideoSenderRef.current = null;
+    screenVideoTransceiverRef.current = null;
     if (mountedRef.current) setIsSharingScreen(false);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -727,6 +825,10 @@ export default function WebRTCPage() {
     if (sidebarVideoRef.current) sidebarVideoRef.current.srcObject = null;
     remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
     remoteStreamRef.current = null;
+    remoteScreenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    remoteScreenStreamRef.current = null;
+    remoteScreenAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
+    remoteScreenAudioStreamRef.current = null;
     callRef.current = null;
     resetSignalingState();
     connectionStartedAt.current = null;
@@ -795,22 +897,26 @@ export default function WebRTCPage() {
       const alive = () => !cancelled && mountedRef.current && !terminalRef.current && operation === operationRef.current && connectionRef.current === connection;
       const connection = new RTCPeerConnection(rtcConfiguration(process.env.NEXT_PUBLIC_WEBRTC_ICE_SERVERS, process.env.NEXT_PUBLIC_TURN_USERNAME, process.env.NEXT_PUBLIC_TURN_CREDENTIAL));
       connectionRef.current = connection;
-      signalingRef.current = createRtcSignaling(connection, call.initiator, async (signal) => {
-        const token = await getFreshSessionToken();
-        if (!alive()) return;
-        if (!token) throw new Error('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
-        await mergeDocument('webrtcCalls', call.callId, call.initiator
-          ? { callId: call.callId, callerId: user.id, calleeId: call.peer.userId, ...signal }
-          : signal, token);
-        if (!alive()) signalEnded(call.callId);
-      }, alive);
-      const outgoing = createOutgoingStream();
-      outgoing?.getTracks().forEach((track) => {
-        if (videoOnlyRef.current && track.kind === 'audio') { track.stop(); return; }
-        const sender = connection.addTrack(track, outgoing);
-        if (track.kind === 'video') videoSenderRef.current = sender;
-        if (track.kind === 'audio') audioSenderRef.current = sender;
-      });
+       const outgoing = createOutgoingStream();
+        outgoing?.getTracks().forEach((track) => {
+          if (videoOnlyRef.current && track.kind === 'audio') { track.stop(); return; }
+          const sender = connection.addTrack(track, outgoing);
+          if (track.kind === 'video') videoSenderRef.current = sender;
+          if (track.kind === 'audio') audioSenderRef.current = sender;
+        });
+        screenAudioTransceiverRef.current = connection.addTransceiver('audio', { direction: 'sendrecv' });
+        screenAudioSenderRef.current = screenAudioTransceiverRef.current.sender;
+        screenVideoTransceiverRef.current = connection.addTransceiver('video', { direction: 'sendrecv' });
+       screenVideoSenderRef.current = screenVideoTransceiverRef.current.sender;
+       signalingRef.current = createRtcSignaling(connection, call.initiator, async (signal) => {
+         const token = await getFreshSessionToken();
+         if (!alive()) return;
+         if (!token) throw new Error('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
+         await mergeDocument('webrtcCalls', call.callId, call.initiator
+           ? { callId: call.callId, callerId: user.id, calleeId: call.peer.userId, ...signal }
+           : signal, token);
+         if (!alive()) signalEnded(call.callId);
+       }, alive);
       connection.onicecandidate = ({ candidate }) => {
         if (!candidate || !alive()) return;
         if (candidate.type === 'relay') relaySeenRef.current = true;
@@ -820,18 +926,32 @@ export default function WebRTCPage() {
       connection.onicecandidateerror = () => {
         if (alive() && !connectedRef.current) setStatus('중계 경로 확인 중 · 연결 실패 시 네트워크/TURN 설정을 확인해주세요');
       };
-      connection.ontrack = (event) => {
-        if (!alive()) return;
-        if (videoOnlyRef.current && event.track.kind === 'audio') { event.track.stop(); return; }
-        const remoteStream = remoteStreamRef.current || new MediaStream();
-        mergeRemoteTrack(remoteStream, event.track, videoOnlyRef.current);
-        remoteStreamRef.current = remoteStream;
-        const playback = () => {
-          if (!alive()) return;
-          setHasRemoteVideo(remoteStream.getVideoTracks().some((track) => track.readyState === 'live' && !track.muted));
-          void playCallMedia(remoteVideoRef.current, remoteStream, videoOnlyRef.current).then((played) => { if (alive()) setPlaybackBlocked(!played); });
-          if (window.matchMedia('(min-width: 768px)').matches) void playCallMedia(sidebarVideoRef.current, remoteStream, true);
-        };
+       connection.ontrack = (event) => {
+         if (!alive()) return;
+         if (videoOnlyRef.current && event.track.kind === 'audio') { event.track.stop(); return; }
+          const isScreen = event.track.kind === 'video' && event.transceiver === screenVideoTransceiverRef.current;
+          const isScreenAudio = event.track.kind === 'audio' && event.transceiver === screenAudioTransceiverRef.current;
+          const remoteStream = isScreen
+            ? remoteScreenStreamRef.current || new MediaStream()
+            : isScreenAudio
+              ? remoteScreenAudioStreamRef.current || new MediaStream()
+              : remoteStreamRef.current || new MediaStream();
+          mergeRemoteTrack(remoteStream, event.track, videoOnlyRef.current);
+          if (isScreen) remoteScreenStreamRef.current = remoteStream;
+          else if (isScreenAudio) remoteScreenAudioStreamRef.current = remoteStream;
+          else remoteStreamRef.current = remoteStream;
+           const playback = () => {
+             if (!alive()) return;
+             if (isScreen) {
+               setHasRemoteScreen(remoteStream.getVideoTracks().some((track) => track.readyState === 'live' && !track.muted));
+               return;
+             }
+             if (isScreenAudio) {
+               setHasRemoteScreenAudio(remoteStream.getAudioTracks().some((track) => track.readyState === 'live' && !track.muted));
+               return;
+             }
+             setHasRemoteVideo(remoteStream.getVideoTracks().some((track) => track.readyState === 'live' && !track.muted));
+           };
         event.track.onunmute = playback;
         event.track.onmute = playback;
         event.track.onended = playback;
@@ -992,15 +1112,35 @@ export default function WebRTCPage() {
          const call = await getDocument<CallDocument>('webrtcCalls', current.callId, token).catch(() => null);
          if (stale()) return;
          if (call) {
-           setRemoteSharingScreen(call.mediaMode === 'screen');
-           setRemoteSystemAudio(call.mediaMode === 'screen' && call.systemAudio === true);
+           const updatedAt = Date.parse(call.mediaUpdatedAt || '');
+           const leaseActive = call.mediaMode === 'screen' && Number.isFinite(updatedAt) && Date.now() - updatedAt < CALL_MEDIA_LEASE_MS;
+           const ownerId = leaseActive ? call.mediaOwnerId || null : null;
+           const remoteScreen = Boolean(ownerId && ownerId !== user.id);
+           setMediaOwnerId(ownerId);
+           setMediaLeaseId(ownerId ? call.mediaLeaseId || null : null);
+           setRemoteSharingScreen(remoteScreen);
+           setRemoteSystemAudio(remoteScreen && call.systemAudio === true);
          }
          if (call?.status === 'ended') {
-          closeCallForRematch('상대가 연결을 종료했습니다. 다른 상대를 자동으로 찾는 중');
-          return;
-        }
-        const now = Date.now();
-        const needsRestart = !restartAtRef.current && !connectedRef.current && (
+           closeCallForRematch('상대가 연결을 종료했습니다. 다른 상대를 자동으로 찾는 중');
+           return;
+         }
+         const now = Date.now();
+         const mediaLease = mediaLeaseRef.current;
+          if (screenTrackRef.current && mediaLease && now - mediaLeaseUpdatedAtRef.current >= CALL_MEDIA_LEASE_MS / 3) {
+           try {
+              const renewed = await updateCallMediaLease(mediaLease.callId, mediaLease.ownerId, token, 'screen', Boolean(screenAudioTrackRef.current?.enabled), mediaLease.leaseId);
+             if (stale()) return;
+             if (!renewed) throw new Error('Lease unavailable');
+             if (mediaLeaseRef.current === mediaLease) mediaLeaseUpdatedAtRef.current = Date.now();
+           } catch {
+             if (stale()) return;
+             setPermissionError('화면 공유 권한을 갱신하지 못해 화면 공유를 중지했습니다.');
+             await restoreCameraTrack();
+             if (stale()) return;
+           }
+         }
+         const needsRestart = !restartAtRef.current && !connectedRef.current && (
           (disconnectedAtRef.current !== null && now - disconnectedAtRef.current >= RTC_DISCONNECT_GRACE)
           || (connectionStartedAt.current !== null && now - connectionStartedAt.current >= RTC_INITIAL_TIMEOUT));
         if (needsRestart) { restartAtRef.current = now; setStatus('같은 상대와 네트워크 경로를 다시 연결하는 중'); }
@@ -1138,44 +1278,183 @@ export default function WebRTCPage() {
     }
   };
 
-  const retryRemotePlayback = () => {
-    const stream = remoteStreamRef.current;
-    const operation = operationRef.current;
-    if (!stream) return;
-    void playCallMedia(remoteVideoRef.current, stream, videoOnlyRef.current).then((played) => {
-      if (mountedRef.current && !terminalRef.current && operation === operationRef.current) setPlaybackBlocked(!played);
-    });
+  const toggleTogetherListen = async () => {
+    const outgoingAudio = screenAudioTrackRef.current;
+    if (isSharingScreen && outgoingAudio) {
+      const lease = mediaLeaseRef.current;
+      if (!lease) return;
+      const next = !outgoingAudio.enabled;
+      outgoingAudio.enabled = next;
+      setScreenAudioEnabled(next);
+      try {
+        const token = await getFreshSessionToken();
+        if (!token) throw new Error('다시 로그인해주세요.');
+        const renewed = await updateCallMediaLease(lease.callId, lease.ownerId, token, 'screen', next, lease.leaseId);
+        if (!renewed) throw new Error('화면 공유 권한이 만료되었습니다.');
+        if (mediaLeaseRef.current === lease) mediaLeaseUpdatedAtRef.current = Date.now();
+      } catch {
+        if (mountedRef.current && !terminalRef.current) {
+          await restoreCameraTrack();
+          setPermissionError('화면 공유 권한을 갱신하지 못해 공유를 중지했습니다.');
+        }
+      }
+      return;
+    }
+
+    const audio = sharedAudioRef.current;
+    const stream = remoteScreenAudioStreamRef.current;
+    if (!audio || !stream) return;
+    if (screenAudioListening) {
+      audio.muted = true;
+      audio.pause();
+      setScreenAudioListening(false);
+      return;
+    }
+    audio.srcObject = stream;
+    audio.muted = false;
+    try {
+      await audio.play();
+      if (mountedRef.current && !terminalRef.current) {
+        setScreenAudioListening(true);
+        setPermissionError('');
+      }
+    } catch {
+      audio.muted = true;
+      setPermissionError('브라우저가 오디오 재생을 막았습니다. 함께듣기를 다시 눌러주세요.');
+    }
   };
+
+  const toggleFullscreen = async (stage: HTMLElement | null) => {
+    if (!stage || !fullscreenSupported) return;
+    try {
+      if (document.fullscreenElement === stage) await document.exitFullscreen();
+      else await stage.requestFullscreen();
+    } catch {
+      setPermissionError('전체 화면을 사용할 수 없습니다. 브라우저 권한을 확인해주세요.');
+    }
+  };
+
+  const toggleCompactFullscreen = () => toggleFullscreen(compactStageRef.current);
+
+  const retryRemotePlayback = async () => {
+    const stream = remoteStreamRef.current;
+    const screen = remoteScreenStreamRef.current;
+    const operation = operationRef.current;
+    const attempts = [
+      ...(stream ? [playCallMedia(remoteVideoRef.current, stream, videoOnlyRef.current)] : []),
+      ...(screen ? [playCallMedia(sidebarVideoRef.current, screen, true)] : []),
+    ];
+    if (!attempts.length) return;
+    const played = (await Promise.all(attempts)).every(Boolean);
+    if (mountedRef.current && !terminalRef.current && operation === operationRef.current) {
+      remotePlaybackEnabledRef.current = played;
+      setPlaybackBlocked(!played);
+    }
+  };
+
+  useEffect(() => {
+    const video = localScreenVideoRef.current;
+    const track = screenTrackRef.current;
+    if (!video || !track) return;
+    video.srcObject = new MediaStream([track]);
+    void video.play().catch(() => undefined);
+    return () => {
+      video.pause();
+      video.srcObject = null;
+    };
+  }, [compactMode, isSharingScreen]);
+
+  useEffect(() => {
+    const audio = sharedAudioRef.current;
+    if (!audio) return;
+    const remoteAudioAvailable = !isSharingScreen && remoteSharingScreen && remoteSystemAudio && hasRemoteScreenAudio;
+    if (screenAudioListening && !remoteAudioAvailable) {
+      audio.pause();
+      audio.muted = true;
+      audio.srcObject = null;
+      setScreenAudioListening(false);
+    } else if (!screenAudioListening) {
+      audio.pause();
+      audio.muted = true;
+    }
+  }, [hasRemoteScreenAudio, isSharingScreen, remoteSharingScreen, remoteSystemAudio, screenAudioListening]);
+
+  useEffect(() => {
+    const stream = remoteStreamRef.current;
+    if (!stream || !remoteVideoRef.current) return;
+    remoteVideoRef.current.srcObject = stream;
+    remoteVideoRef.current.muted = videoOnlyRef.current;
+    if (remotePlaybackEnabledRef.current) {
+      const operation = operationRef.current;
+      void playCallMedia(remoteVideoRef.current, stream, videoOnlyRef.current).then((played) => {
+        if (mountedRef.current && !terminalRef.current && operation === operationRef.current) setPlaybackBlocked(!played);
+      });
+    } else if (hasRemoteVideo) setPlaybackBlocked(true);
+  }, [hasRemoteVideo, compactMode]);
+
+  useEffect(() => {
+    const stream = remoteScreenStreamRef.current;
+    if (!stream || !sidebarVideoRef.current) return;
+    sidebarVideoRef.current.srcObject = stream;
+    if (remotePlaybackEnabledRef.current) {
+      const operation = operationRef.current;
+      void playCallMedia(sidebarVideoRef.current, stream, true).then((played) => {
+        if (mountedRef.current && !terminalRef.current && operation === operationRef.current) setPlaybackBlocked(!played);
+      });
+    } else if (hasRemoteScreen) setPlaybackBlocked(true);
+  }, [hasRemoteScreen, compactMode]);
+
+  const sharedScreenVisible = isSharingScreen || remoteSharingScreen || hasRemoteScreen;
+  const screenShareDisabled = !isConnected || videoOnly || screenShareBusy || (!isSharingScreen && Boolean(mediaOwnerId));
+  const canToggleTogetherListen = !videoOnly && (isSharingScreen
+    ? screenAudioTrackRef.current?.readyState === 'live'
+    : remoteSharingScreen && remoteSystemAudio && hasRemoteScreenAudio);
 
   if (compactMode) {
     return (
-      <div className="gyopo-compact-call h-full min-h-0 w-full overflow-hidden bg-[#050914] text-white">
+      <div ref={compactStageRef} className="gyopo-compact-call h-full min-h-0 w-full overflow-hidden bg-[#050914] text-white">
+        <audio ref={sharedAudioRef} className="sr-only" aria-label="공유 화면 오디오" />
         <div className="relative flex h-full min-h-0 flex-col">
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-transparent px-3 py-2">
+          <div className="compact-call-header flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-transparent px-3 py-2">
             <div className="min-w-0">
               <div className="truncate text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">{callKind === 'friend' ? 'FRIEND' : 'GAME'} {videoOnly ? 'CAMERA ONLY' : 'VOICE + VIDEO'}</div>
               <div className="truncate text-xs font-bold text-slate-300">{peer?.name || '상대방 연결 대기'}</div>
             </div>
-             <span className="flex shrink-0 items-center gap-1.5"><span className={`rounded-full px-2 py-1 text-[10px] font-black ${isConnected ? 'bg-emerald-300/15 text-emerald-200' : 'bg-amber-300/15 text-amber-200'}`}>{hasEnded ? 'ENDED' : permissionError ? 'CHECK CAMERA' : isConnected ? 'CONNECTED' : active || isStarting ? 'CONNECTING' : 'READY'}</span>{isConnected && <span className="font-mono text-[11px] font-black text-cyan-100">{formatCallDuration(callElapsed)}</span>}</span>
+            <span className="flex shrink-0 items-center gap-1.5"><span className={`px-2 py-1 text-[10px] font-black ${isConnected ? 'bg-emerald-300/15 text-emerald-200' : 'bg-amber-300/15 text-amber-200'}`}>{hasEnded ? 'ENDED' : permissionError ? 'CHECK' : isConnected ? 'CONNECTED' : active || isStarting ? 'CONNECTING' : 'READY'}</span>{isConnected && <span className="font-mono text-[11px] font-black text-cyan-100">{formatCallDuration(callElapsed)}</span>}</span>
           </div>
 
-           <div className="relative min-h-0 flex-1 overflow-hidden bg-black">
-             <video ref={remoteVideoRef} muted={videoOnly} autoPlay playsInline className={`h-full w-full object-contain bg-[#030611] ${hasRemoteVideo ? 'opacity-100' : 'opacity-0'}`} />
-             <span className="absolute left-2 top-2 rounded-md bg-black/65 px-1.5 py-1 text-[9px] font-black text-slate-200">상대 화면</span>
-             {playbackBlocked && <button type="button" onClick={retryRemotePlayback} className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950">상대 영상/소리 재생</button>}
-             {!hasRemoteVideo && <div className="call-connecting-overlay absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_center,#172b50,#050914_72%)] p-3 text-center" role="status"><div>{!hasEnded && !permissionError ? <div className="call-connecting-logo" aria-label="GYOPO 연결 중">{'GYOPO'.split('').map((letter, index) => <span key={index} style={{ animationDelay: `${index * 100}ms` }} aria-hidden="true">{letter}</span>)}</div> : <VideoOff size={24} className="mx-auto mb-2 text-slate-400" />}<p className="mt-2 text-xs font-black">{status}</p></div></div>}
-             <div className={`call-local-preview absolute bottom-2 right-2 w-[30%] max-w-[160px] overflow-hidden rounded-xl border border-white/80 bg-black shadow-xl ${!active || permissionError ? 'hidden' : ''}`}>
-               <span className="absolute left-1.5 top-1.5 z-10 rounded-md bg-black/65 px-1.5 py-1 text-[8px] font-black text-white">내 화면</span>
-               <video ref={videoRef} muted autoPlay playsInline className={`aspect-video h-full w-full object-contain bg-[#030611] ${flip ? 'scale-x-[-1]' : ''}`} />
-             </div>
+          <div className={`compact-call-stage relative ${sharedScreenVisible ? 'has-shared-screen' : ''}`}>
+            {sharedScreenVisible && <div className="compact-call-shared-screen">
+              <span className="compact-call-video-label">{isSharingScreen ? '내 화면 공유' : '상대 화면 공유'}</span>
+              <video ref={isSharingScreen ? localScreenVideoRef : sidebarVideoRef} muted playsInline />
+              {!isSharingScreen && !hasRemoteScreen && <div className="compact-call-placeholder" role="status">상대 화면 연결 중</div>}
+            </div>}
+            <div className="compact-call-camera-row">
+              <div className="compact-call-video-tile">
+                <span className="compact-call-video-label">내 카메라</span>
+                <video ref={videoRef} muted autoPlay playsInline className={flip ? 'scale-x-[-1]' : ''} />
+                {(!active || !streamRef.current) && <div className="compact-call-placeholder">카메라 시작 후 내 영상이 표시됩니다.</div>}
+              </div>
+              <div className="compact-call-video-tile">
+                <span className="compact-call-video-label">상대 카메라</span>
+                <video ref={remoteVideoRef} muted={videoOnly} playsInline className={hasRemoteVideo ? 'opacity-100' : 'opacity-0'} />
+                {!hasRemoteVideo && <div className="compact-call-placeholder" role="status">{status}</div>}
+                {playbackBlocked && (hasRemoteVideo || hasRemoteScreen) && <button type="button" onClick={() => void retryRemotePlayback()} className="absolute inset-x-2 bottom-2 z-10 bg-cyan-300 px-2 py-2 text-[10px] font-black text-slate-950">상대 영상 재생</button>}
+              </div>
+            </div>
           </div>
 
-           {permissionError && !hasEnded && <div className="call-permission-error" role="alert"><span>{permissionError}</span>{!active && <button type="button" onClick={startMatchFromUi} disabled={isStarting}>권한 확인 후 다시 시도</button>}</div>}
-          <div className="call-compact-controls grid shrink-0 grid-cols-3 gap-1.5 border-t border-white/10 bg-[#10182b] p-2">
-             <button type="button" onClick={toggleMicrophone} disabled={!active || videoOnly} className="flex min-h-9 items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/5 px-1 text-[10px] font-black disabled:opacity-40">{audioEnabled ? <Mic size={13} /> : <MicOff size={13} />}{videoOnly ? '마이크 차단' : audioEnabled ? '마이크' : '음소거'}</button>
-              <button type="button" onClick={() => void toggleScreenShare()} disabled={!isConnected || videoOnly} className="flex min-h-9 items-center justify-center gap-1 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-1 text-[10px] font-black text-cyan-100 disabled:opacity-40"><MonitorUp size={13} />{isSharingScreen ? '공유 중지' : '화면 공유'}</button>
-            <button type="button" onClick={() => endMatch()} disabled={hasEnded} className="flex min-h-9 items-center justify-center gap-1 rounded-lg bg-rose-500/90 px-1 text-[10px] font-black text-white disabled:opacity-40"><VideoOff size={13} />종료</button>
+          {permissionError && !hasEnded && <div className="call-permission-error px-3 py-1.5 text-[10px]" role="alert"><span>{permissionError}</span>{!active && <button type="button" onClick={startMatchFromUi} disabled={isStarting}>권한 확인 후 다시 시도</button>}</div>}
+          <div className="call-compact-controls grid shrink-0 grid-cols-5 gap-1 border-t border-white/10 bg-[#10182b] p-2">
+            {!active ? <button type="button" onClick={startMatchFromUi} disabled={isStarting || hasEnded} className="col-span-5 flex min-h-11 items-center justify-center gap-2 bg-cyan-300 px-2 text-xs font-black text-slate-950 disabled:opacity-50"><Camera size={14} />{isStarting ? '카메라 연결 중...' : videoOnly ? '카메라 시작' : '카메라·마이크 시작'}</button> : <>
+              <button type="button" onClick={toggleMicrophone} disabled={videoOnly} aria-label={audioEnabled ? '마이크 끄기' : '마이크 켜기'} className="flex min-h-11 flex-col items-center justify-center gap-0.5 bg-white/5 px-1 text-[9px] font-black disabled:opacity-40">{audioEnabled ? <Mic size={13} /> : <MicOff size={13} />}{videoOnly ? '마이크 차단' : audioEnabled ? '마이크 켬' : '음소거'}</button>
+              <button type="button" onClick={() => void toggleScreenShare()} disabled={screenShareDisabled} aria-pressed={sharedScreenVisible} title={mediaOwnerId && !isSharingScreen ? '다른 참여자가 화면 공유 중입니다' : isSharingScreen ? '화면 공유 중지' : '화면을 함께 보기'} className="flex min-h-11 flex-col items-center justify-center gap-0.5 bg-cyan-300/10 px-1 text-[9px] font-black text-cyan-100 disabled:opacity-40"><MonitorUp size={13} />{isSharingScreen ? '공유 중지' : remoteSharingScreen ? '상대 공유 중' : screenShareBusy ? '선택 중' : '함께보기'}</button>
+              <button type="button" onClick={() => void toggleTogetherListen()} disabled={!canToggleTogetherListen} aria-pressed={isSharingScreen ? screenAudioEnabled : screenAudioListening} title={isSharingScreen ? '공유 오디오 송출 켜기 또는 끄기' : '공유 탭 오디오 재생'} className="flex min-h-11 flex-col items-center justify-center gap-0.5 bg-white/5 px-1 text-[9px] font-black disabled:opacity-40"><Headphones size={13} />{isSharingScreen ? screenAudioEnabled ? '함께듣기 켬' : '함께듣기 끔' : screenAudioListening ? '함께듣는 중' : '함께듣기'}</button>
+              <button type="button" onClick={toggleCompactFullscreen} disabled={!fullscreenSupported} aria-pressed={isFullscreen} aria-label={isFullscreen ? '전체 화면 종료' : '전체 화면'} title={fullscreenSupported ? (isFullscreen ? '전체 화면 종료' : '전체 화면') : '이 브라우저에서 전체 화면을 사용할 수 없습니다'} className="call-fullscreen-toggle flex min-h-11 flex-col items-center justify-center gap-0.5 bg-white/5 px-1 text-[9px] font-black disabled:opacity-40">{isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}{isFullscreen ? '축소' : '전체 화면'}</button>
+              <button type="button" onClick={() => endMatch()} disabled={hasEnded} className="flex min-h-11 flex-col items-center justify-center gap-0.5 bg-rose-500/90 px-1 text-[9px] font-black text-white disabled:opacity-40"><VideoOff size={13} />종료</button>
+              </>}
           </div>
+          <p className="call-compact-note px-3 pb-2">화면 공유는 클릭 후 시작됩니다. Chrome에서는 탭을 고른 뒤 탭 오디오 공유를 켜세요. DRM 영상은 검은 화면 또는 무음으로 제한될 수 있습니다.</p>
         </div>
       </div>
     );
@@ -1185,6 +1464,7 @@ export default function WebRTCPage() {
     <>
       {showRandomConsent && <div className="fixed inset-0 z-[90] grid place-items-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="random-chat-consent-title"><div className="random-chat-consent w-full max-w-lg p-6"><div className="flex items-start gap-3"><ShieldAlert size={22} className="mt-0.5 shrink-0 text-amber-200" /><div><h2 id="random-chat-consent-title" className="text-lg font-black text-white">랜덤 화상채팅 이용 안내</h2><p className="mt-3 text-sm leading-6 text-slate-300">만 18세 이상만 이용할 수 있습니다. 실명·전화번호·주소·외부 연락처·링크를 공유하지 말고, 불쾌하거나 위험한 상황에서는 즉시 종료·신고·차단해주세요. 안전수칙에 동의하면 카메라와 마이크 연결을 시작합니다.</p></div></div><div className="mt-6 flex gap-2"><button type="button" onClick={rejectRandomConsent} className="flex-1 border border-white/10 bg-white/[.06] py-3 text-sm font-black text-slate-300">거절하고 이전 화면</button><button type="button" onClick={acceptRandomConsent} className="flex-1 bg-cyan-300 py-3 text-sm font-black text-slate-950">동의하고 시작</button></div></div></div>}
     <div className="webrtc-page min-h-[calc(100vh-64px)] bg-[#080d1c] px-4 py-8 text-white">
+      <audio ref={sharedAudioRef} className="sr-only" aria-label="공유 화면 오디오" />
       <div className="webrtc-shell mx-auto max-w-6xl">
          <header className="category-header category-header-workspace mb-6 flex flex-wrap items-end justify-between gap-4">
             <div className="webrtc-title-stack"><div className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-cyan-300">LIVE CHAT</div><h1 className="text-3xl font-black tracking-tight md:text-5xl">LIVE CHAT</h1><p className="mt-2 text-sm text-slate-400">현재 접속 중인 인증 회원과 자동으로 연결됩니다.</p></div>
@@ -1201,43 +1481,63 @@ export default function WebRTCPage() {
            {safetyActionError && <p className="mt-2 text-xs font-bold text-rose-200">{safetyActionError}</p>}
          </section>}
 
-         <div className="webrtc-grid grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-           <section className="relative aspect-video overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-2xl">
-             {playbackBlocked && <button type="button" onClick={retryRemotePlayback} className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950">상대 영상/소리 재생</button>}
-             <video ref={remoteVideoRef} muted={videoOnly} autoPlay playsInline className={`h-full w-full object-contain bg-[#030611] transition-opacity ${hasRemoteVideo ? 'opacity-100' : 'opacity-0'}`} />
-            {!hasRemoteVideo && <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[radial-gradient(circle_at_center,#172b50,#050914_70%)] text-center"><div className="rounded-full border border-cyan-300/20 bg-cyan-300/10 p-5">{isMatching || active ? <LoaderCircle size={42} className="animate-spin text-cyan-300" /> : <Camera size={42} className="text-slate-500" />}</div><div><p className="text-xl font-black">{active ? status : '연결 대기 중'}</p><p className="mt-2 text-sm text-slate-400">{active ? '상대방의 카메라 연결을 기다리고 있습니다.' : '시작 버튼을 누르면 카메라와 마이크를 준비합니다.'}</p></div></div>}
-             {(isConnected || hasRemoteVideo) && <div className="absolute left-4 top-4 flex flex-wrap items-center gap-2 rounded-xl bg-black/60 px-3 py-2 text-xs font-bold backdrop-blur"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" /> {status}{remoteSharingScreen && <span className="border-l border-white/20 pl-2 text-cyan-200">함께보기 · 상대 화면 공유{remoteSystemAudio ? ' · 시스템 오디오' : ''}</span>}</div>}
-             {peer && <div className="webrtc-peer-card absolute bottom-4 left-4 rounded-2xl bg-black/60 px-4 py-3 backdrop-blur"><div className="flex items-center gap-3"><img src={peer.image} alt="" className="h-10 w-10 rounded-full object-cover" /><div><div className="font-black">{peer.name}</div><div className="text-xs text-slate-300">{peer.gender || '성별 미설정'} · {peer.age || '나이 미설정'} · {peer.country || '국가 미설정'}</div></div></div></div>}
-              <div className="absolute bottom-4 right-4 w-1/4 min-w-[100px] overflow-hidden rounded-2xl border-2 border-white/60 bg-black shadow-2xl"><video ref={videoRef} muted autoPlay playsInline className={`aspect-video h-full w-full object-contain bg-[#030611] ${flip ? 'scale-x-[-1]' : ''}`} /></div>
-             <div className="webrtc-mobile-controls">
-               <div className="mb-2 flex items-center justify-between gap-2 text-xs">
-                 <span className="truncate font-bold text-slate-200">{active ? status : '카메라와 마이크를 준비하세요'}</span>
-                 <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold text-slate-300"><input type="checkbox" checked={flip} onChange={(event) => setFlip(event.target.checked)} className="h-3.5 w-3.5 accent-cyan-400" /> 좌우 반전</label>
-               </div>
-               <div className="grid grid-cols-3 gap-2">
-                  {!active ? <button onClick={startMatchFromUi} className="col-span-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-3 py-3 text-sm font-black text-slate-950"><PhoneCall size={17} /> LIVE CHAT 시작</button> : <button onClick={() => void endMatch()} className="col-span-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-red-500 px-3 py-3 text-sm font-black text-white"><VideoOff size={17} /> 연결 종료</button>}
-                  <button onClick={toggleMicrophone} disabled={!active} aria-label={audioEnabled ? '마이크 끄기' : '마이크 켜기'} className="flex min-h-10 items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/10 px-2 text-xs font-black disabled:opacity-40">{audioEnabled ? <Mic size={14} /> : <MicOff size={14} />}{audioEnabled ? '마이크' : '음소거'}</button>
-                   <button onClick={() => void toggleScreenShare()} disabled={!isConnected} className="flex min-h-10 items-center justify-center gap-1 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-2 text-xs font-black text-cyan-100 disabled:opacity-40"><MonitorUp size={14} /> {isSharingScreen ? '공유 중지' : '화면·오디오 공유'}</button>
-                 <span className="flex min-h-10 items-center justify-center rounded-xl border border-white/10 px-2 text-[11px] font-bold text-slate-400">{isConnected ? '연결됨' : '대기 중'}</span>
-               </div>
-             </div>
-           </section>
+          <div className="webrtc-grid grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-w-0">
+              <section ref={desktopStageRef} className="webrtc-stage relative overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl">
+                {sharedScreenVisible && <div className="webrtc-stage-shared-screen">
+                  <span className="webrtc-stage-label">{isSharingScreen ? '내 화면 공유' : '상대 화면 공유'}</span>
+                  <video ref={isSharingScreen ? localScreenVideoRef : sidebarVideoRef} muted playsInline />
+                  {!isSharingScreen && !hasRemoteScreen && <div className="webrtc-stage-placeholder">상대 화면 연결 중</div>}
+                </div>}
+                <div className={`webrtc-stage-camera-row ${sharedScreenVisible ? 'has-shared-screen' : ''}`}>
+                  <div className="webrtc-stage-camera-tile">
+                    <span className="webrtc-stage-label">내 카메라</span>
+                    <video ref={videoRef} muted autoPlay playsInline className={flip ? 'scale-x-[-1]' : ''} />
+                    {(!active || !streamRef.current) && <div className="webrtc-stage-placeholder">{active ? '내 카메라 연결 중' : '카메라·마이크 시작 후 내 영상이 표시됩니다.'}</div>}
+                  </div>
+                  <div className="webrtc-stage-camera-tile">
+                    <span className="webrtc-stage-label">상대 카메라</span>
+                    <video ref={remoteVideoRef} muted={videoOnly} playsInline className={hasRemoteVideo ? 'opacity-100' : 'opacity-0'} />
+                    {!hasRemoteVideo && <div className="webrtc-stage-placeholder">{active ? status : '상대 연결 대기 중'}</div>}
+                  </div>
+                </div>
+                {(isConnected || hasRemoteVideo) && <div className="webrtc-stage-status"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />{status}{remoteSharingScreen && <span className="border-l border-white/20 pl-2 text-cyan-200">함께보기{remoteSystemAudio ? ' · 시스템 오디오' : ''}</span>}</div>}
+                <button type="button" onClick={() => void toggleFullscreen(desktopStageRef.current)} disabled={!fullscreenSupported} aria-label={isFullscreen ? '전체 화면 종료' : '전체 화면'} title={fullscreenSupported ? (isFullscreen ? '전체 화면 종료' : '전체 화면') : '이 브라우저에서 전체 화면을 사용할 수 없습니다'} className="webrtc-stage-fullscreen">{isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
+                {playbackBlocked && (hasRemoteVideo || hasRemoteScreen) && <button type="button" onClick={() => void retryRemotePlayback()} className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950">상대 영상/소리 재생</button>}
+              </section>
+
+              <div className="webrtc-mobile-controls mt-3 rounded-xl border border-white/10 bg-[#10182b] p-3">
+                <div className="mb-3 flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate font-bold text-slate-200">{active ? status : '카메라와 마이크를 준비하세요'}</span>
+                  <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold text-slate-300"><input type="checkbox" checked={flip} onChange={(event) => setFlip(event.target.checked)} className="h-3.5 w-3.5 accent-cyan-400" /> 좌우 반전</label>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {!active ? <button onClick={startMatchFromUi} disabled={isStarting || hasEnded} className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-lg bg-cyan-400 px-3 py-2 text-sm font-black text-slate-950 disabled:opacity-50"><PhoneCall size={16} /> LIVE CHAT 시작</button> : <button onClick={() => void endMatch()} disabled={hasEnded} className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-lg bg-red-500 px-3 py-2 text-sm font-black text-white disabled:opacity-40"><VideoOff size={16} /> 연결 종료</button>}
+                  <button type="button" onClick={toggleMicrophone} disabled={!active || videoOnly} aria-label={audioEnabled ? '마이크 끄기' : '마이크 켜기'} className="flex min-h-11 items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 text-xs font-black disabled:opacity-40">{audioEnabled ? <Mic size={14} /> : <MicOff size={14} />}{audioEnabled ? '마이크 켬' : '음소거'}</button>
+                  <button type="button" onClick={() => void toggleScreenShare()} disabled={screenShareDisabled} aria-pressed={sharedScreenVisible} className="flex min-h-11 items-center justify-center gap-1 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-2 text-xs font-black text-cyan-100 disabled:opacity-40"><MonitorUp size={14} />{isSharingScreen ? '공유 중지' : remoteSharingScreen ? '상대 공유 중' : '함께보기'}</button>
+                  <button type="button" onClick={() => void toggleTogetherListen()} disabled={!canToggleTogetherListen} aria-pressed={isSharingScreen ? screenAudioEnabled : screenAudioListening} className="flex min-h-11 items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 text-xs font-black disabled:opacity-40"><Headphones size={14} />{isSharingScreen ? screenAudioEnabled ? '함께듣기 켬' : '함께듣기 끔' : screenAudioListening ? '함께듣는 중' : '함께듣기'}</button>
+                  <button type="button" onClick={() => void toggleFullscreen(desktopStageRef.current)} disabled={!fullscreenSupported} aria-pressed={isFullscreen} aria-label={isFullscreen ? '전체 화면 종료' : '전체 화면'} title={fullscreenSupported ? (isFullscreen ? '전체 화면 종료' : '전체 화면') : '이 브라우저에서 전체 화면을 사용할 수 없습니다'} className="call-fullscreen-toggle flex min-h-11 items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 text-xs font-black disabled:opacity-40">{isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}{isFullscreen ? '축소' : '전체 화면'}</button>
+                </div>
+              </div>
+          </div>
 
           <aside className="space-y-5">
-               <section className="rounded-[2rem] border border-white/10 bg-[#111a2d] p-5"><div className="mb-4 flex items-center justify-between"><span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">LIVE CHAT 상태</span><span className="text-xs font-bold text-cyan-300">{status}</span></div>{peer ? <div className="mb-5 flex items-center gap-3 rounded-2xl bg-white/[0.05] p-3"><img src={peer.image} alt="" className="h-12 w-12 rounded-full object-cover" /><div><div className="font-black">{peer.name}</div><div className="mt-1 text-xs text-slate-400">{peer.gender || '성별 미설정'} · {peer.age || '나이 미설정'} · {peer.country || '국가 미설정'}</div></div></div> : <div className="mb-5 rounded-2xl border border-dashed border-white/10 p-5 text-center text-sm text-slate-500"><Users className="mx-auto mb-2" size={22} />현재 연결된 상대가 없습니다.</div>}{permissionError && <p className="mb-4 rounded-xl bg-amber-500/10 p-3 text-xs font-bold text-amber-100">{permissionError}</p>}{!active ? <button onClick={startMatchFromUi} className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 py-4 font-black text-slate-950 transition hover:bg-cyan-300"><PhoneCall size={19} /> LIVE CHAT 시작</button> : <button onClick={() => void endMatch()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 py-4 font-black text-white transition hover:bg-red-400"><VideoOff size={19} /> 연결 종료</button>}</section>
+            <section className="rounded-[2rem] border border-white/10 bg-[#111a2d] p-5">
+              <div className="mb-4 flex items-center justify-between"><span className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">LIVE CHAT 상태</span><span className="text-xs font-bold text-cyan-300">{status}</span></div>
+              {peer ? <div className="flex items-center gap-3 rounded-2xl bg-white/[0.05] p-3"><img src={peer.image} alt="" className="h-12 w-12 rounded-full object-cover" /><div><div className="font-black">{peer.name}</div><div className="mt-1 text-xs text-slate-400">{peer.gender || '성별 미설정'} · {peer.age || '나이 미설정'} · {peer.country || '국가 미설정'}</div></div></div> : <div className="rounded-2xl border border-dashed border-white/10 p-5 text-center text-sm text-slate-500"><Users className="mx-auto mb-2" size={22} />현재 연결된 상대가 없습니다.</div>}
+              {permissionError && <p className="mt-4 rounded-xl bg-amber-500/10 p-3 text-xs font-bold text-amber-100">{permissionError}</p>}
+            </section>
               <section className="rounded-[2rem] border border-white/10 bg-[#111a2d] p-5"><div className="mb-4 flex items-center justify-between"><span className="font-black">카메라 설정</span><span className="text-xs text-slate-500">상대 화면에도 적용</span></div><label className="flex cursor-pointer items-center justify-between rounded-xl bg-white/[0.04] p-3 text-sm font-bold"><span>내 화면 좌우 반전</span><input type="checkbox" checked={flip} onChange={(event) => setFlip(event.target.checked)} className="h-4 w-4 accent-cyan-400" /></label><div className="mt-4 flex items-start gap-2 text-xs leading-5 text-slate-500"><CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-300" />내 영상과 상대방에게 전송되는 영상 모두에 적용됩니다.</div></section>
               <section className="rounded-[2rem] border border-cyan-300/20 bg-[#111a2d] p-5"><div className="mb-4 flex items-center justify-between"><span className="font-black">LIVE CHAT 필터 / Filters</span><span className="text-xs font-bold text-cyan-300">18–60</span></div><label className="block text-xs font-bold text-slate-400">찾고 싶은 상대 / Gender<select value={genderPreference} onChange={(event) => setGenderPreference(event.target.value as GenderPreference)} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm font-bold text-white outline-none"><option value="any">모두 / Any</option><option value="male">남성 / Male</option><option value="female">여성 / Female</option></select></label><div className="mt-4 grid grid-cols-2 gap-2"><label className="text-xs font-bold text-slate-400">최소 나이 / Min<select value={ageMin} onChange={(event) => setAgeMin(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm font-bold text-white outline-none">{Array.from({ length: 43 }, (_, index) => index + 18).map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label className="text-xs font-bold text-slate-400">최대 나이 / Max<select value={ageMax} onChange={(event) => setAgeMax(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm font-bold text-white outline-none">{Array.from({ length: 43 }, (_, index) => index + 18).map((value) => <option key={value} value={value}>{value}</option>)}</select></label></div><p className="mt-3 text-xs leading-5 text-slate-500">랜덤 화상 매칭은 18–60세 범위에서만 연결합니다. 친구 통화는 서로 지정한 상대에게 직접 연결됩니다.</p></section>
               <section className="rounded-[2rem] border border-white/10 bg-[#111a2d] p-5 text-sm text-slate-400"><div className="mb-2 flex items-center gap-2 font-black text-white"><RefreshCcw size={16} className="text-cyan-300" /> 자동 연결 안내</div><p>연결이 끊기거나 상대가 나가면 연결 종료를 누르지 않아도 다음 인증 회원을 계속 찾습니다.</p></section>
-               <section className="webrtc-sidebar-screen rounded-[2rem] border border-cyan-300/20 bg-[#111a2d] p-3">
-              <div className="mb-2 flex items-center justify-between gap-2 px-1"><span className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">함께보기 · 상대 화면</span><span className="text-right text-[10px] font-bold text-slate-500">{remoteSharingScreen ? `화면 공유 중${remoteSystemAudio ? ' · 시스템 오디오' : ''}` : '카메라 대기'}</span></div>
-              <div className="relative aspect-video overflow-hidden rounded-2xl bg-black"><video ref={sidebarVideoRef} muted autoPlay playsInline className="h-full w-full object-cover" />{!hasRemoteVideo && <div className="absolute inset-0 grid place-items-center text-xs text-slate-500">상대 영상 대기 중</div>}</div>
-              <div className="mt-3 grid grid-cols-3 gap-2"><button onClick={toggleMicrophone} disabled={!active} className="flex items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/5 py-2 text-xs font-black disabled:opacity-40">{audioEnabled ? <Mic size={14} /> : <MicOff size={14} />}{audioEnabled ? '마이크 켜짐' : '마이크 꺼짐'}</button><button onClick={() => void toggleScreenShare()} disabled={!isConnected} className="flex items-center justify-center gap-1 rounded-xl border border-cyan-300/20 bg-cyan-300/10 py-2 text-xs font-black text-cyan-100 disabled:opacity-40"><MonitorUp size={14} />{isSharingScreen ? '공유 중지' : '화면·오디오 공유'}</button><span className="flex items-center justify-center rounded-xl border border-white/10 px-2 text-[10px] font-bold text-slate-400">{isConnected ? '연결됨' : '대기 중'}</span></div>
-             <div className="mt-3 max-h-36 space-y-2 overflow-y-auto">{chatMessages.length === 0 ? <p className="py-4 text-center text-xs text-slate-500">연결 후 메시지를 보낼 수 있습니다.</p> : chatMessages.map((message) => <div key={`side-${message.id}`} className="rounded-xl bg-white/[0.05] p-2 text-xs"><b className="text-cyan-200">{message.user}</b><p className="mt-1 break-words text-slate-300">{message.text}</p></div>)}</div>
-              {user && activeCallId && <><p className="mt-2 text-[10px] text-slate-500">채팅과 AI 답변은 통화방 서버에 저장되어 양쪽에 표시됩니다.</p><form onSubmit={sendVideoChat} className="mt-2 flex gap-2"><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="메시지 또는 AI 질문..." className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none" /><button type="button" onClick={() => void askSharedAi()} className="rounded-xl border border-violet-300/30 bg-violet-300/10 px-3 text-[11px] font-black text-violet-100">AI 함께</button><button className="rounded-xl bg-cyan-400 px-3 text-xs font-black text-slate-950">전송</button></form></>}
-           </section>
-           </aside>
-         </div>
-         <section className="mt-5 rounded-[2rem] border border-white/10 bg-[#111a2d] p-5"><div className="mb-3 flex items-center justify-between"><h2 className="font-black">화상 채팅</h2><span className="text-[10px] font-bold text-emerald-300">1분 후 자동 삭제</span></div><div className="max-h-48 space-y-2 overflow-y-auto">{chatMessages.length === 0 ? <p className="py-6 text-center text-sm text-slate-500">상대와 연결되면 메시지를 보낼 수 있습니다.</p> : chatMessages.map((message) => <div key={message.id} className="rounded-xl bg-white/[0.05] p-3 text-sm"><div className="mb-1 text-[10px] font-bold text-cyan-300">{message.user}</div><div className="break-words text-slate-200">{message.text}</div></div>)}</div>{chatError && <p className="mt-2 text-xs font-bold text-rose-300">{chatError}</p>}{user && activeCallId && <form onSubmit={sendVideoChat} className="mt-3 flex gap-2"><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="화상 채팅 메시지..." className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none" /><button className="rounded-xl bg-cyan-400 px-4 text-sm font-black text-slate-950">전송</button></form>}</section>
+              <section className="rounded-[2rem] border border-white/10 bg-[#111a2d] p-4">
+                <div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-black">화상 채팅</h2><span className="text-[10px] font-bold text-emerald-300">1분 후 자동 삭제</span></div>
+                <div className="max-h-48 space-y-2 overflow-y-auto">{chatMessages.length === 0 ? <p className="py-5 text-center text-sm text-slate-500">상대와 연결되면 메시지를 보낼 수 있습니다.</p> : chatMessages.map((message) => <div key={`side-${message.id}`} className="rounded-xl bg-white/[0.05] p-3 text-xs"><div className="mb-1 text-[10px] font-bold text-cyan-300">{message.user}</div><div className="break-words text-slate-200">{message.text}</div></div>)}</div>
+                {chatError && <p className="mt-2 text-xs font-bold text-rose-300">{chatError}</p>}
+                {user && activeCallId && <><p className="mt-2 text-[10px] text-slate-500">채팅과 AI 답변은 통화방에 저장되어 양쪽에 표시됩니다.</p><form onSubmit={sendVideoChat} className="mt-2 flex gap-2"><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="메시지 또는 AI 질문..." className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none" /><button type="button" onClick={() => void askSharedAi()} className="rounded-xl border border-violet-300/30 bg-violet-300/10 px-3 text-[11px] font-black text-violet-100">AI 함께</button><button className="rounded-xl bg-cyan-400 px-3 text-xs font-black text-slate-950">전송</button></form></>}
+              </section>
+            </aside>
+          </div>
         </div>
      </div>
     </>

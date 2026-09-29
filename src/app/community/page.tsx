@@ -270,7 +270,7 @@ export default function CommunityPage() {
       </div>
       {!loading && page.total > 0 && <nav aria-label="커뮤니티 페이지" className="mt-5 flex items-center justify-center gap-4 text-sm"><button type="button" disabled={page.page === 1} onClick={() => setPagination({ key: pageKey, page: page.page - 1 })} className="rounded-lg border border-white/20 px-4 py-2 disabled:opacity-40">이전</button><span>{page.page} / {page.totalPages}</span><button type="button" disabled={page.page === page.totalPages} onClick={() => setPagination({ key: pageKey, page: page.page + 1 })} className="rounded-lg border border-white/20 px-4 py-2 disabled:opacity-40">다음</button></nav>}
 
-       {isWriting && user && <WriterComposer userId={user.id} initial={draft} editing={Boolean(editingId)} onClose={() => { setIsWriting(false); setEditingId(null); }} onSave={handleWrite} />}
+       {isWriting && user && <WriterComposer userId={user.id} category="community" initial={draft} editing={Boolean(editingId)} onClose={() => { setIsWriting(false); setEditingId(null); }} onSave={handleWrite} />}
     </div>
   );
 }

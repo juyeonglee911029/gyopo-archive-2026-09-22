@@ -1,0 +1,39 @@
+.writer-composer-overlay,
+.job-post-composer-overlay,
+.directory-registration-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(0.5rem, 2vw, 1.5rem);
+}
+
+.writer-composer-panel,
+.job-post-composer-panel,
+.directory-registration-dialog {
+  margin: auto;
+  max-height: calc(100dvh - 1rem) !important;
+}
+
+.writer-composer-panel {
+  min-height: 0;
+  width: min(100%, 72rem);
+}
+
+.job-post-composer-panel {
+  width: min(100%, 48rem);
+}
+
+.directory-registration-dialog {
+  width: min(100%, 34rem);
+}
+
+@media (max-width: 640px) {
+  .writer-composer-panel,
+  .job-post-composer-panel,
+  .directory-registration-dialog {
+    border-radius: 1.25rem !important;
+  }
+}

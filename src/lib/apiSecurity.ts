@@ -1,3 +1,5 @@
+import { normalizeAiWritingPrompt } from './writerPreferences';
+
 const FIREBASE_PROJECT_ID = 'gyopo-live-portal-506019';
 const FIREBASE_API_KEY = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyAne5XuEzN2sL3px0oY5Wxsgf3m0nHHIoY';
 
@@ -91,6 +93,16 @@ export async function readProfileWalletAddress(user: VerifiedUser): Promise<stri
   if (!response?.ok) return null;
   const document = await response.json().catch(() => null) as { fields?: { walletAddress?: { stringValue?: string } } } | null;
   return document?.fields?.walletAddress?.stringValue?.trim() || null;
+}
+
+export async function readProfileAiWritingPrompt(user: VerifiedUser): Promise<string> {
+  const response = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/profiles/${encodeURIComponent(user.uid)}`, {
+    headers: { authorization: `Bearer ${user.token}` },
+    signal: AbortSignal.timeout(4_000),
+  }).catch(() => null);
+  if (!response?.ok) return '';
+  const document = await response.json().catch(() => null) as { fields?: { defaultAiWritingPrompt?: { stringValue?: string } } } | null;
+  return normalizeAiWritingPrompt(document?.fields?.defaultAiWritingPrompt?.stringValue);
 }
 
 export function unauthorizedResponse(error: unknown) {

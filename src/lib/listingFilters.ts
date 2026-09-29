@@ -76,6 +76,11 @@ export type JobFilterFields = LocationFields & {
 export type JobFilters = { local: boolean; recent: boolean; korean: boolean; remote: boolean; visa: boolean; saved: boolean };
 export const EMPTY_JOB_FILTERS: JobFilters = { local: false, recent: false, korean: false, remote: false, visa: false, saved: false };
 
+export function jobDetailHref(job: { id: string; sourceContentId?: string; sourceId?: string; sourceUrl?: string }) {
+  if (!job.sourceContentId) return `/content/${encodeURIComponent(job.id)}?collection=jobs`;
+  return `/content/${encodeURIComponent(job.sourceContentId)}?source=${encodeURIComponent(job.sourceId || '')}&category=jobs&url=${encodeURIComponent(job.sourceUrl || '')}`;
+}
+
 export function matchesJobFilters(job: JobFilterFields, filters: JobFilters, chosen: ListingLocation, countries: readonly FilterCountry[], savedIds: readonly string[], now: number) {
   if (filters.local && !matchesLocation(job, chosen.city ? 'city' : 'country', chosen, countries)) return false;
   if (filters.saved && !savedIds.includes(job.id)) return false;

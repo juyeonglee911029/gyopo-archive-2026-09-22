@@ -9,3 +9,14 @@ export function parseGoogleMapsUrl(value: string): { url: string; placeId: strin
     return { url: url.href, placeId: id && /^[A-Za-z0-9_-]{5,200}$/.test(id) ? id : null };
   } catch { return null; }
 }
+
+export function resolvedGooglePlaceId(placeId: unknown, ...mapLinks: unknown[]): string | undefined {
+  const direct = typeof placeId === 'string' ? placeId.trim() : '';
+  if (/^[A-Za-z0-9_-]{5,200}$/.test(direct)) return direct;
+  for (const link of mapLinks) {
+    if (typeof link !== 'string') continue;
+    const parsed = parseGoogleMapsUrl(link);
+    if (parsed?.placeId) return parsed.placeId;
+  }
+  return undefined;
+}

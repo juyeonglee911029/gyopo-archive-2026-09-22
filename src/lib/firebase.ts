@@ -32,6 +32,7 @@ export type PortalUser = {
   premiumExpiresAt?: string;
   age?: number;
   country?: string;
+  defaultAiWritingPrompt?: string;
   walletAddress?: string;
   walletNetwork?: string;
   walletPublic?: boolean;
@@ -1045,12 +1046,14 @@ export async function startTetrisCountdown(matchId: string, token?: string): Pro
     phase?: string;
     readyA?: boolean;
     readyB?: boolean;
+    betAmount?: number;
     stakeHeldA?: boolean;
     stakeHeldB?: boolean;
     startAt?: string;
   }>(roomDocument);
   if (room.startAt) return room.startAt;
-  if (room.phase === 'finished' || !room.readyA || !room.readyB || !room.stakeHeldA || !room.stakeHeldB) return null;
+  const freeMatch = room.betAmount === 0;
+  if (room.phase === 'finished' || !room.readyA || !room.readyB || (!freeMatch && (!room.stakeHeldA || !room.stakeHeldB))) return null;
 
    const startAt = new Date(Date.now() + TETRIS_COUNTDOWN_MS).toISOString();
   const response = await authenticatedFetch(`${firestoreBase}:commit`, {
@@ -1430,6 +1433,9 @@ function privateProfileData(user: PortalUser): Record<string, unknown> {
     usdBalance: Number(user.usdBalance || 0),
     isSubscribed: Boolean(user.isSubscribed),
     ...(isGender(user.gender) ? { gender: user.gender } : {}),
+    ...(typeof user.defaultAiWritingPrompt === 'string'
+      ? { defaultAiWritingPrompt: user.defaultAiWritingPrompt.trim().slice(0, 1_200) }
+      : {}),
     ...(user.genderPreference ? { genderPreference: user.genderPreference } : {}),
     ...(user.premiumExpiresAt ? { premiumExpiresAt: user.premiumExpiresAt } : {}),
     ...(user.age ? { age: user.age } : {}),
@@ -1499,6 +1505,7 @@ export async function completeProfileOnboarding(
 
   const completedUser: PortalUser & { gender: Gender; country: string } = {
     ...user,
+    defaultAiWritingPrompt: user.defaultAiWritingPrompt ?? savedProfile?.defaultAiWritingPrompt,
     gender: savedGender || gender,
     country: savedCountry || selectedCountry,
     age: savedAge || age,
@@ -1560,7 +1567,11 @@ export async function signInWithGoogleCredential(credential: string): Promise<Po
     idToken: string;
     refreshToken?: string;
   };
-  const savedProfile = await getDocument<Partial<PortalUser>>('profiles', result.localId, result.idToken).catch(() => null);
+  let profileReadSucceeded = true;
+  const savedProfile = await getDocument<Partial<PortalUser>>('profiles', result.localId, result.idToken).catch(() => {
+    profileReadSucceeded = false;
+    return null;
+  });
   const user: PortalUser = {
     id: result.localId,
     name: savedProfile?.name || result.displayName || result.email?.split('@')[0] || '교민 회원',
@@ -1574,6 +1585,7 @@ export async function signInWithGoogleCredential(credential: string): Promise<Po
     premiumExpiresAt: savedProfile?.premiumExpiresAt,
     age: savedProfile?.age,
     country: savedProfile?.country,
+    defaultAiWritingPrompt: savedProfile?.defaultAiWritingPrompt,
     walletAddress: savedProfile?.walletAddress,
     walletNetwork: savedProfile?.walletNetwork,
     walletPublic: Boolean(savedProfile?.walletPublic),
@@ -1583,7 +1595,7 @@ export async function signInWithGoogleCredential(credential: string): Promise<Po
     transferPinSalt: savedProfile?.transferPinSalt,
   };
   window.localStorage.setItem(sessionKey, JSON.stringify({ idToken: result.idToken, refreshToken: result.refreshToken, user }));
-  await upsertDocument('profiles', user.id, privateProfileData(user), result.idToken).catch(() => undefined);
+  if (profileReadSucceeded) await upsertDocument('profiles', user.id, privateProfileData(user), result.idToken).catch(() => undefined);
   if (hasCompletedProfile(user)) {
     await replaceDocument('publicProfiles', user.id, publicProfileData(user), result.idToken).catch(() => undefined);
   }
@@ -1597,6 +1609,7 @@ export async function saveProfile(user: PortalUser, token = getSessionToken()): 
   const savedAge = Number(savedProfile?.age || 0);
   const persistedUser: PortalUser = {
     ...user,
+    defaultAiWritingPrompt: user.defaultAiWritingPrompt ?? savedProfile?.defaultAiWritingPrompt,
     usdtBalance: Number(savedProfile?.usdtBalance ?? user.usdtBalance ?? 0),
     usdBalance: Number(savedProfile?.usdBalance ?? user.usdBalance ?? 0),
     gender: isGender(savedGender) ? savedGender : user.gender,
