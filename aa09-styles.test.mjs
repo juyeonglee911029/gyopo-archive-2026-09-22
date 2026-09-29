@@ -116,6 +116,8 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(sidebar, /onNavigate\?\.\(\)/);
 
   const dock = read('src/components/layout/FriendDock.tsx');
+  assert.match(dock, /Link href="\/users"[\s\S]*?친구 찾기/);
+  assert.match(dock, /회원 목록에서 친구 찾기/);
   assert.match(dock, /new ResizeObserver\(updatePosition\)/);
   assert.match(dock, /anchor\.top - rect\.height - 8/);
   assert.match(dock, /left: 16,/);
@@ -140,18 +142,29 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(lounge, /gyopo-open-global-chat/);
   assert.match(lounge, /if \(isCallRoute\) \{\s*setMobileOpen\(false\);\s*return;/);
   assert.match(lounge, /aria-label=\{language === 'ko' \? '라운지 닫기' : 'Close lounge'\}/);
+  assert.match(lounge, /onDesktopOpenChange\(false\)/);
+  assert.match(lounge, /onDesktopOpenChange\(true\)/);
+  assert.match(lounge, /else onDesktopOpenChange\(true\)/);
+  assert.match(lounge, /desktopToggleRef\.current\?\.focus\(\)/);
+  assert.match(lounge, /<Minus size=\{16\} \/>/);
+  assert.match(lounge, /<Plus size=\{18\} \/>/);
   assert.doesNotMatch(lounge, /global-mobile-lounge-launch/);
   assert.match(read('src/components/layout/MobileDrawer.tsx'), /!isCallRoute && <button[^\n]*gyopo-open-global-chat/);
   assert.match(lounge, /global-chat-line/);
   assert.match(lounge, /global-chat-author/);
   assert.match(lounge, /formatTime\(message\.createdAt\)/);
-  assert.doesNotMatch(lounge, /memberCount|onlineCount|api\/online-count|global-lounge-launch-control|global-lounge-expand|desktopOpen|desktopMaximized|gyopo-lounge-change/);
+  assert.doesNotMatch(lounge, /memberCount|onlineCount|api\/online-count|global-lounge-launch-control|global-lounge-expand|desktopMaximized|gyopo-lounge-change/);
   const styles = read('src/app/experience-refinements.css');
   assert.match(styles, /\.global-app-shell\.has-lounge-open\s*>\s*\.global-page-body/);
   assert.match(styles, /--global-lounge-reserved-width/);
-  assert.match(styles, /--global-lounge-reserved-width: min\(20rem/);
+  assert.match(styles, /--global-lounge-reserved-width: min\(18rem/);
   assert.match(styles, /--category-glass: rgba\(8, 14, 27, 0\.45\)/);
   assert.match(styles, /@media \(min-width: 1024px\)\s*\{[\s\S]*?--global-lounge-reserved-width/);
+  assert.match(styles, /\.global-lounge\[data-minimized="true"\][\s\S]*?width: 44px !important;/);
+  assert.match(styles, /\.global-lounge\s*\{[^}]*background: rgba\(12, 20, 35, 0\.12\) !important;[^}]*backdrop-filter: none !important;/s);
+  assert.match(styles, /\.global-lounge-header,[\s\S]*?background: rgba\(12, 20, 35, 0\.78\) !important;/);
+  assert.match(styles, /\.global-lounge \.global-chat-message-bubble\s*\{[^}]*background: rgba\(8, 14, 27, 0\.78\) !important;/s);
+  assert.match(styles, /\.global-lounge \.global-chat-time\s*\{\s*color: #cbd5e1;/);
   assert.match(styles, /@media \(max-width: 1023px\)\s*\{[\s\S]*?\.global-mobile-lounge-panel\s*\{/);
   assert.match(styles, /@media \(max-width: 768px\)\s*\{[\s\S]*?\.global-mobile-lounge-panel\s*\{[^}]*bottom:\s*calc\(var\(--bottom-nav-height,\s*68px\)\s*\+/);
   assert.match(styles, /\.global-chat-message-bubble\s*\{[^}]*border: 0 !important;[^}]*background: transparent !important;/);
@@ -189,10 +202,12 @@ test('friend calls auto-start after acceptance while screen sharing keeps its na
   assert.match(dock, /allow="camera; microphone; display-capture; fullscreen; autoplay" allowFullScreen/);
 });
 
-test('public routes reserve space for the always-open lounge and the directory map opens its tab', () => {
+test('public routes reserve space only while the lounge is expanded and the directory map opens its tab', () => {
   const shell = read('src/components/layout/GlobalAppShell.tsx');
+  assert.match(shell, /const \[desktopLoungeOpen, setDesktopLoungeOpen\] = useState\(true\)/);
   assert.match(shell, /const hasGlobalChat = mode === 'public' && pathname !== '\/webrtc'/);
-  assert.match(shell, /hasGlobalChat \? ' has-lounge-open' : ''/);
+  assert.match(shell, /hasGlobalChat && desktopLoungeOpen \? ' has-lounge-open' : ''/);
+  assert.match(shell, /<GlobalChat desktopOpen=\{desktopLoungeOpen\} onDesktopOpenChange=\{setDesktopLoungeOpen\}/);
   assert.doesNotMatch(shell, /has-lounge-maximized|setLoungeOpen|gyopo-lounge-change/);
   const directory = read('src/app/directory/page.tsx');
   assert.match(directory, /selectDirectory\(biz, 'map'\)/);
@@ -201,4 +216,14 @@ test('public routes reserve space for the always-open lounge and the directory m
   const runtime = read('src/components/layout/AppRuntime.tsx');
   assert.match(runtime, /profileImageProcessing/);
   assert.match(runtime, /if \(profileImageProcessing\) \{\s*setProfileError\(/);
+});
+
+test('mobile AI search keeps recent questions and its safety notice available', () => {
+  const assistant = read('src/app/assistant/page.tsx');
+  const styles = read('src/app/experience-refinements.css');
+  assert.match(assistant, /<details className="assistant-mobile-history hidden" aria-label="최근 질문">/);
+  assert.match(assistant, /recentQueries\.map\(\(query\) => <li key=\{query\}>/);
+  assert.match(assistant, /AI 답변은 참고용 정보입니다/);
+  assert.match(styles, /\.assistant-page \.assistant-mobile-history\s*\{\s*display: block !important;/);
+  assert.doesNotMatch(styles, /\.assistant-page form\[aria-label="GYOPO AI 질문 보내기"\] \+ p\s*\{\s*display: none/);
 });

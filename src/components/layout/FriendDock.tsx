@@ -1,7 +1,8 @@
 'use client';
 
 import { type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react';
-import { Check, FileText, MessageCircle, Paperclip, PhoneCall, Send, UserRoundCheck, Video, X } from 'lucide-react';
+import Link from 'next/link';
+import { Check, FileText, MessageCircle, Paperclip, PhoneCall, Send, UserPlus, UserRoundCheck, Video, X } from 'lucide-react';
 import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFreshSessionToken, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, listOnlineUsers, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
 
@@ -321,7 +322,7 @@ export default function FriendDock() {
   };
 
   const startDockDrag = (event: ReactPointerEvent<HTMLElement>) => {
-    if ((event.target as HTMLElement).closest('button')) return;
+    if ((event.target as HTMLElement).closest('button, a')) return;
     const panel = document.getElementById('friend-dock');
     if (!panel) return;
     const rect = panel.getBoundingClientRect();
@@ -490,10 +491,13 @@ export default function FriendDock() {
   return (
     <>
           <aside id="friend-dock" style={{ ...(dockPosition ? { left: dockPosition.left, top: dockPosition.top, right: 'auto', bottom: 'auto' } : {}), maxHeight: 'calc(100dvh - 16px)' }} className={`gyopo-friend-dock fixed bottom-4 left-3 right-3 z-[70] overflow-x-hidden overflow-y-auto rounded-none border-0 bg-[#091120] text-white shadow-[0_25px_100px_rgba(0,0,0,.7)] transition ${dragging ? 'cursor-grabbing select-none transition-none' : 'cursor-default'} lg:left-4 lg:right-auto lg:w-[480px] ${videoCall ? 'friend-dock-call-active' : ''} ${videoClosing ? 'friend-dock-call-closing' : ''} ${open ? 'visible translate-y-0 opacity-100' : videoClosing ? 'visible translate-y-5 opacity-0' : 'invisible translate-y-5 opacity-0'}`}>
-           <header onPointerDown={startDockDrag} onPointerMove={moveDock} onPointerUp={stopDockDrag} onPointerCancel={stopDockDrag} className={`flex items-center justify-between border-0 px-4 py-3 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}>
-             <div className="flex items-center gap-2 text-sm font-black"><UserRoundCheck size={17} className="text-cyan-300" /> {isKorean ? '친구 채팅·통화' : 'Friends Chat & Call'}</div>
-             <button type="button" onClick={() => videoCall ? closeVideoCall() : setOpen(false)} aria-label="친구 패널 닫기" className="border-0 p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><X size={17} /></button>
-           </header>
+            <header onPointerDown={startDockDrag} onPointerMove={moveDock} onPointerUp={stopDockDrag} onPointerCancel={stopDockDrag} className={`flex items-center justify-between gap-2 border-0 px-4 py-3 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}>
+              <div className="flex min-w-0 items-center gap-2 text-sm font-black"><UserRoundCheck size={17} className="shrink-0 text-cyan-300" /> <span className="truncate">{isKorean ? '친구 채팅·통화' : 'Friends Chat & Call'}</span></div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Link href="/users" onPointerDown={(event) => event.stopPropagation()} className="inline-flex items-center gap-1.5 border-0 px-2 py-1.5 text-[10px] font-black text-cyan-200 hover:bg-white/10"><UserPlus size={14} />{isKorean ? '친구 찾기' : 'Find friends'}</Link>
+                <button type="button" onClick={() => videoCall ? closeVideoCall() : setOpen(false)} aria-label={isKorean ? '친구 패널 닫기' : 'Close friends panel'} className="border-0 p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><X size={17} /></button>
+              </div>
+            </header>
            {messageNotice && <p role="status" className="mx-3 mb-2 bg-emerald-300/10 px-3 py-2 text-[11px] font-bold text-emerald-100">{messageNotice}</p>}
            {(messageError || messageReadError) && <p role="alert" className="px-3 py-2 text-xs font-bold text-rose-300">{messageError || messageReadError}</p>}
 
@@ -504,7 +508,7 @@ export default function FriendDock() {
           {friendsLoading && friends.length === 0 ? (
             <div className="px-6 py-5 text-center text-xs font-bold text-slate-400">{isKorean ? '친구 목록을 불러오는 중입니다...' : 'Loading friends...'}</div>
           ) : friends.length === 0 ? (
-            <div className="p-8 text-center"><UserRoundCheck size={28} className="mx-auto text-slate-600" /><p className="mt-3 text-sm font-bold text-slate-300">수락된 친구가 없습니다.</p><p className="mt-1 text-xs text-slate-500">유저 목록에서 친구 요청을 보내보세요.</p></div>
+             <div className="p-8 text-center"><UserRoundCheck size={28} className="mx-auto text-slate-600" /><p className="mt-3 text-sm font-bold text-slate-300">{isKorean ? '수락된 친구가 없습니다.' : 'No accepted friends yet.'}</p><p className="mt-1 text-xs text-slate-500">{isKorean ? '회원 목록에서 친구를 찾아 요청을 보내세요.' : 'Find members and send a friend request.'}</p><Link href="/users" className="mt-4 inline-flex items-center gap-2 border border-cyan-200/25 bg-cyan-300/10 px-4 py-2.5 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/20"><UserPlus size={14} />{isKorean ? '회원 목록에서 친구 찾기' : 'Find members'}</Link></div>
           ) : (
             <>
               <div className="border-y border-white/10 px-3 py-2 text-[10px] font-black text-slate-400">

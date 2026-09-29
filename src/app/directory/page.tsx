@@ -16,9 +16,10 @@ import { useGlobalStore } from '@/store/useGlobalStore';
 import ImageCarousel from '@/components/media/ImageCarousel';
 import PlaceLinker, { type LinkedPlace } from '@/components/directory/PlaceLinker';
 import { parseGoogleMapsUrl } from '@/lib/directoryMaps';
+import { safeHttpsUrl } from '@/lib/directoryLinks';
 
 type DirectoryReview = { author: string; authorUrl?: string; rating: number; text: string; relativeTime?: string };
-type Directory = { id: string; name: string; category: string; desc: string; body?: string; tel: string; address?: string; rating?: number; reviews?: number; hours?: string[]; openNow?: boolean; recentReviews?: DirectoryReview[]; ratingSource?: string; lat?: number; lng?: number; locationAccuracy?: 'exact' | 'approximate'; country: string; image?: string; images?: string[]; authorId: string; createdAt: string; sourceId?: string; sourceUrl?: string; sourceName?: string; sourceContentId?: string; featured?: boolean; placeId?: string; mapsUrl?: string; verificationStatus?: 'unverified' | 'google_verified'; photoAttributions?: Array<{ displayName: string; uri?: string }> };
+type Directory = { id: string; name: string; category: string; desc: string; body?: string; tel: string; address?: string; rating?: number; reviews?: number; hours?: string[]; hoursSource?: 'current' | 'regular'; openNow?: boolean; recentReviews?: DirectoryReview[]; ratingSource?: string; websiteUrl?: string; menuUrl?: string; lat?: number; lng?: number; locationAccuracy?: 'exact' | 'approximate'; country: string; image?: string; images?: string[]; authorId: string; createdAt: string; sourceId?: string; sourceUrl?: string; sourceName?: string; sourceContentId?: string; featured?: boolean; placeId?: string; mapsUrl?: string; verificationStatus?: 'unverified' | 'google_verified'; photoAttributions?: Array<{ displayName: string; uri?: string }> };
 type PlaceData = Partial<Directory> & { status?: string; source?: string; error?: string };
 type UserLocation = { lat: number; lng: number };
 type SourceResponse = { items?: LiveSourceItem[]; sections?: Array<{ category: string; items: LiveSourceItem[] }>; sourceName?: string; region?: string; fetchedAt?: string };
@@ -39,6 +40,7 @@ function mergeGooglePlace(directory: Directory, place: PlaceData): Directory {
     ...place,
     image: place.images?.[0] || directory.image,
     images: place.images?.length ? place.images : directory.images,
+    websiteUrl: place.websiteUrl || directory.websiteUrl,
     ratingSource: place.source,
   };
 }
@@ -101,7 +103,7 @@ export default function DirectoryPage() {
   const [selectedDirectory, setSelectedDirectory] = useState<Directory | null>(null);
   const [search, setSearch] = useState('');
   const [isWriting, setIsWriting] = useState(false);
-  const [form, setForm] = useState({ name: '', category: DIRECTORY_CATEGORIES[0], desc: '', tel: '', address: '', image: '' });
+  const [form, setForm] = useState({ name: '', category: DIRECTORY_CATEGORIES[0], desc: '', tel: '', address: '', image: '', menuUrl: '' });
   const [category, setCategory] = useState('전체');
   const [directoryTab, setDirectoryTab] = useState<'info' | 'map'>('info');
   const [minRating, setMinRating] = useState('0');
@@ -265,14 +267,15 @@ export default function DirectoryPage() {
     if (!token) return;
     const digits = form.tel.replace(/\D/g, '');
     if (form.name.trim().length < 2 || !DIRECTORY_CATEGORIES.includes(form.category) || form.desc.trim().length < 12 || digits.length < 7 || form.address.trim().length < 3) return window.alert('업체명·카테고리·소개·전화번호·주소를 정확히 입력해주세요.');
-    if (/구인|구직|채용|모집|급여|시급|월급|파트타임|정규직/i.test(Object.values(form).join(' '))) return window.alert('구인 정보는 구인구직 메뉴에 등록해주세요.');
+    if (form.menuUrl.trim() && !safeHttpsUrl(form.menuUrl)) return window.alert('메뉴·서비스 링크는 HTTPS 주소로 입력해주세요.');
+    if (/구인|구직|채용|모집|급여|시급|월급|파트타임|정규직/i.test([form.name, form.address, form.desc, form.tel].join(' '))) return window.alert('구인 정보는 구인구직 메뉴에 등록해주세요.');
     try {
       setSubmitting(true);
       const response = await fetch('/api/directory/submit', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, placeId: linkedPlace.placeId, mapsUrl: linkedPlace.mapsUrl, country: selectedCountry }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || '업체 정보를 저장하지 못했습니다.');
       setLinkedPlace(null);
-      setForm({ name: '', category: DIRECTORY_CATEGORIES[0], desc: '', tel: '', address: '', image: '' });
+      setForm({ name: '', category: DIRECTORY_CATEGORIES[0], desc: '', tel: '', address: '', image: '', menuUrl: '' });
       setIsWriting(false);
       await loadDirectories();
     } catch (error) { window.alert(error instanceof Error ? error.message : '업체 정보를 저장하지 못했습니다.'); }
@@ -318,6 +321,8 @@ export default function DirectoryPage() {
   const routeDistance = routeDistanceValue === null ? null : routeDistanceValue.toFixed(1);
   const routeMinutes = routeDistance ? Math.max(1, Math.round(Number(routeDistance) / 35 * 60)) : null;
   const selectedPlace = selectedDirectory ? placesByDirectory[selectedDirectory.id] : undefined;
+  const selectedMenuUrl = safeHttpsUrl(selectedDirectory?.menuUrl);
+  const selectedWebsiteUrl = safeHttpsUrl(selectedDirectory?.websiteUrl);
   const selectedDescription = selectedDirectory?.body?.trim() || selectedDirectory?.desc?.trim();
   const hasGooglePlaceData = selectedPlace?.status === 'ready' && selectedPlace.source === 'Google Places';
   const locationLabel = locationStatus === 'loading' ? '위치 확인 중...' : locationStatus === 'ready' ? '내 위치 갱신' : locationStatus === 'denied' ? '내 위치 다시 시도' : '내 위치';
@@ -400,7 +405,7 @@ export default function DirectoryPage() {
 <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">운영시간</p>
 <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-slate-200">
 <Clock3 size={14} />{hasGooglePlaceData && selectedPlace?.openNow === true ? '현재 영업 중' : hasGooglePlaceData && selectedPlace?.openNow === false ? '현재 영업 종료' : placeLoading ? '확인 중' : '미제공'}</p>
-<p className="mt-1 text-[11px] leading-5 text-slate-400">{hasGooglePlaceData && selectedPlace?.hours?.length ? selectedPlace.hours.join(' · ') : hasGooglePlaceData ? '운영시간 정보가 없습니다.' : 'Google Places 응답이 없어 운영시간을 표시할 수 없습니다.'}</p>
+<p className="mt-1 text-[11px] leading-5 text-slate-400">{hasGooglePlaceData && selectedPlace?.hours?.length ? `${selectedPlace.hoursSource === 'regular' ? '기본 영업시간: ' : ''}${selectedPlace.hours.join(' · ')}` : hasGooglePlaceData ? '운영시간 정보가 없습니다.' : 'Google Places 응답이 없어 운영시간을 표시할 수 없습니다.'}</p>
 </div>
 <div>
 <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">데이터 출처</p>
@@ -412,7 +417,11 @@ export default function DirectoryPage() {
 <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-300">{selectedDescription}</p>
 </section>}
 {placeError && <p role="status" className="p-4 text-xs text-amber-200">{placeError}</p>}
-<a className="block p-3 text-xs text-cyan-200 underline" href={parseGoogleMapsUrl(selectedDirectory.mapsUrl || selectedDirectory.sourceUrl || '')?.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(directoryQuery(selectedDirectory))}`} target="_blank" rel="noopener noreferrer">Google Maps에서 업체·전체 리뷰 확인</a>
+<div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-white/10 p-3 text-xs">
+{selectedMenuUrl && <a className="font-bold text-cyan-100 underline" href={selectedMenuUrl} target="_blank" rel="noopener noreferrer" title={selectedMenuUrl}>등록자 제공 메뉴·서비스 링크 (미검증)</a>}
+{selectedWebsiteUrl && <a className="text-cyan-200 underline" href={selectedWebsiteUrl} target="_blank" rel="noopener noreferrer">업체 웹사이트</a>}
+<a className="text-cyan-200 underline" href={parseGoogleMapsUrl(selectedDirectory.mapsUrl || selectedDirectory.sourceUrl || '')?.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(directoryQuery(selectedDirectory))}`} target="_blank" rel="noopener noreferrer">Google Maps에서 업체·전체 리뷰 확인</a>
+</div>
 {hasGooglePlaceData && selectedPlace?.photoAttributions?.map((author, i) => <a key={i} href={author.uri?.startsWith('https://') ? author.uri : undefined} target="_blank" rel="noopener noreferrer" className="px-3 text-xs text-slate-400">{author.displayName}</a>)}
 {hasGooglePlaceData && selectedPlace?.recentReviews?.length ? <div className="border-t border-white/10 bg-white/[.02] p-4">
 <div className="mb-3 flex items-center justify-between">
@@ -474,6 +483,8 @@ export default function DirectoryPage() {
 <input required aria-label="전화번호" placeholder="전화번호" value={form.tel} onChange={(event) => setForm({ ...form, tel: event.target.value })} className="w-full" />
 <input required readOnly={Boolean(linkedPlace?.placeId)} aria-label="업체 주소" placeholder="업체 주소" value={form.address} onChange={event => setForm({ ...form, address: event.target.value })} className="w-full" />
 <input type="url" aria-label="대표 이미지 URL (선택)" placeholder="대표 이미지 URL (선택)" value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} className="w-full" />
+<input type="url" aria-label="메뉴·서비스 링크 (선택)" placeholder="메뉴·서비스 링크 (HTTPS, 선택)" value={form.menuUrl} onChange={(event) => setForm({ ...form, menuUrl: event.target.value })} className="w-full" />
+<p className="text-xs leading-5 text-slate-400">등록자가 입력한 외부 링크이며 Google Places에서 검증되지 않습니다. 연결 전 주소를 확인하세요.</p>
 <div className="flex gap-2 pt-2">
 <button type="button" onClick={() => setIsWriting(false)} className="flex-1 border border-white/10 py-3 font-bold text-slate-300">취소</button>
 <button disabled={!linkedPlace || submitting} className="flex-1 bg-cyan-300 py-3 font-bold text-slate-950 disabled:opacity-40">{submitting ? '검증·등록 중...' : '등록'}</button>
