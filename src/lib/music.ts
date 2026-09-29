@@ -54,6 +54,7 @@ export const MUSIC_TRACKS: MusicTrack[] = [
   { id: 'butter', title: 'Butter', artist: 'BTS', videoId: 'WMweEpGlu_U', keywords: ['BTS', 'Butter', 'K-pop'], thumbnail: 'https://i.ytimg.com/vi/WMweEpGlu_U/hqdefault.jpg' },
 ];
 
+export const DEFAULT_MUSIC_TRACK = MUSIC_TRACKS.find((track) => track.id === 'sawadika') ?? MUSIC_TRACKS[0];
 export const MUSIC_HOT_KEYWORDS = ['like JENNIE', 'earthquake', 'SaWaDiKa', 'K-pop 최신곡', 'BTS 전곡', 'K-POP TOP 100', '뉴진스', 'BLACKPINK'];
 
 export function searchMusicTracks(query: string): MusicTrack[] {

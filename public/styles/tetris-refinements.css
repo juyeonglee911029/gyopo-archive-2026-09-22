@@ -1,5 +1,11 @@
 .tetris-focused-page {
   min-width: 0;
+  background: transparent !important;
+}
+
+.tetris-focused-shell,
+.tetris-focused-workspace {
+  background: transparent !important;
 }
 
 .tetris-own-panel,

@@ -23,8 +23,14 @@ export async function POST(request: Request) {
     // Manual links are stored, never fetched or treated as provider verification.
     const place = body.placeId && (process.env.GOOGLE_PLACES_API_KEY?.trim() || !maps) ? await googlePlace(body.placeId) : null;
     if (place && place.businessStatus !== 'OPERATIONAL') return Response.json({ error: '영업 중인 실제 업체만 등록할 수 있습니다.' }, { status: 422 });
-    const record: Record<string, string> = { name: place?.name || body.name.trim(), address: place?.address || body.address.trim(), tel: place?.tel || body.tel.trim(), placeId: place?.placeId || '', mapsUrl: place?.mapsUrl || maps?.url || '', verificationStatus: place ? 'google_verified' : 'unverified', category: body.category, desc: body.desc.trim(), image: body.image, country: body.country, authorId: user.uid, createdAt: new Date().toISOString() };
-    const response = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/directories`, { method: 'POST', headers: { Authorization: `Bearer ${user.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: Object.fromEntries(Object.entries(record).map(([key, value]) => [key, { stringValue: value }])) }), signal: AbortSignal.timeout(8_000) });
+    const record: Record<string, string | number> = { name: place?.name || body.name.trim(), address: place?.address || body.address.trim(), tel: place?.tel || body.tel.trim(), placeId: place?.placeId || '', mapsUrl: place?.mapsUrl || maps?.url || '', verificationStatus: place ? 'google_verified' : 'unverified', category: body.category, desc: body.desc.trim(), image: body.image, country: body.country, authorId: user.uid, createdAt: new Date().toISOString() };
+    if (place && typeof place.lat === 'number' && Number.isFinite(place.lat) && typeof place.lng === 'number' && Number.isFinite(place.lng)) {
+      record.lat = place.lat;
+      record.lng = place.lng;
+      record.locationAccuracy = 'exact';
+    }
+    const fields = Object.fromEntries(Object.entries(record).map(([key, value]) => [key, typeof value === 'number' ? { doubleValue: value } : { stringValue: value }]));
+    const response = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/directories`, { method: 'POST', headers: { Authorization: `Bearer ${user.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }), signal: AbortSignal.timeout(8_000) });
     if (!response.ok) return Response.json({ error: '업체 저장 권한 또는 연결을 확인해주세요.' }, { status: 502 });
     return Response.json({ status: 'created', verificationStatus: record.verificationStatus }, { status: 201 });
   } catch (error) {

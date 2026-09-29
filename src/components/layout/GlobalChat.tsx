@@ -26,6 +26,7 @@ export default function GlobalChat() {
   const { user } = useGlobalStore();
   const language = useGlobalStore((state) => state.language);
   const pathname = usePathname();
+  const isCallRoute = pathname === '/webrtc' || pathname === '/apps/random-chat';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -66,14 +67,18 @@ export default function GlobalChat() {
   }, [user?.id]);
 
   useEffect(() => {
+    if (isCallRoute) {
+      setMobileOpen(false);
+      return;
+    }
     const openChat = () => {
       if (window.matchMedia('(max-width: 1023px)').matches) setMobileOpen(true);
     };
     window.addEventListener('gyopo-open-global-chat', openChat);
     return () => window.removeEventListener('gyopo-open-global-chat', openChat);
-  }, []);
+  }, [isCallRoute]);
 
-  if (pathname === '/webrtc') return null;
+  if (isCallRoute) return null;
 
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -166,17 +171,20 @@ export default function GlobalChat() {
          )}
        </div>
      </aside>
-       <div className="global-mobile-lounge fixed bottom-3 left-3 right-3 z-40 lg:hidden">
-         {mobileOpen && <div id="global-mobile-lounge-panel" className="global-mobile-lounge-panel mb-2 overflow-hidden border border-white/10 bg-white/10 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#10182b]/48">
-         <div className="flex max-h-56 flex-col gap-2 overflow-y-auto p-3">
+        <div className="global-mobile-lounge fixed bottom-3 left-3 right-3 z-40 lg:hidden">
+          {mobileOpen && <div id="global-mobile-lounge-panel" role="region" aria-label={language === 'ko' ? '실시간 라운지' : 'Live Lounge'} className="global-mobile-lounge-panel mb-2 overflow-hidden border border-white/10 bg-white/10 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#10182b]/48">
+          <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+            <span className="text-xs font-black text-white">{language === 'ko' ? '실시간 라운지' : 'Live Lounge'}</span>
+            <button type="button" onClick={() => setMobileOpen(false)} aria-label={language === 'ko' ? '라운지 닫기' : 'Close lounge'} className="grid h-8 w-8 place-items-center text-slate-300 hover:bg-white/10"><X size={15} /></button>
+          </div>
+          <div className="flex max-h-56 flex-col gap-2 overflow-y-auto p-3">
             {messages.length === 0 && <div className="lounge-empty-mark" aria-hidden="true"><MessageCircle size={16} /></div>}
               {messages.slice(-8).map((message) => <div key={message.id} className={`global-chat-message-bubble p-2 text-xs ${message.authorId === user?.id ? 'global-chat-own' : 'global-chat-other'}`} title={message.country || 'Global'}><div className="global-chat-line"><span className="global-chat-author">{message.user || '교민'}:</span>{message.text && <span className="global-chat-text">{message.text}</span>}<time className="global-chat-time" dateTime={message.createdAt}>{formatTime(message.createdAt)}</time></div>{message.imageData && <img src={message.imageData} alt="채팅 첨부 이미지" loading="lazy" className="mt-2 max-h-40 w-full object-contain" />}</div>)}
              <div ref={mobileEndRef} />
          </div>
          {user ? <form onSubmit={handleSend} className="flex gap-2 border-t border-slate-200 p-2 dark:border-white/10"><input value={input} onChange={(event) => setInput(event.target.value)} placeholder="라운지에 메시지..." className="min-w-0 flex-1 border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none dark:border-white/10 dark:bg-black/20" /><button type="button" onClick={() => fileInputRef.current?.click()} aria-label="사진 첨부" className="grid h-8 w-8 shrink-0 place-items-center bg-slate-800 text-white"><ImagePlus size={14} /></button><button className="bg-blue-600 px-3 text-xs font-black text-white">전송</button></form> : <p className="border-t border-slate-200 p-3 text-center text-xs text-slate-500 dark:border-white/10">로그인 후 채팅에 참여하세요.</p>}
-       </div>}
-          <button type="button" aria-controls="global-mobile-lounge-panel" aria-expanded={mobileOpen} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setMobileOpen((open) => !open); }} aria-label={mobileOpen ? '실시간 라운지 최소화' : '실시간 라운지 최대화'} className="global-mobile-lounge-launch ml-auto grid h-10 w-10 place-items-center rounded-xl border border-cyan-200/15 bg-[#10182b]/52 text-white shadow-xl backdrop-blur"><MessageCircle size={17} className="text-teal-300" /></button>
-    </div>
+        </div>}
+     </div>
     </>
   );
 }

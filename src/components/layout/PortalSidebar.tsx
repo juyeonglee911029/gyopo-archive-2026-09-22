@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
-import { AppWindow, BriefcaseBusiness, Film, Gamepad2, Home, Map, MessageCircle, Music2, Newspaper, Search, ShoppingBag, Store, UserRoundCheck, Users, Video } from 'lucide-react';
+import { BriefcaseBusiness, Film, Gamepad2, Home, Map, MessageCircle, Music2, Newspaper, Search, ShoppingBag, Store, UserRoundCheck, Users, Video } from 'lucide-react';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { resolvePortalSearch } from '@/lib/searchRouting';
 import { trackSearch } from '@/lib/searchTracking';
@@ -14,7 +14,6 @@ const primaryLinks = [
   { href: '/jobs', label: '구인', english: 'Jobs', icon: BriefcaseBusiness },
   { href: '/life', label: '생활', english: 'Life', icon: Store },
   { href: '/community', label: '커뮤니티', english: 'Community', icon: MessageCircle },
-  { href: '/apps', label: '앱', english: 'Apps', icon: AppWindow },
 ];
 
 const utilityLinks = [

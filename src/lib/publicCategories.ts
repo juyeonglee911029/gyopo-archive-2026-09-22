@@ -1,4 +1,4 @@
-import { AppWindow, BookOpen, BriefcaseBusiness, Building2, CalendarDays, House, Map, MessageCircle, Music, Newspaper, Play, ShoppingBag, Sprout } from 'lucide-react';
+import { BookOpen, BriefcaseBusiness, Building2, CalendarDays, House, Map, MessageCircle, Music, Newspaper, Play, ShoppingBag, Sprout } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { countryForRegion, getCityRoute, serviceHref } from './regionRoutes';
 import type { PublicServiceSlug } from './regionRoutes';
@@ -22,7 +22,6 @@ export const PUBLIC_CATEGORIES = [
   { id: 'news', title: '뉴스', description: '지역 소식과 교민 뉴스', href: '/news', service: 'news', icon: Newspaper },
   { id: 'events', title: '이벤트', description: '지역 행사와 교민 모임', href: '/events', service: 'events', icon: CalendarDays },
   { id: 'regions', title: '지역', description: '국가와 도시별 게시판 찾기', href: '/regions', icon: Map },
-  { id: 'apps', title: '앱', description: '검색, 대화와 게임을 한곳에서', href: '/apps', icon: AppWindow },
   { id: 'music', title: '음악', description: '음악 검색과 뮤직비디오', href: '/music', icon: Music },
   { id: 'watch', title: 'Watch', description: '영상과 라이브 공간 둘러보기', href: '/watch', icon: Play },
   { id: 'guides', title: '생활 가이드', description: '비자, 이주와 현지 정착 안내', href: '/guides', service: 'guides', icon: BookOpen },

@@ -4,7 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import { createYouTubeController } from './youtube.ts';
 import { createMusicPlayback, revealMusicPlayer } from './musicPlayback.ts';
-import { MUSIC_TRACKS, readMusicVolume } from './music.ts';
+import { DEFAULT_MUSIC_TRACK, MUSIC_TRACKS, readMusicVolume } from './music.ts';
+
+const DEFAULT_NEXT_TRACK = MUSIC_TRACKS[(MUSIC_TRACKS.findIndex((track) => track.id === DEFAULT_MUSIC_TRACK.id) + 1) % MUSIC_TRACKS.length];
 
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); };
 const host = () => ({ ownerDocument: { createElement: () => ({}) }, replaceChildren() {} });
@@ -606,7 +608,7 @@ test('top means one auto-starting background player, not an audible popup', asyn
   assert.equal(session.getSnapshot().ready, true);
   assert.equal(session.getSnapshot().desiredPlaying, true);
   assert.equal('panelOpen' in session.getSnapshot(), false);
-  assert.deepEqual(starts(player), [['load', MUSIC_TRACKS[0].videoId]]);
+  assert.deepEqual(starts(player), [['load', DEFAULT_MUSIC_TRACK.videoId]]);
   player.stateChange(1);
   session.pause();
   player.stateChange(2);
@@ -645,9 +647,9 @@ test('visible top background advances to the next track when a video ends', asyn
   player.ready();
   player.stateChange(1);
   player.stateChange(0);
-  assert.equal(session.getSnapshot().track.videoId, MUSIC_TRACKS[1].videoId);
+  assert.equal(session.getSnapshot().track.videoId, DEFAULT_NEXT_TRACK.videoId);
   assert.equal(session.getSnapshot().desiredPlaying, true);
-  assert.deepEqual(starts(player), [['load', MUSIC_TRACKS[0].videoId], ['load', MUSIC_TRACKS[1].videoId]]);
+  assert.deepEqual(starts(player), [['load', DEFAULT_MUSIC_TRACK.videoId], ['load', DEFAULT_NEXT_TRACK.videoId]]);
 });
 
 test('volume, mute, next, previous and chosen tracks all command the same background', async (t) => {
@@ -660,11 +662,11 @@ test('volume, mute, next, previous and chosen tracks all command the same backgr
   session.setMuted(true);
   session.relative(1);
   player.stateChange(1);
-  assert.equal(player.id, MUSIC_TRACKS[1].videoId);
+  assert.equal(player.id, DEFAULT_NEXT_TRACK.videoId);
   assert.equal(player.volume, 28);
   assert.equal(player.muted, true);
   session.relative(-1);
-  assert.equal(player.id, MUSIC_TRACKS[0].videoId);
+  assert.equal(player.id, DEFAULT_MUSIC_TRACK.videoId);
   session.select(MUSIC_TRACKS[3]);
   assert.equal(player.id, MUSIC_TRACKS[3].videoId);
   session.setMuted(false);
@@ -936,7 +938,7 @@ test('paused Next sends exactly one load, never cue followed by Play', async (t)
   player.stateChange(2);
   const before = player.calls.length;
   session.relative(1);
-  assert.deepEqual(player.calls.slice(before), [['load', MUSIC_TRACKS[1].videoId]]);
+  assert.deepEqual(player.calls.slice(before), [['load', DEFAULT_NEXT_TRACK.videoId]]);
   assert.equal(session.getSnapshot().currentTime, 0);
   assert.equal(session.getSnapshot().desiredPlaying, true);
   player.stateChange(3);
@@ -957,15 +959,15 @@ test('same-ID selection resumes and retries errors; a different selection retrie
   player.time = 19;
   player.stateChange(2);
   const before = player.calls.length;
-  session.select(MUSIC_TRACKS[0]);
+  session.select(DEFAULT_MUSIC_TRACK);
   assert.deepEqual(player.calls.slice(before), [['play']]);
   assert.equal(session.getSnapshot().currentTime, 19);
   player.error(150);
-  session.select(MUSIC_TRACKS[0]);
+  session.select(DEFAULT_MUSIC_TRACK);
   await flush();
   assert.deepEqual(player.calls.at(-1), ['destroy']);
   players[1].ready();
-  assert.deepEqual(starts(players[1]), [['load', MUSIC_TRACKS[0].videoId]]);
+  assert.deepEqual(starts(players[1]), [['load', DEFAULT_MUSIC_TRACK.videoId]]);
   players[1].stateChange(1);
   assert.equal(session.getSnapshot().status, 'playing');
   players[1].error(150);
@@ -1008,7 +1010,7 @@ test('metadata and room selections preserve local intent, and ownerless selectio
   player.time = 21;
   player.stateChange(1);
   const before = player.calls.length;
-  session.select({ ...MUSIC_TRACKS[0], title: 'Updated metadata' }, false);
+  session.select({ ...DEFAULT_MUSIC_TRACK, title: 'Updated metadata' }, false);
   assert.equal(player.calls.length, before);
   assert.equal(session.getSnapshot().currentTime, 21);
   assert.equal(session.getSnapshot().desiredPlaying, true);

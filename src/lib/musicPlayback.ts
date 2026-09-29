@@ -1,14 +1,14 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
-import { MUSIC_TRACKS, type MusicSyncDetail, type MusicTrack } from './music.ts';
+import { DEFAULT_MUSIC_TRACK, MUSIC_TRACKS, type MusicSyncDetail, type MusicTrack } from './music.ts';
 import { createYouTubeController, IDLE_YOUTUBE, type YouTubeController, type YouTubeSnapshot } from './youtube.ts';
 
 type Owner = 'top' | 'video' | null;
 export type MusicPlaybackSnapshot = YouTubeSnapshot & {
   track: MusicTrack; owner: Owner; mounted: boolean;
 };
-const INITIAL: MusicPlaybackSnapshot = { ...IDLE_YOUTUBE, track: MUSIC_TRACKS[0], owner: null, mounted: false };
+const INITIAL: MusicPlaybackSnapshot = { ...IDLE_YOUTUBE, track: DEFAULT_MUSIC_TRACK, owner: null, mounted: false };
 
 // Header and page controls share intent and feedback, not competing iframe event buses.
 export function createMusicPlayback(makeController = createYouTubeController) {

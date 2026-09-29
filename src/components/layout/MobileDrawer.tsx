@@ -11,6 +11,7 @@ import { TranslateMenu } from './Header';
 
 export default function MobileDrawer({ id, open, onOpenChange }: { id: string; open: boolean; onOpenChange: Dispatch<SetStateAction<boolean>> }) {
   const pathname = usePathname();
+  const isCallRoute = pathname === '/webrtc' || pathname === '/apps/random-chat';
   const dialogRef = useRef<HTMLDialogElement>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const user = useGlobalStore((state) => state.user);
@@ -73,6 +74,7 @@ export default function MobileDrawer({ id, open, onOpenChange }: { id: string; o
           <button type="button" onClick={() => { signOut(); setUser(null); close(); }}><LogOut size={18} aria-hidden="true" />로그아웃</button>
         </> : <Link href="/login" onClick={close}><LogIn size={18} aria-hidden="true" />로그인</Link>}
         <button type="button" onClick={() => { close(); window.dispatchEvent(new Event('gyopo-friends-open')); }}><MessageCircle size={18} aria-hidden="true" />친구 채팅·통화</button>
+        {!isCallRoute && <button type="button" onClick={() => { close(); window.dispatchEvent(new Event('gyopo-open-global-chat')); }}><MessageCircle size={18} aria-hidden="true" />실시간 라운지</button>}
         <TranslateMenu />
       </section>
       <GlobalSidebar onNavigate={close} />

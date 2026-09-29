@@ -167,8 +167,7 @@ export default function FriendDock() {
     const closeOnOutsideClick = (event: PointerEvent) => {
       const target = event.target as Node;
       const panel = document.getElementById('friend-dock');
-      const launcher = document.getElementById('friend-dock-launch');
-      if (panel?.contains(target) || launcher?.contains(target)) return;
+       if (panel?.contains(target)) return;
       setOpen(false);
     };
     document.addEventListener('keydown', closeOnEscape);
@@ -490,18 +489,13 @@ export default function FriendDock() {
 
   return (
     <>
-       <button id="friend-dock-launch" type="button" aria-controls="friend-dock" aria-expanded={open} onClick={() => setOpen(true)} aria-label="친구 채팅과 통화 열기" className="friend-dock-launch-control fixed bottom-4 right-4 z-[75] inline-flex min-h-12 items-center gap-2 rounded-full border border-cyan-300/30 bg-[#0b1729] px-4 text-cyan-100 shadow-[0_12px_40px_rgba(0,0,0,.45)] transition hover:border-cyan-200/60 hover:bg-[#10213b]">
-         <UserRoundCheck size={19} />
-          <span className="sr-only">친구·통화</span>
-         {messageNotice && <span className="absolute bottom-14 right-0 whitespace-nowrap rounded-lg bg-emerald-300 px-3 py-2 text-[11px] font-black text-slate-950 shadow-lg">{messageNotice}</span>}
-       </button>
-
-         <aside id="friend-dock" style={{ ...(dockPosition ? { left: dockPosition.left, top: dockPosition.top, right: 'auto', bottom: 'auto' } : {}), maxHeight: 'calc(100dvh - 16px)' }} className={`gyopo-friend-dock fixed bottom-4 left-3 right-3 z-[70] overflow-x-hidden overflow-y-auto rounded-none border-0 bg-[#091120] text-white shadow-[0_25px_100px_rgba(0,0,0,.7)] transition ${dragging ? 'cursor-grabbing select-none transition-none' : 'cursor-default'} lg:left-4 lg:right-auto lg:w-[480px] ${videoCall ? 'friend-dock-call-active' : ''} ${videoClosing ? 'friend-dock-call-closing' : ''} ${open ? 'visible translate-y-0 opacity-100' : videoClosing ? 'visible translate-y-5 opacity-0' : 'invisible translate-y-5 opacity-0'}`}>
+          <aside id="friend-dock" style={{ ...(dockPosition ? { left: dockPosition.left, top: dockPosition.top, right: 'auto', bottom: 'auto' } : {}), maxHeight: 'calc(100dvh - 16px)' }} className={`gyopo-friend-dock fixed bottom-4 left-3 right-3 z-[70] overflow-x-hidden overflow-y-auto rounded-none border-0 bg-[#091120] text-white shadow-[0_25px_100px_rgba(0,0,0,.7)] transition ${dragging ? 'cursor-grabbing select-none transition-none' : 'cursor-default'} lg:left-4 lg:right-auto lg:w-[480px] ${videoCall ? 'friend-dock-call-active' : ''} ${videoClosing ? 'friend-dock-call-closing' : ''} ${open ? 'visible translate-y-0 opacity-100' : videoClosing ? 'visible translate-y-5 opacity-0' : 'invisible translate-y-5 opacity-0'}`}>
            <header onPointerDown={startDockDrag} onPointerMove={moveDock} onPointerUp={stopDockDrag} onPointerCancel={stopDockDrag} className={`flex items-center justify-between border-0 px-4 py-3 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}>
-            <div className="flex items-center gap-2 text-sm font-black"><UserRoundCheck size={17} className="text-cyan-300" /> {isKorean ? '친구 채팅·통화' : 'Friends Chat & Call'}</div>
-            <button type="button" onClick={() => videoCall ? closeVideoCall() : setOpen(false)} aria-label="친구 패널 닫기" className="border-0 p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><X size={17} /></button>
-          </header>
-          {(messageError || messageReadError) && <p role="alert" className="px-3 py-2 text-xs font-bold text-rose-300">{messageError || messageReadError}</p>}
+             <div className="flex items-center gap-2 text-sm font-black"><UserRoundCheck size={17} className="text-cyan-300" /> {isKorean ? '친구 채팅·통화' : 'Friends Chat & Call'}</div>
+             <button type="button" onClick={() => videoCall ? closeVideoCall() : setOpen(false)} aria-label="친구 패널 닫기" className="border-0 p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><X size={17} /></button>
+           </header>
+           {messageNotice && <p role="status" className="mx-3 mb-2 bg-emerald-300/10 px-3 py-2 text-[11px] font-bold text-emerald-100">{messageNotice}</p>}
+           {(messageError || messageReadError) && <p role="alert" className="px-3 py-2 text-xs font-bold text-rose-300">{messageError || messageReadError}</p>}
 
           {incomingCalls.length > 0 && <div className="mx-3 mt-3 border-0 bg-emerald-300/[.08] p-3"><div className="flex items-center gap-2 text-xs font-black text-emerald-100"><PhoneCall size={14} /> {isKorean ? '영상 통화 요청' : 'Incoming call'}</div>{incomingCalls.map((request) => <div key={request.id} className="mt-3 flex items-center gap-2"><img src={request.callerImage} alt="" className="h-8 w-8 rounded-lg object-cover" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-white">{request.callerName}</p><p className="text-[10px] text-emerald-100/65">{isKorean ? '친구가 영상 통화를 요청했습니다.' : 'Your friend requested a video call.'}</p></div><button type="button" onClick={() => void answerVideoCall(request, 'accepted')} aria-label={isKorean ? '통화 수락' : 'Accept call'} className="border-0 bg-emerald-300 p-2 text-slate-950"><Check size={14} /></button><button type="button" onClick={() => void answerVideoCall(request, 'declined')} aria-label={isKorean ? '통화 거절' : 'Decline call'} className="border-0 bg-white/10 p-2 text-slate-300"><X size={14} /></button></div>)}</div>}
 
