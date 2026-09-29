@@ -47,6 +47,7 @@ test('page styles are route-owned, not persistent React stylesheet resources', (
   assert.match(component, /^'use client';/);
   assert.match(component, /const file = '2haazg539gb52\.css'/);
   assert.match(component, /<link\s+rel="stylesheet"/);
+  assert.match(component, /styles\/tetris-refinements\.css/);
   assert.match(component, /onLoad=\{\(\) => \{\}\}/);
   assert.doesNotMatch(component, /\bprecedence=|createPortal|document\.head|useEffect/);
   assert.match(read('src/app/page.tsx'), /import styles from '\.\/home\.module\.css'/);
@@ -122,5 +123,21 @@ test('sidebar friends action keeps guest navigation and opens an anchored dock',
   assert.match(dock, /상태 확인 중/);
   assert.match(dock, /온라인/);
   assert.match(dock, /오프라인/);
-  assert.match(dock, /max-h-48/);
+  assert.match(dock, /friend-list max-h-40/);
+  assert.match(dock, /friend-row-action/);
+  assert.match(dock, /friend-message-bubble/);
+  assert.doesNotMatch(dock, /<b className="block text-\[9px\] opacity-65">\{message\.user\}<\/b>/);
+
+  const lounge = read('src/components/layout/GlobalChat.tsx');
+  assert.match(lounge, /global-lounge-launch-control/);
+  assert.match(lounge, /global-mobile-lounge-launch/);
+  assert.doesNotMatch(lounge, /memberCount|회원 \$\{memberCount\}|members/);
+  assert.match(read('src/app/experience-refinements.css'), /\.global-app-shell\.has-lounge-open \.global-page-body/);
+});
+
+test('leaving the public shell clears lounge spacing and the directory map action opens its map tab', () => {
+  const shell = read('src/components/layout/GlobalAppShell.tsx');
+  assert.match(shell, /if \(mode !== 'public'\) setLoungeOpen\(false\)/);
+  const directory = read('src/app/directory/page.tsx');
+  assert.match(directory, /selectDirectory\(biz, 'map'\)/);
 });

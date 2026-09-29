@@ -54,8 +54,9 @@ service cloud.firestore {
          && (!data.keys().hasAny(['isSubscribed']) || data.isSubscribed is bool)
          && (!data.keys().hasAny(['walletAddress']) || (data.walletAddress is string && data.walletAddress.size() == 34))
          && (!data.keys().hasAny(['walletNetwork']) || data.walletNetwork == 'TRC20')
-         && (!data.keys().hasAny(['walletPublic']) || data.walletPublic is bool)
-         && (!data.keys().hasAny(['musicFavorites']) || data.musicFavorites is list)
+          && (!data.keys().hasAny(['walletPublic']) || data.walletPublic is bool)
+          && (!data.keys().hasAny(['defaultAiWritingPrompt']) || (data.defaultAiWritingPrompt is string && data.defaultAiWritingPrompt.size() <= 1200))
+          && (!data.keys().hasAny(['musicFavorites']) || data.musicFavorites is list)
          && (!data.keys().hasAny(['updatedAt']) || data.updatedAt is timestamp);
      }
      function hasNoServerManagedProfileChange() {
@@ -66,7 +67,7 @@ service cloud.firestore {
      function hasSafeProfileCreate(data) {
        return data.keys().hasOnly([
            'name', 'email', 'image', 'usdtBalance', 'usdBalance', 'isSubscribed', 'gender', 'genderPreference',
-           'premiumExpiresAt', 'age', 'country', 'walletAddress', 'walletNetwork', 'walletPublic', 'walletPinHash',
+            'premiumExpiresAt', 'age', 'country', 'defaultAiWritingPrompt', 'walletAddress', 'walletNetwork', 'walletPublic', 'walletPinHash',
            'walletPinSalt', 'transferPinHash', 'transferPinSalt', 'musicFavorites', 'updatedAt'
          ])
          && data.keys().hasAll(['name', 'email', 'image', 'usdtBalance', 'usdBalance', 'isSubscribed', 'updatedAt'])
@@ -741,8 +742,8 @@ service cloud.firestore {
       }
       function hasValidTetrisBet(data) {
         return data.keys().hasAny(['betAmount'])
-          && data.betAmount is number
-          && data.betAmount >= 1
+          && data.betAmount is int
+          && data.betAmount >= 0
           && data.betAmount <= 100;
       }
       function preservesTetrisBet() {

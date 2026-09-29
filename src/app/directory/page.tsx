@@ -92,6 +92,7 @@ export default function DirectoryPage() {
   const [isWriting, setIsWriting] = useState(false);
   const [form, setForm] = useState({ name: '', category: DIRECTORY_CATEGORIES[0], desc: '', tel: '', address: '', image: '' });
   const [category, setCategory] = useState('전체');
+  const [directoryTab, setDirectoryTab] = useState<'info' | 'map'>('info');
   const [minRating, setMinRating] = useState('0');
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('idle');
@@ -189,8 +190,9 @@ export default function DirectoryPage() {
     );
   };
 
-  const selectDirectory = (directory: Directory) => {
+  const selectDirectory = (directory: Directory, tab: 'info' | 'map' = 'info') => {
     setSelectedDirectory(directory);
+    setDirectoryTab(tab);
     setRouteMode('place');
     setRouteRequested(false);
   };
@@ -264,7 +266,7 @@ export default function DirectoryPage() {
 </div>
 </header>
         {locationMessage && <p role="status" className="mt-3 text-xs text-amber-200">{locationMessage}</p>}
-        <div className="mb-5 flex flex-wrap gap-2">
+        <div className="directory-filters mb-5 flex flex-wrap gap-2">
 <input type="text" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="업체명, 도시, 카테고리 검색..." className="min-w-[220px] flex-1 border border-white/10 bg-white/[.06] px-4 py-3 text-sm text-white outline-none focus:border-cyan-300/50" />
 <select value={category} onChange={(event) => setCategory(event.target.value)} className="w-full min-w-0 border border-white/10 bg-[#0b1221] px-3 py-2 text-sm font-bold text-white sm:w-auto">
 <option value="전체">모든 카테고리</option>{categories.filter((item) => item !== '전체').map((item) => <option key={item}>{item}</option>)}</select>
@@ -274,7 +276,12 @@ export default function DirectoryPage() {
 <option value="4.5">4.5점 이상</option>
 </select>
 </div>
-        {selectedDirectory && (() => { const selectedMapUrl = routeMode === 'drive' && userLocation ? mapsRouteEmbedUrl(selectedDirectory, userLocation) : mapsEmbedUrl(selectedDirectory); const tel = phoneHref(selectedDirectory); const whatsapp = whatsappHref(selectedDirectory); return <section className="directory-map-panel mb-5 overflow-hidden">
+        <div className="directory-workspace">
+        {selectedDirectory ? <nav className="directory-detail-tabs" role="tablist" aria-label="업소 상세 보기">
+          <button type="button" role="tab" aria-selected={directoryTab === 'info'} onClick={() => setDirectoryTab('info')}>업체 정보</button>
+          <button type="button" role="tab" aria-selected={directoryTab === 'map'} onClick={() => setDirectoryTab('map')}>지도·길찾기</button>
+        </nav> : <aside className="directory-detail-placeholder"><p className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-300">Business details</p><h2 className="mt-2 text-lg font-black text-white">업소를 선택하세요</h2><p className="mt-2 text-sm leading-6 text-slate-400">목록에서 업체를 선택하면 확인된 연락처, 운영 정보와 지도를 이 패널에서 볼 수 있습니다.</p></aside>}
+        {selectedDirectory && directoryTab === 'map' && (() => { const selectedMapUrl = routeMode === 'drive' && userLocation ? mapsRouteEmbedUrl(selectedDirectory, userLocation) : mapsEmbedUrl(selectedDirectory); const tel = phoneHref(selectedDirectory); const whatsapp = whatsappHref(selectedDirectory); return <section className="directory-map-panel directory-detail-panel mb-5 overflow-hidden">
 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-4">
 <div className="min-w-0">
 <p className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-300">Selected business</p>
@@ -293,7 +300,7 @@ export default function DirectoryPage() {
 <span className="text-cyan-100/70">약 {routeDistance} km · 실제 시간은 교통 상황에 따라 달라질 수 있습니다.</span>
 </div>}{locationStatus === 'loading' && routeRequested && <p className="px-4 py-3 text-xs text-cyan-100">현재 위치를 확인한 뒤 이 지도에 경로를 표시합니다.</p>}<iframe key={selectedMapUrl} title={`${selectedDirectory.name} 지도`} src={selectedMapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="directory-map-frame" />
 </section>; })()}
-         {selectedDirectory && <div className="mb-5 overflow-hidden rounded-2xl border border-white/10">
+         {selectedDirectory && directoryTab === 'info' && <div className="directory-info-panel directory-detail-panel mb-5 overflow-hidden rounded-2xl border border-white/10">
 <div className="aspect-[16/7]">
 <ImageCarousel key={selectedDirectory.id} className="h-full" images={selectedDirectory.images || (selectedDirectory.image ? [selectedDirectory.image] : [])} alt={selectedDirectory.name} emptyLabel={placeLoading ? '사진 확인 중...' : '확인된 사진이 없습니다.'} />
 </div>
@@ -332,7 +339,7 @@ export default function DirectoryPage() {
 <p className="mt-1 text-[10px] text-slate-600">{review.relativeTime}</p>
 </div>)}</div>
 </div> : <p className="p-3 text-xs text-slate-400">확인된 Google 리뷰가 없습니다. 리뷰를 임의로 생성하지 않습니다.</p>}</div>}
-         <div className="mb-4 flex items-center justify-between text-xs text-slate-400">
+          <div className="directory-summary mb-4 flex items-center justify-between text-xs text-slate-400">
 <span>{selectedCountry === 'Global' ? '전체 국가' : selectedCountry} · {filteredDirectories.length}개 업소{userLocation ? ' · 가까운 순' : ''}</span>
 <span>{FEATURED_KOREAN_RESTAURANTS.length}개 추천 한식당 포함</span>
 </div>
@@ -358,9 +365,10 @@ export default function DirectoryPage() {
 <div className="text-xs text-slate-400">
 <div>{biz.address || biz.country}</div>{tel && <a href={tel} onClick={(event) => event.stopPropagation()} className="mt-1 block text-cyan-100 hover:text-cyan-300">{phoneLabel(biz)}</a>}{distance && <span className="distance-readout mt-1 block font-bold text-cyan-300">약 {distance} km</span>}</div>
 <div className="flex flex-wrap gap-1.5 text-[10px] font-black">
-<button type="button" onClick={(event) => { event.stopPropagation(); selectDirectory(biz); }} className="border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-cyan-100">지도</button>{tel && <a href={tel} onClick={(event) => event.stopPropagation()} className="border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-emerald-100">전화</a>}{user && isNativeDirectory(biz) && (user.id === biz.authorId || isMasterUser(user)) && <button type="button" onClick={(event) => { event.stopPropagation(); void removeDirectory(biz); }} className="border border-rose-300/20 bg-rose-300/10 px-2 py-1 text-rose-100">삭제</button>}</div>
+<button type="button" onClick={(event) => { event.stopPropagation(); selectDirectory(biz, 'map'); }} className="border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-cyan-100">지도</button>{tel && <a href={tel} onClick={(event) => event.stopPropagation()} className="border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-emerald-100">전화</a>}{user && isNativeDirectory(biz) && (user.id === biz.authorId || isMasterUser(user)) && <button type="button" onClick={(event) => { event.stopPropagation(); void removeDirectory(biz); }} className="border border-rose-300/20 bg-rose-300/10 px-2 py-1 text-rose-100">삭제</button>}</div>
 </div>; })}</div>
-</div>}
+        </div>}
+        </div>
         </div>
         <div className="mx-auto mt-6 max-w-4xl">
 <BannerAd type="horizontal" />

@@ -17,23 +17,24 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-async function harness(initial = session()) {
+async function harness(initial = session(), fetchHandler) {
   const values = new Map([[key, JSON.stringify(initial)]]), requests = [], events = [];
   const storage = { getItem: (name) => values.get(name) ?? null, setItem: (name, value) => values.set(name, value), removeItem: (name) => values.delete(name) };
+  const defaultFetch = (url, options = {}) => {
+    assert.match(String(url), /^https:\/\/(securetoken|firestore)\.googleapis\.com\//);
+    if (String(url).includes('/profiles/')) assert.match(String(url), /\/profiles\/[ab]$/);
+    const pending = deferred();
+    requests.push({ url: String(url), options, ...pending });
+    return pending.promise;
+  };
   const context = createContext({
     atob, URLSearchParams, AbortSignal,
     StorageEvent: class { constructor(type, init) { this.type = type; Object.assign(this, init); } },
-    window: { localStorage: storage, dispatchEvent(event) {
+    window: { localStorage: storage, location: { origin: 'https://reconstruction.test' }, dispatchEvent(event) {
       assert.equal(storage.getItem(key), null, 'Logout notification must follow removal');
       events.push(event); return true;
     } },
-    fetch(url, options = {}) {
-      assert.match(String(url), /^https:\/\/(securetoken|firestore)\.googleapis\.com\//);
-      if (String(url).startsWith('https://firestore')) assert.match(String(url), /\/profiles\/[ab]$/);
-      const pending = deferred();
-      requests.push({ url: String(url), options, ...pending });
-      return pending.promise;
-    },
+    fetch: fetchHandler ? (url, options = {}) => fetchHandler(String(url), options) : defaultFetch,
   });
   const sourceModule = new SourceTextModule(source, { context });
   await sourceModule.link(() => { throw new Error('Unexpected source import'); });
@@ -293,4 +294,119 @@ test('logout notifies existing same-window session listeners after removing only
   assert.equal(h.events[0].key, key);
   assert.equal(h.events[0].newValue, null);
   assert.equal(h.events[0].storageArea, h.storage);
+});
+
+test('Google sign-in keeps a saved AI writing preference when it rewrites the profile', async () => {
+  const preference = 'Keep drafts concise';
+  let profileWrite;
+  const profileDocument = {
+    name: 'projects/test/databases/(default)/documents/profiles/a',
+    fields: {
+      name: { stringValue: 'Saved Name' },
+      email: { stringValue: 'a@example.test' },
+      defaultAiWritingPrompt: { stringValue: preference },
+    },
+  };
+  const h = await harness(session(), async (url, options) => {
+    if (url.includes('/accounts:signInWithIdp?')) {
+      return Response.json({ localId: 'a', email: 'a@example.test', idToken: 'signed-in-token', refreshToken: 'signed-in-refresh' });
+    }
+    if (url.endsWith('/documents/profiles/a') && !options.method) return Response.json(profileDocument);
+    if (url.includes('/documents/profiles?documentId=a') && options.method === 'POST') {
+      profileWrite = JSON.parse(options.body);
+      return new Response('{}', { status: 200 });
+    }
+    throw new Error(`Unexpected sign-in request: ${url}`);
+  });
+
+  const user = await h.api.signInWithGoogleCredential('google-credential');
+  assert.equal(user.defaultAiWritingPrompt, preference);
+  assert.equal(profileWrite.fields.defaultAiWritingPrompt.stringValue, preference);
+});
+
+test('Google sign-in does not rewrite a profile when its read fails', async () => {
+  let profileWrites = 0;
+  const h = await harness(session(), async (url, options) => {
+    if (url.includes('/accounts:signInWithIdp?')) {
+      return Response.json({ localId: 'a', email: 'a@example.test', idToken: 'signed-in-token', refreshToken: 'signed-in-refresh' });
+    }
+    if (url.endsWith('/documents/profiles/a') && !options.method) return new Response('Offline', { status: 503 });
+    if (url.includes('/documents/profiles?documentId=a') && options.method === 'POST') {
+      profileWrites++;
+      return new Response('{}', { status: 200 });
+    }
+    throw new Error(`Unexpected sign-in request: ${url}`);
+  });
+
+  const user = await h.api.signInWithGoogleCredential('google-credential');
+  assert.equal(user.id, 'a');
+  assert.equal(profileWrites, 0);
+});
+
+test('saveProfile keeps a saved AI writing preference when the user object is stale', async () => {
+  const preference = 'Keep drafts concise';
+  let profileWrite;
+  const profileDocument = {
+    name: 'projects/test/databases/(default)/documents/profiles/a',
+    fields: {
+      name: { stringValue: 'Saved Name' },
+      email: { stringValue: 'a@example.test' },
+      defaultAiWritingPrompt: { stringValue: preference },
+      gender: { stringValue: 'female' },
+      age: { integerValue: '34' },
+      country: { stringValue: 'US' },
+      usdtBalance: { integerValue: '0' },
+      usdBalance: { integerValue: '0' },
+      isSubscribed: { booleanValue: false },
+    },
+  };
+  const h = await harness(session(), async (url, options) => {
+    if (url.endsWith('/documents/profiles/a') && !options.method) return Response.json(profileDocument);
+    if (url.includes('/documents/profiles?documentId=a') && options.method === 'POST') return new Response('Already exists', { status: 409 });
+    if (url.endsWith('/documents:commit') && options.method === 'POST') {
+      const write = JSON.parse(options.body).writes[0];
+      if (write.update.name.endsWith('/documents/profiles/a')) profileWrite = write;
+      return new Response('{}', { status: 200 });
+    }
+    throw new Error(`Unexpected profile request: ${url}`);
+  });
+
+  await h.api.saveProfile({ ...session().user, gender: 'female', age: 34, country: 'US' }, 'test-token');
+  assert.equal(profileWrite.update.fields.defaultAiWritingPrompt.stringValue, preference);
+  assert.equal(h.read().user.defaultAiWritingPrompt, preference);
+});
+
+test('free Tetris countdown starts without stake flags, but paid rooms still require both holds', async () => {
+  const documentName = (id) => `projects/gyopo-live-portal-506019/databases/(default)/documents/tetrisRooms/${id}`;
+  const roomDocument = (id, betAmount, extraFields = {}) => ({
+    name: documentName(id),
+    updateTime: 'update-1',
+    fields: {
+      phase: { stringValue: 'holding' },
+      readyA: { booleanValue: true },
+      readyB: { booleanValue: true },
+      betAmount: { integerValue: String(betAmount) },
+      ...extraFields,
+    },
+  });
+
+  const free = await harness();
+  const freeStart = free.api.startTetrisCountdown('free-room', 'test-token');
+  await tick();
+  free.requests[0].resolve(Response.json(roomDocument('free-room', 0)));
+  await tick();
+  assert.equal(free.requests.length, 2);
+  const freeWrite = JSON.parse(free.requests[1].options.body).writes[0];
+  assert.equal(freeWrite.update.fields.phase.stringValue, 'countdown');
+  assert.equal(freeWrite.update.fields.stakeHeldA, undefined);
+  assert.equal(freeWrite.update.fields.stakeHeldB, undefined);
+  free.requests[1].resolve(new Response(null, { status: 200 }));
+  assert.ok(Number.isFinite(Date.parse(await freeStart)));
+
+  const paid = await harness();
+  const paidStart = paid.api.startTetrisCountdown('paid-room', 'test-token');
+  await tick();
+  paid.requests[0].resolve(Response.json(roomDocument('paid-room', 5)));
+  assert.equal(await paidStart, null);
+  assert.equal(paid.requests.length, 1);
 });

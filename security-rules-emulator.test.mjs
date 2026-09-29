@@ -214,10 +214,11 @@ test('Firestore emulator authorization regressions', {
   });
 
   await t.test('ordinary profile edits remain valid; member balance and subscription changes are denied', async () => {
-    const profile = { name: 'Alice', email: 'alice@example.invalid', image: '', usdtBalance: 0, usdBalance: 0, isSubscribed: false, updatedAt: new Date() };
+    const profile = { name: 'Alice', email: 'alice@example.invalid', image: '', defaultAiWritingPrompt: 'Warm, concise style', usdtBalance: 0, usdBalance: 0, isSubscribed: false, updatedAt: new Date() };
     await allowed(write('profiles/alice', profile, 'alice'));
     await allowed(write('profiles/alice', { ...profile, name: 'Alice updated' }, 'alice'));
-    for (const patch of [{ usdBalance: 100 }, { usdtBalance: 100 }, { isSubscribed: true }, { premiumExpiresAt: new Date() }, { lastTransferId: 'forged' }, { lastUsdOperationId: 'forged' }]) {
+    await allowed(write('profiles/alice', { ...profile, defaultAiWritingPrompt: 'Updated preference' }, 'alice'));
+    for (const patch of [{ defaultAiWritingPrompt: 'x'.repeat(1201) }, { usdBalance: 100 }, { usdtBalance: 100 }, { isSubscribed: true }, { premiumExpiresAt: new Date() }, { lastTransferId: 'forged' }, { lastUsdOperationId: 'forged' }]) {
       await denied(write('profiles/alice', { ...profile, ...patch }, 'alice'));
     }
     const legacy = { ...profile };
@@ -230,6 +231,12 @@ test('Firestore emulator authorization regressions', {
     const room = { playerAId: 'alice', playerBId: 'bob', betAmount: 10, phase: 'betting' };
     await allowed(write('tetrisRooms/room', room, 'alice'));
     await allowed(write('tetrisRooms/room', { ...room, phase: 'holding' }, 'bob'));
+    await denied(write('tetrisRooms/fractional-fee', { ...room, betAmount: 1.5 }, 'alice'));
+    const freeRoom = { playerAId: 'alice', playerBId: 'bob', betAmount: 0, phase: 'betting', readyA: true };
+    await allowed(write('tetrisRooms/free-room', freeRoom, 'alice'));
+    await allowed(write('tetrisRooms/free-room', { ...freeRoom, readyB: true }, 'bob'));
+    await denied(write('tetrisRooms/free-forged-stake', { ...freeRoom, stakeHeldA: true }, 'alice'));
+    await denied(write('tetrisRooms/free-room', { ...freeRoom, betAmount: 1 }, 'alice'));
     await denied(write('tetrisRooms/forged', { ...room, stakeHeldA: true }, 'alice'));
     for (const patch of [{ stakeHeldA: true }, { stakeHeldB: true }, { payoutStatus: 'PAID' }, { payoutAmount: 20 }, { betAmount: 99 }]) {
       await denied(write('tetrisRooms/room', { ...room, ...patch }, 'alice'));

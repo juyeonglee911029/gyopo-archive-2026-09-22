@@ -1,0 +1,167 @@
+.tetris-focused-page {
+  min-width: 0;
+}
+
+.tetris-own-panel,
+.tetris-opponent-panel {
+  min-width: 0;
+}
+
+.tetris-own-panel > .tetris-focus-header,
+.tetris-opponent-panel > .tetris-focus-header {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto !important;
+  align-items: center;
+  column-gap: 0.5rem;
+  height: 4rem;
+  min-height: 4rem;
+  overflow: hidden;
+}
+
+.tetris-own-panel > .tetris-focus-header > .tetris-panel-link {
+  display: none;
+}
+
+.tetris-own-panel .tetris-head-readout {
+  grid-column: 2;
+  min-width: 0;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tetris-own-panel .tetris-inline-next {
+  grid-column: 3;
+  width: 3.25rem;
+  justify-self: end;
+}
+
+.tetris-opponent-panel > .tetris-focus-header > span:nth-child(2) {
+  grid-column: 2;
+  min-width: 0;
+  justify-self: end;
+}
+
+.tetris-opponent-panel > .tetris-focus-header > span:nth-child(3) {
+  grid-column: 3;
+}
+
+.tetris-focus-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0.25rem !important;
+  padding: 0.35rem !important;
+}
+
+.tetris-focus-controls button {
+  min-width: 0;
+  min-height: 2rem !important;
+  padding: 0.25rem 0.2rem !important;
+  font-size: 0.62rem !important;
+  line-height: 1.1;
+}
+
+@media (min-width: 901px) {
+  .tetris-focused-page {
+    height: calc(100dvh - 112px) !important;
+    min-height: 0 !important;
+    overflow: hidden;
+  }
+
+  .tetris-focused-shell,
+  .tetris-focused-workspace {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .tetris-focused-workspace {
+    grid-template-columns: minmax(220px, 0.8fr) repeat(2, minmax(0, 1fr)) !important;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .tetris-social-column {
+    min-height: 0;
+    grid-template-rows: minmax(7rem, 0.85fr) minmax(0, 1fr) minmax(12rem, 1.4fr) !important;
+  }
+
+  .tetris-camera-panel,
+  .tetris-focus-settings,
+  .tetris-chat-panel {
+    min-height: 0;
+  }
+
+  .tetris-chat-panel {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tetris-focus-messages {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .tetris-own-panel,
+  .tetris-opponent-panel {
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: 4rem minmax(0, 1fr) 5.5rem !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .tetris-focused-page {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible;
+  }
+
+  .tetris-focused-shell,
+  .tetris-focused-workspace {
+    height: auto;
+  }
+
+  .tetris-focused-workspace {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .tetris-social-column {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: auto !important;
+    align-items: stretch;
+  }
+
+  .tetris-own-panel,
+  .tetris-opponent-panel {
+    height: clamp(28rem, calc(100svh - 112px - 68px - 2rem), 42rem);
+    min-height: 28rem;
+    grid-template-rows: 4rem minmax(0, 1fr) 6.25rem !important;
+  }
+
+  .tetris-focus-controls button {
+    min-height: 2.5rem !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .tetris-focused-workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .tetris-social-column {
+    grid-column: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tetris-chat-panel {
+    grid-column: 1 / -1;
+    min-height: 14rem;
+  }
+
+  .tetris-own-panel,
+  .tetris-opponent-panel {
+    height: clamp(30rem, calc(100svh - 112px - 68px - 1rem), 42rem);
+  }
+}

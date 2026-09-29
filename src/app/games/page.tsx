@@ -8,6 +8,7 @@ import { useEffect, useReducer, useRef, useState, type FormEvent, type TouchEven
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowRightLeft, ArrowUp, Camera, Gamepad2, MessageCircle, Pause, Play, RotateCw, Send, Shield, Sparkles, Swords, Timer, Users, X, Zap } from 'lucide-react';
 import { claimTetrisLobbyRoom, claimTetrisMatch, createDocument, deleteDocument, deleteExpiredChatMessages, getDocument, getSessionToken, getSessionUserId, heartbeatTetrisLobbyRoom, joinTetrisLobbyRoom, listDocuments, listOnlineUsers, mergeDocument, OnlineUser, queryDocuments, queryDocumentsWhere, refreshStoredUser, refundGameStake, releaseTetrisLobbyRoom, reserveGameStake, reserveTetrisLobbyRoom, settleTetrisMatch, startTetrisCountdown, upsertDocument, type TetrisLobbyRoom, type TetrisQueueProfile } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
+import { DEFAULT_ENTRY_FEE, MAX_ENTRY_FEE, MIN_ENTRY_FEE, parseEntryFee, shouldReserveTetrisStake } from '@/lib/tetrisEntryFee';
 
 function formatUsd(value: number | string) {
   return Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -41,9 +42,6 @@ const SHAPES = [
   [[1, 1, 0], [0, 1, 1]],
 ];
 const COLORS = ['#2dd4bf', '#facc15', '#c084fc', '#60a5fa', '#fb923c', '#f472b6', '#4ade80'];
-const DEFAULT_ENTRY_FEE = 1;
-const MIN_ENTRY_FEE = 1;
-const MAX_ENTRY_FEE = 100;
 const TETRIS_COUNTDOWN_MS = 3_000;
 const TETRIS_ROOM_COUNT = 10;
 const TETRIS_SCORE_STORAGE_KEY = 'gyopo-tetris-ranking-v1';
@@ -379,12 +377,17 @@ export default function GamesPage() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (window.matchMedia('(max-width: 639px)').matches) return;
     const htmlOverflow = document.documentElement.style.overflow;
     const bodyOverflow = document.body.style.overflow;
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.overflow = 'hidden';
+    const updateOverflow = () => {
+      const lock = window.matchMedia('(min-width: 901px)').matches;
+      document.documentElement.style.overflow = lock ? 'hidden' : htmlOverflow;
+      document.body.style.overflow = lock ? 'hidden' : bodyOverflow;
+    };
+    updateOverflow();
+    window.addEventListener('resize', updateOverflow);
     return () => {
+      window.removeEventListener('resize', updateOverflow);
       document.documentElement.style.overflow = htmlOverflow;
       document.body.style.overflow = bodyOverflow;
     };
@@ -1140,31 +1143,31 @@ export default function GamesPage() {
     if (!token || !user) return window.alert('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
     let roomBeforeBet = await getDocument<TetrisRoom>('tetrisRooms', matchId, token).catch(() => null);
     if (matchRole === 'B') {
-      for (let attempt = 0; attempt < 4 && !roomBeforeBet?.betAmount; attempt += 1) {
+      for (let attempt = 0; attempt < 4 && typeof roomBeforeBet?.betAmount !== 'number'; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 400));
         roomBeforeBet = await getDocument<TetrisRoom>('tetrisRooms', matchId, token).catch(() => null);
       }
     }
-    const roomAmount = Number(roomBeforeBet?.betAmount || 0);
-    const requestedAmount = Number(betAmount);
-    if (matchRole === 'A' && roomAmount && roomBeforeBet?.readyA && roomAmount !== requestedAmount) {
+    const roomAmount = typeof roomBeforeBet?.betAmount === 'number' ? roomBeforeBet.betAmount : null;
+    const requestedAmount = matchRole === 'B' ? roomAmount : betAmount;
+    const amount = parseEntryFee(requestedAmount);
+    if (matchRole === 'A' && roomAmount !== null && roomBeforeBet?.readyA && roomAmount !== amount) {
       setBetAmount(roomAmount);
       setRoomBetConfigured(true);
        setMatchStatus(`참가비는 이미 ${formatUsd(roomAmount)} USD로 확정되었습니다.`);
       return;
     }
-    const amount = matchRole === 'B' ? roomAmount : requestedAmount;
-    if (!Number.isFinite(amount) || amount < MIN_ENTRY_FEE || amount > MAX_ENTRY_FEE) {
+    if (amount === null) {
        window.alert(`참가비는 ${MIN_ENTRY_FEE}~${MAX_ENTRY_FEE} USD 사이로 입력해주세요.`);
       return;
     }
-    if (matchRole === 'B' && !roomBeforeBet?.betAmount) {
+    if (matchRole === 'B' && roomAmount === null) {
       window.alert('상대방이 참가비를 먼저 설정해야 합니다. 잠시 후 다시 시도해주세요.');
       return;
     }
     let reservedNow = false;
     try {
-      if (!stakeReserved) {
+      if (shouldReserveTetrisStake(amount) && !stakeReserved) {
         await reserveGameStake(currentUserId, matchId, amount, token);
         reservedNow = true;
         setStakeReserved(true);
@@ -1177,7 +1180,7 @@ export default function GamesPage() {
         ...(matchRole === 'A' ? { betAmount: amount } : {}),
         phase: 'betting',
         ...(matchRole === 'A' ? { readyA: true, readyAAt: new Date() } : { readyB: true, readyBAt: new Date() }),
-        ...(matchRole === 'A' ? { stakeHeldA: true } : { stakeHeldB: true }),
+        ...(shouldReserveTetrisStake(amount) ? matchRole === 'A' ? { stakeHeldA: true } : { stakeHeldB: true } : {}),
       });
       setReadyForBattle(true);
       setRoomBetConfigured(true);
@@ -1202,7 +1205,7 @@ export default function GamesPage() {
       if (!room?.readyA || !room.readyB) return;
       await updateRoom({ phase: 'holding', startRequestedBy: room.playerAId || room.playerA?.id || currentUserId, startRequestedAt: new Date() });
       setMatchPhase('holding');
-      setMatchStatus('참가비를 자동으로 홀딩하는 중입니다...');
+      setMatchStatus(Number(room.betAmount ?? betAmount) === 0 ? '무료 대전 · 카운트다운을 준비하는 중입니다.' : '참가비를 자동으로 홀딩하는 중입니다...');
     } catch (error) {
       setMatchStatus(gameErrorMessage(error, '자동 게임 시작 신호를 저장하지 못했습니다.'));
     }
@@ -1229,8 +1232,8 @@ export default function GamesPage() {
         gameStartedRef.current = false;
         holdRequestedRef.current = false;
         settlementRequestedRef.current = false;
-       setMatchStatus('상대 입장 완료 · 배팅금액을 입력해주세요');
-      setInviteStatus('상대가 방에 입장했습니다. 양쪽 모두 배팅금액을 확정하면 자동으로 시작합니다.');
+       setMatchStatus('상대 입장 완료 · 참가비를 확인하고 준비해주세요');
+      setInviteStatus('상대가 방에 입장했습니다. 무료 또는 선택한 참가비로 준비할 수 있습니다.');
     };
     const poll = async () => {
       if (stopped || queuePollingRef.current) return;
@@ -1473,10 +1476,15 @@ export default function GamesPage() {
           }));
         }
         const nextReady = matchRole === 'A' ? Boolean(room.readyB) : Boolean(room.readyA);
-         if (room.betAmount) {
-           setBetAmount(room.betAmount);
-           setRoomBetConfigured(true);
-         }
+          if (typeof room.betAmount === 'number') {
+            const roomFee = parseEntryFee(room.betAmount);
+            if (roomFee === null) {
+              setMatchStatus('대전 참가비 설정이 올바르지 않습니다. 방을 나간 뒤 다시 시작해주세요.');
+              return;
+            }
+            setBetAmount(roomFee);
+            setRoomBetConfigured(true);
+          }
         setOpponentReady(nextReady);
         if (nextOpponent) setOpponent(nextOpponent);
         if (nextOpponent && matchPhase === 'waiting' && room.phase !== 'playing' && room.phase !== 'countdown' && room.phase !== 'finished') {
@@ -1484,24 +1492,32 @@ export default function GamesPage() {
           setMatchStatus(room.startRequestedBy ? '참가비를 자동으로 홀딩하는 중입니다...' : '상대 입장 완료 · 배팅금액을 설정해주세요');
           setInviteStatus('상대가 방에 입장했습니다. 양쪽 모두 배팅금액을 확정하면 자동으로 시작합니다.');
         }
-         const ownStakeHeld = matchRole === 'A' ? Boolean(room.stakeHeldA) : Boolean(room.stakeHeldB);
-        const bothStakesHeld = Boolean(room.stakeHeldA && room.stakeHeldB);
-        if (ownStakeHeld && !stakeReserved) setStakeReserved(true);
-        if (room.startRequestedBy && !room.startAt && room.phase !== 'finished') {
-          setMatchPhase('holding');
-          setMatchStatus(bothStakesHeld ? '양쪽 참가비 홀딩 완료 · 곧 카운트다운이 시작됩니다.' : '참가비를 서버 잔고에서 홀딩하는 중입니다...');
-        }
-         if (room.startRequestedBy && !ownStakeHeld && !holdRequestedRef.current) {
-          holdRequestedRef.current = true;
-          const amount = Number(room.betAmount || betAmount);
-              void reserveGameStake(currentUserId, matchId, amount, token)
-            .then(async () => {
-              setStakeReserved(true);
-              void refreshStoredUser().then((refreshed) => {
-                if (refreshed) setUser(refreshed);
-              }).catch(() => undefined);
-              await updateRoom(matchRole === 'A' ? { stakeHeldA: true } : { stakeHeldB: true });
-            })
+         const roomFee = parseEntryFee(room.betAmount ?? betAmount);
+         if (roomFee === null) {
+           setMatchStatus('대전 참가비 설정이 올바르지 않습니다. 방을 나간 뒤 다시 시작해주세요.');
+           return;
+         }
+         const freeMatch = roomFee === 0;
+         const ownStakeHeld = freeMatch || (matchRole === 'A' ? Boolean(room.stakeHeldA) : Boolean(room.stakeHeldB));
+         const bothStakesHeld = freeMatch ? Boolean(room.readyA && room.readyB) : Boolean(room.stakeHeldA && room.stakeHeldB);
+         if (!freeMatch && ownStakeHeld && !stakeReserved) setStakeReserved(true);
+         if (room.startRequestedBy && !room.startAt && room.phase !== 'finished') {
+           setMatchPhase('holding');
+           setMatchStatus(freeMatch ? '무료 대전 · 곧 카운트다운이 시작됩니다.' : bothStakesHeld ? '양쪽 참가비 홀딩 완료 · 곧 카운트다운이 시작됩니다.' : '참가비를 서버 잔고에서 홀딩하는 중입니다...');
+         }
+          if (room.startRequestedBy && !ownStakeHeld && !holdRequestedRef.current) {
+           holdRequestedRef.current = true;
+           const amount = roomFee;
+           void (shouldReserveTetrisStake(amount) ? reserveGameStake(currentUserId, matchId, amount, token) : Promise.resolve())
+             .then(async () => {
+               if (shouldReserveTetrisStake(amount)) {
+                 setStakeReserved(true);
+                 void refreshStoredUser().then((refreshed) => {
+                   if (refreshed) setUser(refreshed);
+                 }).catch(() => undefined);
+               }
+               await updateRoom(matchRole === 'A' ? { stakeHeldA: true } : { stakeHeldB: true });
+             })
             .catch((error) => {
               holdRequestedRef.current = false;
                setMatchStatus(gameErrorMessage(error, '참가비 홀딩에 실패했습니다. 다시 시도해주세요.'));
@@ -1533,7 +1549,7 @@ export default function GamesPage() {
             });
          }
          if (room.startAt && room.phase !== 'finished') beginCountdown(room.startAt);
-          else if (readyForBattle && nextReady && !room.startRequestedBy) setMatchStatus('양쪽 준비 완료 · 참가비를 자동으로 홀딩하고 3초 후 시작합니다.');
+           else if (readyForBattle && nextReady && !room.startRequestedBy) setMatchStatus(freeMatch ? '무료 대전 준비 완료 · 3초 후 시작합니다.' : '양쪽 준비 완료 · 참가비를 자동으로 홀딩하고 3초 후 시작합니다.');
         else if (readyForBattle) setMatchStatus('내 준비 완료 · 상대 준비를 기다리는 중');
         else if (nextReady) setMatchStatus('상대 준비 완료 · 내 배팅금액을 확정해주세요');
        if (room.phase === 'finished') setMatchPhase('finished');
@@ -1541,7 +1557,8 @@ export default function GamesPage() {
        const opponentResult = matchRole === 'A' ? room.playerBResult : room.playerAResult;
         if (ownResult === 'lose') {
           setMatchResult('LOSE');
-           const notice = `패배 · ${formatUsd(room.betAmount || betAmount)} USD가 차감되었습니다.`;
+            const amount = Number(room.betAmount ?? betAmount);
+            const notice = amount === 0 ? '패배 · 무료 대전 결과입니다.' : `패배 · ${formatUsd(amount)} USD가 차감되었습니다.`;
           if (resultNoticeRef.current !== notice) {
             resultNoticeRef.current = notice;
             setMatchStatus(notice);
@@ -1550,10 +1567,17 @@ export default function GamesPage() {
         }
         if (opponentResult === 'lose') {
          setMatchResult('WIN');
-         if (room.payoutStatus !== 'PAID' && !settlementRequestedRef.current && nextOpponent) {
-           settlementRequestedRef.current = true;
-           const amount = Number(room.betAmount || betAmount);
-            void settleTetrisMatch(matchId, currentUserId, nextOpponent.id, amount, token)
+          const amount = Number(room.betAmount ?? betAmount);
+          if (amount === 0) {
+            const notice = '승리 · 무료 대전 결과입니다.';
+            if (resultNoticeRef.current !== notice) {
+              resultNoticeRef.current = notice;
+              setMatchStatus(notice);
+              showToast(notice);
+            }
+          } else if (room.payoutStatus !== 'PAID' && !settlementRequestedRef.current && nextOpponent) {
+            settlementRequestedRef.current = true;
+             void settleTetrisMatch(matchId, currentUserId, nextOpponent.id, amount, token)
               .then(() => updateRoom({ payoutStatus: 'PAID', payoutAmount: amount * 2 }))
               .then(() => {
                  const notice = `승리 정산 완료 · ${formatUsd(amount * 2)} USD 지급`;
@@ -1669,8 +1693,8 @@ export default function GamesPage() {
                  </div>
                  {inviteStatus && <p className="rounded-lg bg-cyan-300/[0.07] px-2 py-1.5 leading-4 text-cyan-100">{inviteStatus}</p>}
                  {matchId && <div className="grid grid-cols-2 gap-1.5"><div className={`rounded-lg px-2 py-1.5 text-center ${readyForBattle ? 'bg-emerald-300/10 text-emerald-200' : 'bg-white/[0.04] text-slate-500'}`}><b className="block">나</b>{readyForBattle ? '준비 완료' : '준비 전'}</div><div className={`rounded-lg px-2 py-1.5 text-center ${opponentReady ? 'bg-emerald-300/10 text-emerald-200' : 'bg-white/[0.04] text-slate-500'}`}><b className="block">상대방</b>{opponentReady ? '준비 완료' : '준비 전'}</div></div>}
-                 {!['holding', 'countdown', 'playing', 'finished'].includes(matchPhase) && <div className="tetris-settings-row"><label className="min-w-0"><span className="mb-1 block text-amber-100">배팅금액 (USD)</span>{matchRole === 'B' ? <div className="flex h-full items-center rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1.5 font-black text-amber-100">배팅 {formatUsd(betAmount)} USD</div> : <input type="number" min={MIN_ENTRY_FEE} max={MAX_ENTRY_FEE} step="1" value={betAmount} onChange={(event) => setBetAmount(Number(event.target.value))} aria-label="배팅금액" className="w-full rounded-lg border border-amber-300/30 bg-black/30 px-2 py-1.5 font-black text-white outline-none focus:border-amber-300" />}</label><button type="button" onClick={() => void confirmBet()} disabled={!matchId || matchPhase !== 'betting' || readyForBattle} className="self-end rounded-lg bg-amber-300 px-2 py-1.5 font-black text-slate-950 disabled:opacity-45">{readyForBattle ? '준비 완료' : matchPhase === 'waiting' ? '수락 대기' : matchRole === 'B' ? '수락·준비' : matchId ? '준비하기' : '대전 후 준비'}</button></div>}
-                 {matchPhase === 'holding' && <div className="rounded-lg bg-emerald-300/10 px-2 py-1.5 text-center font-bold text-emerald-200">양쪽 참가비 홀딩 중 · 자동 시작 대기</div>}
+                  {!['holding', 'countdown', 'playing', 'finished'].includes(matchPhase) && <div className="tetris-settings-row"><label className="min-w-0"><span className="mb-1 block text-amber-100">참가비 (USD · 0은 무료)</span>{matchRole === 'B' ? <div className="flex h-full items-center rounded-lg border border-amber-300/20 bg-amber-300/10 px-2 py-1.5 font-black text-amber-100">{betAmount === 0 ? '무료 대전' : `${formatUsd(betAmount)} USD`}</div> : <input type="number" min={MIN_ENTRY_FEE} max={MAX_ENTRY_FEE} step="1" value={betAmount} onChange={(event) => setBetAmount(Number(event.target.value))} aria-label="대전 참가비" className="w-full rounded-lg border border-amber-300/30 bg-black/30 px-2 py-1.5 font-black text-white outline-none focus:border-amber-300" />}</label><button type="button" onClick={() => void confirmBet()} disabled={!matchId || matchPhase !== 'betting' || readyForBattle} className="self-end rounded-lg bg-amber-300 px-2 py-1.5 font-black text-slate-950 disabled:opacity-45">{readyForBattle ? '준비 완료' : matchPhase === 'waiting' ? '수락 대기' : matchRole === 'B' ? (betAmount === 0 ? '무료 수락' : '수락·준비') : matchId ? (betAmount === 0 ? '무료 준비' : '준비하기') : '대전 후 준비'}</button></div>}
+                  {matchPhase === 'holding' && <div className="rounded-lg bg-emerald-300/10 px-2 py-1.5 text-center font-bold text-emerald-200">{betAmount === 0 ? '무료 대전 · 자동 시작 대기' : '양쪽 참가비 홀딩 중 · 자동 시작 대기'}</div>}
                  {matchPhase === 'finished' && <button type="button" onClick={() => void requestRematch()} className="w-full rounded-lg bg-cyan-300 px-2 py-1.5 font-black text-slate-950">승패 결과 · 다시 신청하기</button>}
                  {matchId && <div className="flex gap-1.5"><button type="button" onClick={toggleTogetherListening} className={`flex-1 rounded-lg border px-2 py-1.5 font-black ${togetherListening ? 'border-teal-300/40 bg-teal-300/15 text-teal-200' : 'border-white/10 bg-white/5 text-slate-300'}`}>{togetherListening ? '같이 듣기 켜짐' : '같이 듣기'}</button><button type="button" onClick={() => void requestBattleStart()} disabled={!readyForBattle || !opponentReady || !['betting', 'holding'].includes(matchPhase)} className="flex-1 rounded-lg bg-cyan-300 px-2 py-1.5 font-black text-slate-950 disabled:opacity-40">자동 시작 확인</button></div>}
                </section>

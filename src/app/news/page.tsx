@@ -6,15 +6,19 @@ import { Clock3, Radio, ShieldCheck } from 'lucide-react';
 import { RouteErrorState, RouteSkeleton, useRouteReadiness } from '@/components/layout/RouteExperience';
 import { withRouteTimeout } from '@/lib/routeExperience';
 import { listDocuments } from '@/lib/firebase';
+import { isPublicArticle } from '@/lib/publicArticle';
 import { regionLabel } from '@/lib/regions';
 import { CONTENT_SOURCES, sourceItemId } from '@/lib/contentSources';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { useEffectEvent } from '@/lib/useeffectevent';
+import CategoryPostWriter from '@/components/posts/CategoryPostWriter';
 
 type SnapshotItem = { title: string; url: string; description?: string; body?: string; publishedAt?: string; category?: string };
 type SnapshotSection = { category: string; label: string; url: string; items: SnapshotItem[] };
 type Snapshot = { id: string; sourceId: string; sourceName: string; region: string; url: string; title: string; description?: string; fetchedAt: string; verified?: boolean; items?: SnapshotItem[]; sections?: SnapshotSection[]; sourceSnapshot?: boolean };
 type NewsStory = { entry: SnapshotItem; category: string; categoryLabel: string; source: Snapshot };
+type StoredPost = Partial<Snapshot> & { type?: string; status?: unknown; deleted?: unknown; isPublic?: unknown; expiresAt?: unknown; body?: string; authorId?: string; author?: string; country?: string; createdAt?: string; image?: string; images?: string[] };
+type NativeNewsPost = { id: string; title: string; body: string; author: string; country: string; createdAt: string; image?: string };
 
 const categoryLabels: Record<string, string> = { news: '뉴스', events: '행사', jobs: '구인구직', directory: '업소', community: '커뮤니티' };
 const navigationTitlePattern = /^(로그인|회원가입|전체보기|더보기|기사 보기|상품 등록|공고 등록|업체 등록|관심 상품|내 거래|글쓰기|검색|한인회소개|임원소개|역대 회장|찾아오시는 길|주요 연락처|공지사항|한인회 소식지|대사관소식)$/i;
@@ -42,18 +46,22 @@ function isNewsEntry(entry: SnapshotItem, source: Snapshot) {
 async function loadStoredSources() {
   const results = await Promise.allSettled([
     listDocuments<Omit<Snapshot, 'id'>>('contentSnapshots'),
-    listDocuments<Snapshot>('posts'),
+    listDocuments<StoredPost>('posts'),
   ]);
   const rows = results[0].status === 'fulfilled' ? results[0].value : [];
   const posts = results[1].status === 'fulfilled' ? results[1].value : [];
   const knownSources = new Set(rows.map((row) => row.sourceId));
-  const fallbackRows = posts.filter((post) => post.sourceSnapshot && post.sourceId && !knownSources.has(post.sourceId));
-  return { items: [...rows, ...fallbackRows].sort((a, b) => new Date(b.fetchedAt || '').getTime() - new Date(a.fetchedAt || '').getTime()), partial: results.some((result) => result.status === 'rejected') };
+  const fallbackRows = posts.filter((post) => post.sourceSnapshot && post.sourceId && !knownSources.has(post.sourceId)) as Snapshot[];
+  const nativeNews = posts.flatMap((post): NativeNewsPost[] => post.type === 'news' && isPublicArticle(post) && !post.sourceSnapshot && post.title?.trim() && post.body?.trim() && post.authorId && post.createdAt
+    ? [{ id: post.id, title: post.title, body: post.body, author: post.author || '교민 회원', country: post.country || 'Global', createdAt: post.createdAt, image: post.image }]
+    : []);
+  return { items: [...rows, ...fallbackRows].sort((a, b) => new Date(b.fetchedAt || '').getTime() - new Date(a.fetchedAt || '').getTime()), nativeNews, partial: results.some((result) => result.status === 'rejected') };
 }
 
 export default function NewsPage() {
   const selectedCountry = useGlobalStore((state) => state.selectedCountry);
   const [items, setItems] = useState<Snapshot[]>([]);
+  const [nativeNews, setNativeNews] = useState<NativeNewsPost[]>([]);
   const [liveSources, setLiveSources] = useState<Snapshot[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [loadedCountry, setLoadedCountry] = useState('');
@@ -82,7 +90,8 @@ export default function NewsPage() {
       return { stored, next, partial: stored.partial || live.some((entry) => entry.status === 'rejected') };
       })());
       if (request !== loadRequest.current) return;
-      setItems(result.stored.items);
+       setItems(result.stored.items);
+       setNativeNews(result.stored.nativeNews);
       setLiveSources(result.next);
       if (result.partial) setLoadError('일부 뉴스 출처를 불러오지 못했습니다. 확인된 기사만 표시합니다.');
     } catch {
@@ -128,9 +137,14 @@ export default function NewsPage() {
             <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-4xl">오늘의 뉴스</h1>
             <p className="mt-2 text-sm text-slate-400">카테고리 선택 없이 최신 소식을 목록에서 바로 확인하세요.</p>
           </div>
+          <CategoryPostWriter category="news" onSaved={() => void loadEffect()} />
       </header>
 
       <main className="category-shell mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+        {nativeNews.filter((post) => selectedCountry === 'Global' || post.country === 'Global' || post.country === selectedCountry).length > 0 && <section aria-label="교민이 작성한 뉴스" className="mb-6 rounded-2xl border border-white/10 bg-white/[.04]">
+          <div className="border-b border-white/10 px-4 py-3"><p className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-200">Community Desk</p><h2 className="mt-1 font-black text-white">교민이 쓴 소식</h2></div>
+          <div className="divide-y divide-white/10">{nativeNews.filter((post) => selectedCountry === 'Global' || post.country === 'Global' || post.country === selectedCountry).map((post) => <Link key={post.id} href={`/community/${encodeURIComponent(post.id)}`} className="flex gap-3 p-4 transition hover:bg-white/[.05]">{post.image && <img src={post.image} alt="" className="h-16 w-20 shrink-0 rounded-lg object-cover" />}<span className="min-w-0"><span className="flex flex-wrap gap-2 text-[10px] font-bold text-slate-400"><span>{regionLabel(post.country)}</span><span>{post.author}</span><span>{formatStoryDate(post.createdAt)}</span></span><strong className="mt-1 block truncate text-sm text-white">{post.title}</strong><span className="mt-1 block line-clamp-2 text-xs leading-5 text-slate-400">{post.body}</span></span></Link>)}</div>
+        </section>}
         <div className="mb-4 flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-teal-300">Latest stories</p><h2 className="mt-1 text-lg font-black text-white">최신 소식 <span className="text-slate-500">{stories.length}</span></h2></div><span className="text-xs text-slate-500">행을 클릭하면 원문을 확인합니다</span></div>
         {loading && <RouteSkeleton label="뉴스 출처와 최신 기사를 불러오는 중입니다." />}
         {!loading && loadError && <RouteErrorState message={loadError} onRetry={() => void load()} />}
