@@ -261,6 +261,19 @@ function AssistantExperience() {
           </div>
         </header>
 
+        <details className="assistant-mobile-history hidden" aria-label="최근 질문">
+          <summary className="flex cursor-pointer items-center gap-2 bg-white/[.04] px-3 py-2 text-xs font-bold text-slate-300 ring-1 ring-white/10">
+            <History size={14} className="text-cyan-200" />
+            <span>최근 질문</span>
+            <span className="ml-auto text-slate-400">{recentQueries.length}</span>
+          </summary>
+          {recentQueries.length > 0 ? (
+            <ul className="max-h-32 overflow-y-auto bg-slate-950/60 p-1 ring-1 ring-white/10">
+              {recentQueries.map((query) => <li key={query}><button type="button" onClick={() => setInput(query)} className="flex w-full items-start gap-2 px-2 py-2 text-left text-xs leading-5 text-slate-300 hover:bg-white/[.06]"><ClockIcon /><span className="line-clamp-2">{query}</span></button></li>)}
+            </ul>
+          ) : <p className="bg-slate-950/60 px-3 py-2 text-xs text-slate-400 ring-1 ring-white/10">질문을 보내면 최근 질문이 여기에 표시됩니다.</p>}
+        </details>
+
         <div className="assistant-workspace grid flex-1 gap-8 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-12">
           <aside className="flex flex-col" aria-label="GYOPO AI 안내와 포털 이동">
             <div className="flex items-center gap-3">

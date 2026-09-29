@@ -257,10 +257,10 @@ export default function CommunityPage() {
        </section>
 
        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[.045]">
-         <div className="hidden grid-cols-12 gap-4 border-b border-white/10 bg-white/[.035] p-4 text-sm font-bold text-slate-400 md:grid">
-          <div className="col-span-1 text-center">분류</div>
-          <div className="col-span-1 text-center">국가</div>
-          <div className="col-span-5">제목</div>
+           <div className="hidden grid-cols-12 gap-4 border-b border-white/10 bg-white/[.035] p-4 text-sm font-bold text-slate-400 md:grid">
+           <div className="col-span-1 text-center">분류</div>
+           <div className="col-span-2 text-center">국가</div>
+           <div className="col-span-4">제목</div>
           <div className="col-span-2 text-center">작성자</div>
           <div className="col-span-2 text-center">날짜</div>
           <div className="col-span-1 text-center">조회</div>
@@ -279,8 +279,8 @@ export default function CommunityPage() {
                     {post.type === 'notice' ? '공지' : post.type === 'news' ? '뉴스' : communityTopic(post) || '미분류'}
                   </span>
                 </div>
-                 <div className="col-span-1 text-center text-xs font-bold md:text-sm"><span className="rounded bg-white/10 px-2 py-1 text-slate-300">{post.country}</span></div>
-                 <div className="col-span-1 md:col-span-5">
+                  <div className="col-span-1 min-w-0 text-center text-xs font-bold md:col-span-2 md:text-sm"><span className="inline-block max-w-full whitespace-normal break-words rounded bg-white/10 px-2 py-1 text-slate-300">{post.country}</span></div>
+                  <div className="col-span-1 min-w-0 md:col-span-4">
                       <div className="flex items-center gap-3">{post.image && <img src={post.image} alt="" className="h-12 w-16 shrink-0 rounded-lg object-cover" />}<div className="min-w-0"><h3 className="truncate text-base font-bold text-white">{post.title}</h3><p className="mt-1 line-clamp-1 text-xs text-slate-400">{post.body}</p></div></div>
                    {post.sourceName && <div className="text-xs text-blue-500">출처: {post.sourceName}</div>}
                   {!!post.comments && <span className="text-blue-500 text-sm font-bold">[{post.comments}]</span>}
