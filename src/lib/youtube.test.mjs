@@ -120,6 +120,25 @@ test('blocked playback stops intent, never loops, and permits explicit/native re
   assert.equal(controller.getSnapshot().error, '');
 });
 
+test('background playback retries muted when audible autoplay is blocked', async (t) => {
+  const { controller, players } = setup(t, { background: true });
+  controller.setPlaying(true);
+  await flush();
+  const player = players[0];
+  player.ready();
+  assert.deepEqual(starts(player), [['load', 'first']]);
+  player.blocked();
+  assert.equal(controller.getSnapshot().desiredPlaying, true);
+  assert.equal(controller.getSnapshot().muted, true);
+  assert.equal(controller.getSnapshot().status, 'buffering');
+  assert.deepEqual(player.calls.slice(-2), [['mute'], ['play']]);
+  player.stateChange(1);
+  assert.equal(controller.getSnapshot().status, 'playing');
+  player.blocked();
+  assert.equal(controller.getSnapshot().status, 'blocked');
+  assert.equal(controller.getSnapshot().desiredPlaying, false);
+});
+
 test('zero volume is respected, missing storage is 70, and play leaves audio settings alone', async (t) => {
   assert.equal(readMusicVolume(null), 70);
   assert.equal(readMusicVolume('0'), 0);
@@ -207,25 +226,22 @@ function sessionSetup(t) {
   return { ...fake, session };
 }
 
-test('unmounted Play stays idle; mounted background queues clicks and StrictMode cleans up', async (t) => {
+test('unmounted Play stays idle; mounting the background starts and StrictMode cleans up', async (t) => {
   const { session, players } = sessionSetup(t);
   session.toggle();
   assert.equal(session.getSnapshot().mounted, false);
   assert.equal(session.getSnapshot().status, 'idle');
   assert.equal(session.getSnapshot().desiredPlaying, false);
-  const cleanup = session.mount('top', host());
-  session.toggle();
-  cleanup();
+  const staleCleanup = session.mount('top', host());
+  staleCleanup();
   const finalCleanup = session.mount('top', host());
   t.after(finalCleanup);
-  session.toggle();
-  session.toggle();
-  session.toggle();
   assert.equal(session.getSnapshot().mounted, true);
   await flush();
   assert.equal(players.length, 1);
   players[0].ready();
   assert.equal(starts(players[0]).length, 1);
+  assert.equal(session.getSnapshot().desiredPlaying, true);
   finalCleanup();
   players[0].stateChange(1);
   assert.equal(session.getSnapshot().mounted, false);
@@ -543,7 +559,7 @@ test('native mute and volume reach shared UI state and survive play, retry and r
   assert.match(source, /aria-pressed=\{silenced\}/);
 });
 
-test('real games producer payload reaches receiver without granting playback consent', async (t) => {
+test('room sync does not grant playback; the mounted top background auto-starts', async (t) => {
   const source = await readFile(new URL('../app/games/page.tsx', import.meta.url), 'utf8');
   const start = source.indexOf("window.dispatchEvent(new CustomEvent('gyopo-music-sync'");
   const producer = source.slice(start, source.indexOf('}));', start) + 4);
@@ -565,8 +581,7 @@ test('real games producer payload reaches receiver without granting playback con
   await flush();
   const player = players[0];
   player.ready();
-  assert.equal(starts(player).length, 0);
-  session.play();
+  assert.equal(starts(player).length, 1);
   player.stateChange(1);
   player.muted = true;
   session.sync({ ...detail, volume: 25 });
@@ -579,7 +594,7 @@ test('real games producer payload reaches receiver without granting playback con
   assert.equal(session.getSnapshot().desiredPlaying, false);
 });
 
-test('top means one paused background player, not an on-demand audible popup', async (t) => {
+test('top means one auto-starting background player, not an audible popup', async (t) => {
   const { session, players } = sessionSetup(t);
   t.after(session.mount('top', host()));
   await flush();
@@ -589,11 +604,9 @@ test('top means one paused background player, not an on-demand audible popup', a
   assert.equal(session.getSnapshot().owner, 'top');
   assert.equal(session.getSnapshot().mounted, true);
   assert.equal(session.getSnapshot().ready, true);
-  assert.equal(session.getSnapshot().desiredPlaying, false);
+  assert.equal(session.getSnapshot().desiredPlaying, true);
   assert.equal('panelOpen' in session.getSnapshot(), false);
-  assert.deepEqual(starts(player), []);
-  session.play();
-  assert.deepEqual(starts(player), [['play']]);
+  assert.deepEqual(starts(player), [['load', MUSIC_TRACKS[0].videoId]]);
   player.stateChange(1);
   session.pause();
   player.stateChange(2);
@@ -622,6 +635,19 @@ test('/ -> /community -> /games leaves the same background instance and timeline
   assert.equal(players.length, 1);
   assert.equal(session.getSnapshot().currentTime, 37);
   assert.equal(session.getSnapshot().status, 'playing');
+});
+
+test('visible top background advances to the next track when a video ends', async (t) => {
+  const { session, players } = sessionSetup(t);
+  t.after(session.mount('top', host()));
+  await flush();
+  const player = players[0];
+  player.ready();
+  player.stateChange(1);
+  player.stateChange(0);
+  assert.equal(session.getSnapshot().track.videoId, MUSIC_TRACKS[1].videoId);
+  assert.equal(session.getSnapshot().desiredPlaying, true);
+  assert.deepEqual(starts(player), [['load', MUSIC_TRACKS[0].videoId], ['load', MUSIC_TRACKS[1].videoId]]);
 });
 
 test('volume, mute, next, previous and chosen tracks all command the same background', async (t) => {
@@ -687,7 +713,7 @@ test('owner handoff captures native audio immediately and rejects every late old
   t.after(session.mount('top', host()));
   await flush();
   players[2].ready();
-  assert.equal(starts(players[2]).length, 0);
+  assert.equal(starts(players[2]).length, 1);
   assert.equal(players[2].volume, 17);
   assert.equal(players[2].muted, true);
 });

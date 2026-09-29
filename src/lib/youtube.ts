@@ -75,6 +75,7 @@ export function createYouTubeController(host: HTMLElement, options: {
   let generation = 0;
   let disposed = false;
   let hasPlayed = false;
+  let backgroundMutedFallbackUsed = false;
   let cancelPendingStart = false;
   let awaitingPlay = false;
   let readyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -216,7 +217,19 @@ export function createYouTubeController(host: HTMLElement, options: {
           },
           onStateChange: ({ data }) => { if (current()) acceptState(data); },
           onError: ({ data }) => { if (current()) fail(`YouTube error ${data}. Press Play to try again or choose another track.`); },
-          onAutoplayBlocked: () => { if (current()) fail('Playback was blocked. Press Play again or use the video controls.', 'blocked'); },
+          onAutoplayBlocked: () => {
+            if (!current()) return;
+            if (options.background && snapshot.desiredPlaying && !muted && !backgroundMutedFallbackUsed && player) {
+              backgroundMutedFallbackUsed = true;
+              muted = true;
+              pendingMuted = audioIntent(true, observedMuted, pendingMuted);
+              player.mute();
+              publish({ muted: true, status: 'buffering', error: '' });
+              player.playVideo();
+              return;
+            }
+            fail('Playback was blocked. Press Play again or use the video controls.', 'blocked');
+          },
         },
       });
       // onReady may synchronously trigger owner cleanup before the constructor returns.

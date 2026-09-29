@@ -38,13 +38,12 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
   const pathname = usePathname();
   const [compact, setCompact] = useState<boolean | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [loungeOpen, setLoungeOpen] = useState(false);
-  const [loungeMaximized, setLoungeMaximized] = useState(false);
   const drawerId = useId();
   const portalTarget = useSyncExternalStore(subscribeToDocument, () => document.body, () => null);
   const mode = getShellMode(pathname, compact);
   const isCompact = mode === 'compact';
   const isCallRoute = pathname === '/webrtc' || pathname === '/apps/random-chat';
+  const hasGlobalChat = mode === 'public' && pathname !== '/webrtc';
   const mediaRoute = pathname === '/music' || pathname === '/watch';
   const musicOwner = mode !== 'public' || isCallRoute ? null : pathname === '/music' ? 'video' : 'top';
   // Ordinary routes retain the same background host and controller, without pausing.
@@ -57,24 +56,6 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
     const openMenu = () => setDrawerOpen(true);
     window.addEventListener('gyopo-menu-open', openMenu);
     return () => window.removeEventListener('gyopo-menu-open', openMenu);
-  }, [mode]);
-
-  useEffect(() => {
-    const onLoungeChange = (event: Event) => {
-      const detail = (event as CustomEvent<{ open?: boolean; maximized?: boolean }>).detail;
-      const open = Boolean(detail?.open);
-      setLoungeOpen(open);
-      setLoungeMaximized(open && Boolean(detail?.maximized));
-    };
-    window.addEventListener('gyopo-lounge-change', onLoungeChange);
-    return () => window.removeEventListener('gyopo-lounge-change', onLoungeChange);
-  }, []);
-
-  useEffect(() => {
-    if (mode !== 'public') {
-      setLoungeOpen(false);
-      setLoungeMaximized(false);
-    }
   }, [mode]);
 
   if (mode === 'admin') return <div className="global-admin-shell">
@@ -92,7 +73,7 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
     <main className="global-main global-admin-main min-w-0">{children}</main>
   </div>;
 
-  return <div className={`global-app-shell${isCompact ? ' is-compact' : ''}${mediaRoute ? ' is-media-route' : ''}${loungeOpen ? ' has-lounge-open' : ''}${loungeMaximized ? ' has-lounge-maximized' : ''}`} data-shell-mode={mode} data-media-route={mediaRoute ? pathname.slice(1) : undefined}>
+  return <div className={`global-app-shell${isCompact ? ' is-compact' : ''}${mediaRoute ? ' is-media-route' : ''}${hasGlobalChat ? ' has-lounge-open' : ''}`} data-shell-mode={mode} data-media-route={mediaRoute ? pathname.slice(1) : undefined}>
     {isCallRoute && <Suspense fallback={null}><CompactCallMode onChange={setCompact} /></Suspense>}
     {musicOwner === 'top' && <SiteBackgroundVideo />}
     {!isCompact && <AdSenseScript />}

@@ -105,7 +105,7 @@ test('shared markup delegates geometry to the selected stylesheet', () => {
   assert.match(read('src/components/layout/MobileDrawer.tsx'), /min-width: 769px/);
 });
 
-test('sidebar friends action keeps guest navigation and opens an anchored dock', () => {
+test('sidebar friends action keeps guest navigation and opens a left-aligned dock', () => {
   const sidebar = read('src/components/layout/GlobalSidebar.tsx');
   assert.match(sidebar, /className="global-friends-link"/);
   assert.match(sidebar, /style=\{\{ borderRadius: 0 \}\}/);
@@ -118,6 +118,8 @@ test('sidebar friends action keeps guest navigation and opens an anchored dock',
   const dock = read('src/components/layout/FriendDock.tsx');
   assert.match(dock, /new ResizeObserver\(updatePosition\)/);
   assert.match(dock, /anchor\.top - rect\.height - 8/);
+  assert.match(dock, /left: 16,/);
+  assert.match(dock, /lg:left-4 lg:right-auto lg:w-\[480px\]/);
   assert.match(dock, /maxHeight: 'calc\(100dvh - 16px\)'/);
   assert.match(dock, /listOnlineUsers/);
   assert.match(dock, /상태 확인 중/);
@@ -126,32 +128,43 @@ test('sidebar friends action keeps guest navigation and opens an anchored dock',
   assert.match(dock, /friend-list max-h-40/);
   assert.match(dock, /friend-row-action/);
   assert.match(dock, /friend-message-bubble/);
+  assert.match(dock, /friend-chat-thread h-48/);
+  assert.match(dock, /friend-message-author/);
+  assert.match(dock, /formatFriendMessageTime\(message\.createdAt\)/);
   assert.match(dock, /className="sr-only">친구·통화/);
   assert.doesNotMatch(dock, /friends\.length\}명|friends\.length\} friends/);
   assert.doesNotMatch(dock, /<b className="block text-\[9px\] opacity-65">\{message\.user\}<\/b>/);
 
   const lounge = read('src/components/layout/GlobalChat.tsx');
-  assert.match(lounge, /global-lounge-launch-control/);
   assert.match(lounge, /global-mobile-lounge-launch/);
-  assert.doesNotMatch(lounge, /memberCount|onlineCount|api\/online-count|\{message\.user\}/);
-  assert.match(lounge, /detail: \{ open, maximized: open && maximized \}/);
+  assert.match(lounge, /global-chat-line/);
+  assert.match(lounge, /global-chat-author/);
+  assert.match(lounge, /formatTime\(message\.createdAt\)/);
+  assert.doesNotMatch(lounge, /memberCount|onlineCount|api\/online-count|global-lounge-launch-control|global-lounge-expand|desktopOpen|desktopMaximized|gyopo-lounge-change/);
   const styles = read('src/app/experience-refinements.css');
   assert.match(styles, /\.global-app-shell\.has-lounge-open\s*>\s*\.global-page-body/);
   assert.match(styles, /--global-lounge-reserved-width/);
+  assert.match(styles, /--global-lounge-reserved-width: min\(20rem/);
   assert.match(styles, /--category-glass: rgba\(8, 14, 27, 0\.45\)/);
   assert.match(styles, /@media \(min-width: 1024px\)\s*\{[\s\S]*?--global-lounge-reserved-width/);
-  assert.match(styles, /@media \(max-width: 1023px\)\s*\{[\s\S]*?\.global-lounge-launch-control\s*\{[^}]*display: none !important;/);
+  assert.match(styles, /@media \(max-width: 1023px\)\s*\{[\s\S]*?\.global-mobile-lounge-panel\s*\{/);
   assert.match(styles, /\.global-chat-message-bubble\s*\{[^}]*border: 0 !important;[^}]*background: transparent !important;/);
+  assert.match(styles, /\.global-sidebar \.global-friends-link:hover\s*\{[^}]*border-color: transparent !important;/);
+  assert.match(styles, /\.gyopo-friend-dock\s*\{[^}]*border-radius: 0 !important;/);
   assert.doesNotMatch(styles, /margin-right:\s*58px/);
 });
 
-test('friend-call capture and remote playback require explicit actions', () => {
+test('friend calls auto-start after acceptance while screen sharing keeps its native action', () => {
   const dock = read('src/components/layout/FriendDock.tsx');
   const call = read('src/app/webrtc/page.tsx');
-  assert.doesNotMatch(dock, /&auto=1|allow="[^"]*autoplay/i);
-  assert.doesNotMatch(call, /\bautoStart\b|setAutoStart/);
+  assert.match(dock, /&auto=1&videoOnly=0/);
+  assert.match(dock, /allow="camera; microphone; display-capture; fullscreen; autoplay"/);
+  assert.match(call, /params\.get\('auto'\) === '1'/);
+  assert.match(call, /autoStartAttemptedRef\.current = true/);
+  assert.match(call, /callKind !== 'friend'/);
   assert.match(call, /onClick=\{startMatchFromUi\}/);
   assert.match(call, /const retryRemotePlayback = async/);
+  assert.match(call, /navigator\.mediaDevices\.getDisplayMedia/);
   const chooser = call.indexOf('display = await navigator.mediaDevices.getDisplayMedia');
   const leaseClaim = call.indexOf("await updateCallMediaLease(callId, ownerId, token, 'screen', Boolean(systemAudioTrack)");
   assert.ok(chooser >= 0 && leaseClaim > chooser, 'the native share picker opens before the server lease request');
@@ -167,13 +180,14 @@ test('friend-call capture and remote playback require explicit actions', () => {
   assert.match(read('src/app/experience-refinements.css'), /\.webrtc-stage-camera-row\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/s);
   assert.doesNotMatch(call, /<video ref=\{remoteVideoRef\}[^>]*autoPlay/);
   assert.doesNotMatch(call, /<video ref=\{sidebarVideoRef\}[^>]*autoPlay/);
-  assert.match(dock, /allow="camera; microphone; display-capture; fullscreen" allowFullScreen/);
+  assert.match(dock, /allow="camera; microphone; display-capture; fullscreen; autoplay" allowFullScreen/);
 });
 
-test('leaving the public shell clears lounge spacing and the directory map action opens its map tab', () => {
+test('public routes reserve space for the always-open lounge and the directory map opens its tab', () => {
   const shell = read('src/components/layout/GlobalAppShell.tsx');
-  assert.match(shell, /if \(mode !== 'public'\) \{[\s\S]*?setLoungeOpen\(false\);[\s\S]*?setLoungeMaximized\(false\)/);
-  assert.match(shell, /has-lounge-maximized/);
+  assert.match(shell, /const hasGlobalChat = mode === 'public' && pathname !== '\/webrtc'/);
+  assert.match(shell, /hasGlobalChat \? ' has-lounge-open' : ''/);
+  assert.doesNotMatch(shell, /has-lounge-maximized|setLoungeOpen|gyopo-lounge-change/);
   const directory = read('src/app/directory/page.tsx');
   assert.match(directory, /selectDirectory\(biz, 'map'\)/);
 });

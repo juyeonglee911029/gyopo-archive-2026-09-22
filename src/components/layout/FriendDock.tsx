@@ -27,6 +27,11 @@ type FriendAttachment = {
   size: number;
 };
 
+function formatFriendMessageTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+}
+
 export default function FriendDock() {
   const user = useGlobalStore((state) => state.user);
   const language = useGlobalStore((state) => state.language);
@@ -104,11 +109,10 @@ export default function FriendDock() {
       if (detail?.anchor && window.matchMedia('(min-width: 769px)').matches) {
         dockAnchorRef.current = detail.anchor;
         const panel = document.getElementById('friend-dock')?.getBoundingClientRect();
-        const width = panel?.width || 430;
         const height = panel?.height || 360;
         const below = detail.anchor.bottom + 8;
         setDockPosition({
-          left: Math.max(8, Math.min(window.innerWidth - width - 8, detail.anchor.left)),
+          left: 16,
           top: height <= window.innerHeight - below - 8
             ? below
             : Math.max(8, Math.min(window.innerHeight - height - 8, detail.anchor.top - height - 8)),
@@ -137,7 +141,7 @@ export default function FriendDock() {
       setDockPosition((current) => {
         if (!current) return current;
         const anchor = dockAnchorRef.current;
-        const left = Math.max(8, Math.min(window.innerWidth - rect.width - 8, anchor?.left ?? current.left));
+        const left = anchor ? 16 : Math.max(8, Math.min(window.innerWidth - rect.width - 8, current.left));
         const top = anchor
           ? rect.height <= window.innerHeight - anchor.bottom - 16
             ? anchor.bottom + 8
@@ -492,7 +496,7 @@ export default function FriendDock() {
          {messageNotice && <span className="absolute bottom-14 right-0 whitespace-nowrap rounded-lg bg-emerald-300 px-3 py-2 text-[11px] font-black text-slate-950 shadow-lg">{messageNotice}</span>}
        </button>
 
-        <aside id="friend-dock" style={{ ...(dockPosition ? { left: dockPosition.left, top: dockPosition.top, right: 'auto', bottom: 'auto' } : {}), maxHeight: 'calc(100dvh - 16px)' }} className={`gyopo-friend-dock fixed bottom-4 left-3 right-3 z-[70] overflow-x-hidden overflow-y-auto rounded-[1.5rem] border-0 bg-[#091120] text-white shadow-[0_25px_100px_rgba(0,0,0,.7)] transition ${dragging ? 'cursor-grabbing select-none transition-none' : 'cursor-default'} lg:left-[17rem] lg:right-auto lg:w-[430px] ${videoCall ? 'friend-dock-call-active' : ''} ${videoClosing ? 'friend-dock-call-closing' : ''} ${open ? 'visible translate-y-0 opacity-100' : videoClosing ? 'visible translate-y-5 opacity-0' : 'invisible translate-y-5 opacity-0'}`}>
+         <aside id="friend-dock" style={{ ...(dockPosition ? { left: dockPosition.left, top: dockPosition.top, right: 'auto', bottom: 'auto' } : {}), maxHeight: 'calc(100dvh - 16px)' }} className={`gyopo-friend-dock fixed bottom-4 left-3 right-3 z-[70] overflow-x-hidden overflow-y-auto rounded-none border-0 bg-[#091120] text-white shadow-[0_25px_100px_rgba(0,0,0,.7)] transition ${dragging ? 'cursor-grabbing select-none transition-none' : 'cursor-default'} lg:left-4 lg:right-auto lg:w-[480px] ${videoCall ? 'friend-dock-call-active' : ''} ${videoClosing ? 'friend-dock-call-closing' : ''} ${open ? 'visible translate-y-0 opacity-100' : videoClosing ? 'visible translate-y-5 opacity-0' : 'invisible translate-y-5 opacity-0'}`}>
            <header onPointerDown={startDockDrag} onPointerMove={moveDock} onPointerUp={stopDockDrag} onPointerCancel={stopDockDrag} className={`flex items-center justify-between border-0 px-4 py-3 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}>
             <div className="flex items-center gap-2 text-sm font-black"><UserRoundCheck size={17} className="text-cyan-300" /> {isKorean ? '친구 채팅·통화' : 'Friends Chat & Call'}</div>
             <button type="button" onClick={() => videoCall ? closeVideoCall() : setOpen(false)} aria-label="친구 패널 닫기" className="border-0 p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><X size={17} /></button>
@@ -501,7 +505,7 @@ export default function FriendDock() {
 
           {incomingCalls.length > 0 && <div className="mx-3 mt-3 border-0 bg-emerald-300/[.08] p-3"><div className="flex items-center gap-2 text-xs font-black text-emerald-100"><PhoneCall size={14} /> {isKorean ? '영상 통화 요청' : 'Incoming call'}</div>{incomingCalls.map((request) => <div key={request.id} className="mt-3 flex items-center gap-2"><img src={request.callerImage} alt="" className="h-8 w-8 rounded-lg object-cover" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-white">{request.callerName}</p><p className="text-[10px] text-emerald-100/65">{isKorean ? '친구가 영상 통화를 요청했습니다.' : 'Your friend requested a video call.'}</p></div><button type="button" onClick={() => void answerVideoCall(request, 'accepted')} aria-label={isKorean ? '통화 수락' : 'Accept call'} className="border-0 bg-emerald-300 p-2 text-slate-950"><Check size={14} /></button><button type="button" onClick={() => void answerVideoCall(request, 'declined')} aria-label={isKorean ? '통화 거절' : 'Decline call'} className="border-0 bg-white/10 p-2 text-slate-300"><X size={14} /></button></div>)}</div>}
 
-         {videoCall && <div className="friend-call-video relative mx-3 mb-3 overflow-hidden bg-black"><iframe ref={callFrameRef} key={videoCall.id} title="친구 영상 통화" src={`/webrtc?friend=${encodeURIComponent(videoCall.friendId)}&compact=1&callKind=friend&callId=${encodeURIComponent(videoCall.id)}`} allow="camera; microphone; display-capture; fullscreen" allowFullScreen className="h-full w-full border-0" /></div>}
+         {videoCall && <div className="friend-call-video relative mx-3 mb-3 overflow-hidden bg-black"><iframe ref={callFrameRef} key={videoCall.id} title="친구 영상 통화" src={`/webrtc?friend=${encodeURIComponent(videoCall.friendId)}&compact=1&callKind=friend&callId=${encodeURIComponent(videoCall.id)}&auto=1&videoOnly=0`} allow="camera; microphone; display-capture; fullscreen; autoplay" allowFullScreen className="h-full w-full border-0" /></div>}
 
           {friendsLoading && friends.length === 0 ? (
             <div className="px-6 py-5 text-center text-xs font-bold text-slate-400">{isKorean ? '친구 목록을 불러오는 중입니다...' : 'Loading friends...'}</div>
@@ -545,7 +549,19 @@ export default function FriendDock() {
               )}
 
                 <div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[.16em] text-slate-500"><span className="flex items-center gap-1.5"><MessageCircle size={13} /> {isKorean ? '친구 채팅' : 'Friend chat'}</span></div>
-                 <div className="friend-chat-thread h-32 space-y-1.5 overflow-y-auto p-2">{messages.length === 0 ? <p className="py-10 text-center text-xs text-slate-600">첫 메시지를 보내보세요.</p> : messages.map((message) => <div key={message.id} className={`friend-message-bubble max-w-[85%] px-2.5 py-1.5 text-xs ${message.authorId === user.id ? 'is-own ml-auto text-emerald-100' : 'is-other text-amber-100'}`}>{message.attachmentData && (message.attachmentType?.startsWith('image/') ? <a href={message.attachmentData} target="_blank" rel="noreferrer" className="mt-1 block overflow-hidden"><img src={message.attachmentData} alt={message.attachmentName || '첨부 사진'} loading="lazy" className="max-h-28 w-full object-contain" /></a> : <a href={message.attachmentData} download={message.attachmentName} className="mt-1 flex items-center gap-1.5 px-2 py-1.5 text-[10px] underline"><FileText size={13} /> <span className="truncate">{message.attachmentName || '첨부파일'}</span></a>)}{message.text && <span className="mt-1 block break-words">{message.text}</span>}</div>)}<div ref={messagesEndRef} /></div>
+                  <div className="friend-chat-thread h-48 space-y-1 overflow-y-auto p-3">
+                    {messages.length === 0 ? <p className="py-10 text-center text-xs text-slate-600">첫 메시지를 보내보세요.</p> : messages.map((message) => (
+                      <div key={message.id} className={`friend-message-bubble px-2 py-1.5 text-xs ${message.authorId === user.id ? 'is-own text-emerald-100' : 'is-other text-amber-100'}`}>
+                        <div className="friend-message-line">
+                          <span className="friend-message-author" title={message.authorId}>{message.user || message.authorId}:</span>
+                          {message.text && <span className="friend-message-text">{message.text}</span>}
+                          <time className="friend-message-time" dateTime={message.createdAt}>{formatFriendMessageTime(message.createdAt)}</time>
+                        </div>
+                        {message.attachmentData && (message.attachmentType?.startsWith('image/') ? <a href={message.attachmentData} target="_blank" rel="noreferrer" className="mt-1 block overflow-hidden"><img src={message.attachmentData} alt={message.attachmentName || '첨부 사진'} loading="lazy" className="max-h-28 w-full object-contain" /></a> : <a href={message.attachmentData} download={message.attachmentName} className="mt-1 flex items-center gap-1.5 px-2 py-1.5 text-[10px] underline"><FileText size={13} /> <span className="truncate">{message.attachmentName || '첨부파일'}</span></a>)}
+                      </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
                {error && <p role="alert" className="mt-2 text-xs font-bold text-rose-300">{error}</p>}
                 <form onSubmit={sendMessage} aria-busy={sending} className="mt-2 space-y-2">
                  {attachment && <div className="flex items-center gap-2 bg-white/[.08] px-2 py-1.5 text-[10px] text-slate-200"><span className="grid h-7 w-7 shrink-0 place-items-center bg-black/20">{attachment.type.startsWith('image/') ? <img src={attachment.data} alt="첨부 미리보기" className="h-full w-full object-cover" /> : <FileText size={14} />}</span><span className="min-w-0 flex-1 truncate">{attachment.name}</span><button type="button" onClick={() => setAttachment(null)} aria-label="첨부파일 취소" className="p-1 text-slate-400 hover:text-white"><X size={13} /></button></div>}

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useEffectEvent } from '@/lib/useeffectevent';
 import { Ban, Camera, CheckCircle2, Flag, Headphones, LoaderCircle, Maximize2, Mic, MicOff, Minimize2, MonitorUp, PhoneCall, RefreshCcw, ShieldAlert, Users, VideoOff } from 'lucide-react';
 import {
   deleteDocument,
@@ -122,6 +123,7 @@ export default function WebRTCPage() {
   const [targetUserId, setTargetUserId] = useState('');
   const [callKind, setCallKind] = useState<'random' | 'friend' | 'game'>('random');
   const [compactMode, setCompactMode] = useState(false);
+  const [autoStart, setAutoStart] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [hasEnded, setHasEnded] = useState(false);
   const [callElapsed, setCallElapsed] = useState(0);
@@ -174,6 +176,7 @@ export default function WebRTCPage() {
   const remotePlaybackEnabledRef = useRef(false);
   const operationRef = useRef(0);
   const startedRef = useRef(false);
+  const autoStartAttemptedRef = useRef(false);
   const startingRef = useRef(false);
   const terminalRef = useRef(false);
   const mountedRef = useRef(true);
@@ -237,6 +240,7 @@ export default function WebRTCPage() {
     setTargetUserId(params.get('friend') || '');
     setCallKind(params.get('gameRoom') || params.get('callKind') === 'game' ? 'game' : params.get('friend') ? 'friend' : 'random');
     setCompactMode(params.get('compact') === '1');
+    setAutoStart(params.get('auto') === '1');
     callIdentityRef.current = {
       id: params.get('gameRoom') || params.get('callId') || '',
       kind: params.get('gameRoom') || params.get('callKind') === 'game' ? 'game' : params.get('friend') ? 'friend' : 'random',
@@ -742,6 +746,14 @@ export default function WebRTCPage() {
     }
     void startMatch();
   };
+
+  const startMatchEffect = useEffectEvent(() => { void startMatch(); });
+
+  useEffect(() => {
+    if (!autoStart || autoStartAttemptedRef.current || !user || callKind !== 'friend' || !targetUserId || !compactMode || active || isStarting || hasEnded) return;
+    autoStartAttemptedRef.current = true;
+    startMatchEffect();
+  }, [autoStart, callKind, targetUserId, compactMode, user, active, isStarting, hasEnded, startMatchEffect]);
 
   const acceptRandomConsent = () => {
     setAdultConsent(true);

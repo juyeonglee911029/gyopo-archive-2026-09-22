@@ -79,6 +79,7 @@ export function createMusicPlayback(makeController = createYouTubeController) {
       if (ticket !== mountId) { nextController.destroy(); return () => {}; }
       controller = nextController;
       update({ mounted: true });
+      if (owner === 'top') play();
       return () => {
         if (ticket !== mountId) return;
         update(detach());
