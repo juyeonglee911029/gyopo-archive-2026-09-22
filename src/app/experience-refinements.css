@@ -447,6 +447,12 @@
   }
 }
 
+@media (max-width: 768px) {
+  .global-mobile-lounge-panel {
+    bottom: calc(var(--bottom-nav-height, 68px) + 14px + var(--dock-control-size) + var(--dock-control-gap) + env(safe-area-inset-bottom)) !important;
+  }
+}
+
 .gyopo-friend-dock.friend-dock-call-active {
   top: 16px !important;
   right: 16px !important;

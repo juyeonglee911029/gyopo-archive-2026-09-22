@@ -148,6 +148,7 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(styles, /--category-glass: rgba\(8, 14, 27, 0\.45\)/);
   assert.match(styles, /@media \(min-width: 1024px\)\s*\{[\s\S]*?--global-lounge-reserved-width/);
   assert.match(styles, /@media \(max-width: 1023px\)\s*\{[\s\S]*?\.global-mobile-lounge-panel\s*\{/);
+  assert.match(styles, /@media \(max-width: 768px\)\s*\{[\s\S]*?\.global-mobile-lounge-panel\s*\{[^}]*bottom:\s*calc\(var\(--bottom-nav-height,\s*68px\)\s*\+/);
   assert.match(styles, /\.global-chat-message-bubble\s*\{[^}]*border: 0 !important;[^}]*background: transparent !important;/);
   assert.match(styles, /\.global-sidebar \.global-friends-link:hover\s*\{[^}]*border-color: transparent !important;/);
   assert.match(styles, /\.gyopo-friend-dock\s*\{[^}]*border-radius: 0 !important;/);
