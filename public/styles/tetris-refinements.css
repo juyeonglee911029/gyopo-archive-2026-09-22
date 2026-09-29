@@ -205,7 +205,7 @@
 
 @media (min-width: 901px) {
   .tetris-focused-page {
-    height: calc(100dvh - 112px) !important;
+    height: calc(100dvh - 112px + 7rem) !important;
     min-height: 0 !important;
     overflow: hidden;
   }
@@ -223,7 +223,7 @@
 
   .tetris-social-column {
     min-height: 0;
-    grid-template-rows: minmax(6.5rem, 0.75fr) minmax(0, max-content) minmax(12rem, 1.4fr) !important;
+    grid-template-rows: minmax(24rem, 2fr) minmax(0, max-content) minmax(19rem, 1fr) !important;
   }
 
   .tetris-camera-panel,
@@ -271,6 +271,7 @@
   .tetris-camera-panel {
     grid-column: 1;
     grid-row: 1;
+    min-height: clamp(14rem, 38svh, 22rem);
   }
 
   .tetris-focus-settings {
@@ -282,8 +283,8 @@
   .tetris-chat-panel {
     grid-column: 1 / -1;
     grid-row: 2;
-    height: clamp(16rem, calc(100svh - var(--header-height, 112px) - 4.5rem - 12rem - env(safe-area-inset-bottom)), 30rem);
-    min-height: 15rem;
+    height: clamp(14rem, calc(100svh - var(--header-height, 112px) - 4.5rem - 19rem - env(safe-area-inset-bottom)), 28rem);
+    min-height: 14rem;
   }
 
   .tetris-own-panel,
@@ -322,7 +323,23 @@
 
   .tetris-social-column {
     grid-column: auto;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tetris-camera-panel {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: clamp(17rem, 48svh, 24rem);
+  }
+
+  .tetris-focus-settings {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .tetris-chat-panel {
+    grid-column: 1;
+    grid-row: 3;
   }
 
   .tetris-own-panel,

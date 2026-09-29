@@ -376,7 +376,7 @@ test('saveProfile keeps a saved AI writing preference when the user object is st
   assert.equal(h.read().user.defaultAiWritingPrompt, preference);
 });
 
-test('free Tetris countdown starts without stake flags, but paid rooms still require both holds', async () => {
+test('free Tetris countdown starts without stake flags and paid rooms cannot start', async () => {
   const documentName = (id) => `projects/gyopo-live-portal-506019/databases/(default)/documents/tetrisRooms/${id}`;
   const roomDocument = (id, betAmount, extraFields = {}) => ({
     name: documentName(id),
@@ -406,7 +406,10 @@ test('free Tetris countdown starts without stake flags, but paid rooms still req
   const paid = await harness();
   const paidStart = paid.api.startTetrisCountdown('paid-room', 'test-token');
   await tick();
-  paid.requests[0].resolve(Response.json(roomDocument('paid-room', 5)));
+  paid.requests[0].resolve(Response.json(roomDocument('paid-room', 5, {
+    stakeHeldA: { booleanValue: true },
+    stakeHeldB: { booleanValue: true },
+  })));
   assert.equal(await paidStart, null);
   assert.equal(paid.requests.length, 1);
 });

@@ -19,8 +19,9 @@ assert.match(rules, /match \/gamePayouts\/\{payoutId\}[\s\S]*allow create, updat
 assert.match(rules, /match \/walletLedger\/\{entryId\}[\s\S]*allow create, update, delete: if false;/);
 assert.match(rules, /match \/escrowOrders\/\{orderId\}[\s\S]*allow create, update, delete: if false;/);
 assert.match(rules, /preservesTetrisSettlement[\s\S]*stakeHeldA[\s\S]*payoutStatus/);
-assert.match(rules, /function hasValidTetrisBet[\s\S]*data\.betAmount is int[\s\S]*data\.betAmount >= 0[\s\S]*data\.betAmount <= 100/);
-assert.match(firebase, /const freeMatch = room\.betAmount === 0[\s\S]*!freeMatch && \(!room\.stakeHeldA \|\| !room\.stakeHeldB\)/);
+assert.match(rules, /function hasValidTetrisBet[\s\S]*data\.betAmount is int[\s\S]*data\.betAmount == 0/);
+assert.match(rules, /function hasValidTetrisReady[\s\S]*hasValidTetrisBet\(data\)/);
+assert.match(firebase, /room\.betAmount !== 0 \|\| room\.phase === 'finished'[\s\S]*if \(room\.startAt\) return room\.startAt/);
 assert.match(rules, /match \/profiles\/\{userId\}[\s\S]*hasNoServerManagedProfileChange/);
 assert.match(rules, /match \/walletVault\/\{userId\}[\s\S]*request\.auth\.uid == userId/);
 

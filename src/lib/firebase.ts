@@ -1051,9 +1051,8 @@ export async function startTetrisCountdown(matchId: string, token?: string): Pro
     stakeHeldB?: boolean;
     startAt?: string;
   }>(roomDocument);
+  if (room.betAmount !== 0 || room.phase === 'finished' || !room.readyA || !room.readyB) return null;
   if (room.startAt) return room.startAt;
-  const freeMatch = room.betAmount === 0;
-  if (room.phase === 'finished' || !room.readyA || !room.readyB || (!freeMatch && (!room.stakeHeldA || !room.stakeHeldB))) return null;
 
    const startAt = new Date(Date.now() + TETRIS_COUNTDOWN_MS).toISOString();
   const response = await authenticatedFetch(`${firestoreBase}:commit`, {

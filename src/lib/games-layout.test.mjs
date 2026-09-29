@@ -40,6 +40,7 @@ test('fresh Tetris match entry paths reset the entry fee to its zero default', (
 
 test('Tetris boards, compact metrics, and chat share responsive layout invariants', () => {
   const css = read('public/styles/tetris-refinements.css');
+  const experienceCss = read('src/app/experience-refinements.css');
   const page = read('src/app/games/page.tsx');
 
   assert.match(page, /state\?\.score\.toLocaleString\(\)/);
@@ -50,10 +51,38 @@ test('Tetris boards, compact metrics, and chat share responsive layout invariant
   assert.match(css, /grid-template-rows: 3\.25rem minmax\(0, 1fr\) 5\.75rem !important;/);
   assert.match(css, /grid-template-rows: 3\.25rem minmax\(0, 1fr\) 6\.5rem !important;/);
   assert.match(css, /\.tetris-battle-stat > b\s*\{[^}]*font-size: 0\.68rem !important;/s);
-  assert.match(css, /grid-template-rows: minmax\(6\.5rem, 0\.75fr\) minmax\(0, max-content\) minmax\(12rem, 1\.4fr\) !important;/);
+  assert.match(css, /height: calc\(100dvh - 112px \+ 7rem\) !important;/);
+  assert.match(css, /grid-template-rows: minmax\(24rem, 2fr\) minmax\(0, max-content\) minmax\(19rem, 1fr\) !important;/);
+  assert.match(css, /min-height: clamp\(17rem, 48svh, 24rem\);/);
+  assert.match(experienceCss, /\.compact-call-camera-row\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/s);
   assert.match(css, /\.tetris-focus-messages\s*\{[^}]*flex: 1;[^}]*overflow-y: auto;/s);
-  assert.match(css, /\.tetris-chat-panel\s*\{[^}]*height: clamp\(16rem,[^}]*env\(safe-area-inset-bottom\)/s);
+  assert.match(css, /\.tetris-chat-panel\s*\{[^}]*height: clamp\(14rem,[^}]*env\(safe-area-inset-bottom\)/s);
   assert.match(css, /padding-bottom: calc\(4\.5rem \+ env\(safe-area-inset-bottom\)\)/);
+});
+
+test('Tetris battle readiness and countdown are free-only', () => {
+  const page = read('src/app/games/page.tsx');
+  const firebase = read('src/lib/firebase.ts');
+  const activeLayout = section(page, 'if (true) {', '\n  return (\n    <div className="games-page');
+
+  assert.match(page, /if \(amount !== 0\)/);
+  assert.match(page, /parseEntryFee\(room\.betAmount\) !== 0/);
+  assert.doesNotMatch(activeLayout, /input type="number"/);
+  assert.match(activeLayout, /무료 대전 · 0 USD/);
+  assert.match(firebase, /if \(room\.betAmount !== 0 \|\| room\.phase === 'finished'/);
+});
+
+test('desktop lounge reaches the screen bottom and mobile search stays in the center nav', () => {
+  const sidebar = read('src/components/layout/GlobalSidebar.tsx');
+  const nav = read('src/components/layout/MobileBottomNav.tsx');
+  const css = read('src/app/experience-refinements.css');
+
+  assert.doesNotMatch(sidebar, /global-friends-link/);
+  assert.match(css, /\.global-lounge\s*\{[^}]*top: var\(--header-height, 6rem\) !important;[^}]*right: 0 !important;[^}]*bottom: 0 !important;[^}]*border-radius: 0 !important;/s);
+  assert.match(css, /@media \(max-width: 768px\)\s*\{[^}]*\.global-header-search\s*\{[^}]*display: none !important;/s);
+  assert.ok(nav.indexOf("label: '업소록'") < nav.indexOf("label: '검색'"));
+  assert.ok(nav.indexOf("label: '검색'") < nav.indexOf("label: '커뮤니티'"));
+  assert.doesNotMatch(nav, /href: '\/regions'/);
 });
 
 test('Tetris video-only calls explain that each camera requires an explicit start', () => {

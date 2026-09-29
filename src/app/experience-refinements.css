@@ -17,8 +17,9 @@
 }
 
 .global-lounge {
-  right: 16px !important;
-  bottom: 72px !important;
+  top: var(--header-height, 6rem) !important;
+  right: 0 !important;
+  bottom: 0 !important;
   width: min(20rem, calc(100vw - 32px)) !important;
   border: 1px solid var(--gyopo-glass-border) !important;
   border-radius: 0 !important;
@@ -230,11 +231,6 @@
   color: inherit;
 }
 
-.global-sidebar .global-friends-link:hover {
-  border-color: transparent !important;
-  box-shadow: none !important;
-}
-
 .global-lounge input,
 .global-lounge button,
 .global-mobile-lounge-panel input,
@@ -400,6 +396,10 @@
 }
 
 @media (max-width: 768px) {
+  .global-header-search {
+    display: none !important;
+  }
+
   .global-mobile-lounge-panel {
     bottom: calc(var(--bottom-nav-height, 68px) + 14px + env(safe-area-inset-bottom)) !important;
   }
