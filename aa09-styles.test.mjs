@@ -163,6 +163,9 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(styles, /\.global-lounge\[data-minimized="true"\][\s\S]*?width: 44px !important;/);
   assert.match(styles, /\.global-lounge\s*\{[^}]*background: rgba\(12, 20, 35, 0\.12\) !important;[^}]*backdrop-filter: none !important;/s);
   assert.match(styles, /\.global-lounge-header,[\s\S]*?background: rgba\(12, 20, 35, 0\.78\) !important;/);
+  assert.match(styles, /\.global-public-docks #global-lounge\.global-lounge:not\(\[data-minimized="true"\]\)\s*\{[^}]*background: rgba\(12, 20, 35, 0\.12\) !important;[^}]*background-image: none !important;/s);
+  assert.match(styles, /\.global-public-docks #global-lounge\.global-lounge\[data-minimized="true"\]\s*\{[^}]*background: transparent !important;[^}]*background-image: none !important;/s);
+  assert.match(styles, /\.global-public-docks #global-lounge\.global-lounge \.global-lounge-header,[\s\S]*?\.global-public-docks #global-lounge\.global-lounge \.global-lounge-composer\s*\{[^}]*background: rgba\(12, 20, 35, 0\.78\) !important;[^}]*background-image: none !important;/s);
   assert.match(styles, /\.global-lounge \.global-chat-message-bubble\s*\{[^}]*background: rgba\(8, 14, 27, 0\.78\) !important;/s);
   assert.match(styles, /\.global-lounge \.global-chat-time\s*\{\s*color: #cbd5e1;/);
   assert.match(styles, /@media \(max-width: 1023px\)\s*\{[\s\S]*?\.global-mobile-lounge-panel\s*\{/);
