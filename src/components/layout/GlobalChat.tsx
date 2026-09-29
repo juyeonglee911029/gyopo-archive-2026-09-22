@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ImagePlus, MessageCircle, Send, X } from 'lucide-react';
+import { ImagePlus, MessageCircle, Minus, Plus, Send, X } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { createDocument, deleteExpiredChatMessages, getSessionToken, queryDocumentsWhere } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
@@ -22,7 +22,9 @@ function formatTime(value: string) {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function GlobalChat() {
+type GlobalChatProps = { desktopOpen: boolean; onDesktopOpenChange: (open: boolean) => void };
+
+export default function GlobalChat({ desktopOpen, onDesktopOpenChange }: GlobalChatProps) {
   const { user } = useGlobalStore();
   const language = useGlobalStore((state) => state.language);
   const pathname = usePathname();
@@ -34,6 +36,14 @@ export default function GlobalChat() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const desktopEndRef = useRef<HTMLDivElement>(null);
   const mobileEndRef = useRef<HTMLDivElement>(null);
+  const desktopToggleRef = useRef<HTMLButtonElement>(null);
+  const previousDesktopOpenRef = useRef(desktopOpen);
+
+  useEffect(() => {
+    if (previousDesktopOpenRef.current === desktopOpen) return;
+    previousDesktopOpenRef.current = desktopOpen;
+    desktopToggleRef.current?.focus();
+  }, [desktopOpen]);
 
   useEffect(() => {
     desktopEndRef.current?.scrollIntoView({ block: 'end' });
@@ -73,10 +83,11 @@ export default function GlobalChat() {
     }
     const openChat = () => {
       if (window.matchMedia('(max-width: 1023px)').matches) setMobileOpen(true);
+      else onDesktopOpenChange(true);
     };
     window.addEventListener('gyopo-open-global-chat', openChat);
     return () => window.removeEventListener('gyopo-open-global-chat', openChat);
-  }, [isCallRoute]);
+  }, [isCallRoute, onDesktopOpenChange]);
 
   if (isCallRoute) return null;
 
@@ -127,50 +138,45 @@ export default function GlobalChat() {
 
   return (
     <>
-       <aside id="global-lounge" aria-label={language === 'ko' ? '실시간 라운지' : 'Live Lounge'} className="global-lounge fixed bottom-4 right-4 top-24 z-[240] hidden w-[20rem] flex-col overflow-hidden border border-cyan-200/15 bg-[#0a1120]/46 shadow-[0_24px_90px_rgba(0,0,0,.35)] backdrop-blur-xl lg:flex">
-           <div className="global-lounge-header border-b border-white/8 bg-[#0d1628]/45 p-4">
-             <div className="global-lounge-heading"><div className="flex items-center gap-2 font-black text-white"><MessageCircle size={17} className="text-teal-300" /> {language === 'ko' ? '실시간 라운지' : 'Live Lounge'}</div><p className="mt-1 text-[11px] text-slate-500">{language === 'ko' ? '지역에 관계없이 연결된 교민들' : 'Connect with the global Korean community'}</p></div>
-            </div>
+       <aside id="global-lounge" data-minimized={!desktopOpen} aria-label={language === 'ko' ? '실시간 라운지' : 'Live Lounge'} className="global-lounge fixed bottom-4 right-4 top-24 z-[240] hidden w-[20rem] flex-col overflow-hidden border border-cyan-200/15 bg-transparent shadow-none backdrop-blur-none lg:flex">
+         {desktopOpen ? <>
+           <div className="global-lounge-header flex items-start justify-between gap-3 border-b border-white/8 p-4">
+             <div className="global-lounge-heading"><div className="flex items-center gap-2 font-black text-white"><MessageCircle size={17} className="text-teal-300" /> {language === 'ko' ? '실시간 라운지' : 'Live Lounge'}</div><p className="mt-1 text-[11px] text-slate-300/75">{language === 'ko' ? '지역에 관계없이 연결된 교민들' : 'Connect with the global Korean community'}</p></div>
+              <button ref={desktopToggleRef} type="button" onClick={() => onDesktopOpenChange(false)} aria-expanded={desktopOpen} aria-controls="global-lounge" aria-label={language === 'ko' ? '라운지 최소화' : 'Minimize lounge'} title={language === 'ko' ? '라운지 최소화' : 'Minimize lounge'} className="grid h-8 w-8 shrink-0 place-items-center border border-white/15 bg-white/[.04] text-teal-100 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-200"><Minus size={16} /></button>
+           </div>
 
            <div className="global-lounge-messages flex-1 space-y-2 overflow-y-auto p-3">
-            {messages.length === 0 && <div className="lounge-empty-mark" aria-hidden="true"><MessageCircle size={18} /></div>}
-           {messages.map((message) => (
-              <div key={message.id} className={`global-chat-message-bubble text-[13px] leading-5 ${message.authorId === user?.id ? 'global-chat-own' : 'global-chat-other'}`} title={message.country || 'Global'}>
-                <div className="global-chat-line">
-                  <span className="global-chat-author">{message.user || '교민'}:</span>
-                  {message.text && <span className="global-chat-text">{message.text}</span>}
-                  <time className="global-chat-time" dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
-                </div>
-                {message.imageData && <a href={message.imageData} target="_blank" rel="noreferrer" className="mt-1 block overflow-hidden"><img src={message.imageData} alt="채팅 첨부 이미지" loading="lazy" className="max-h-64 w-full object-contain" /></a>}
-              </div>
-            ))}
-           <div ref={desktopEndRef} />
-      </div>
+             {messages.length === 0 && <div className="lounge-empty-mark" aria-hidden="true"><MessageCircle size={18} /></div>}
+             {messages.map((message) => (
+               <div key={message.id} className={`global-chat-message-bubble text-[13px] leading-5 ${message.authorId === user?.id ? 'global-chat-own' : 'global-chat-other'}`} title={message.country || 'Global'}>
+                 <div className="global-chat-line">
+                   <span className="global-chat-author">{message.user || '교민'}:</span>
+                   {message.text && <span className="global-chat-text">{message.text}</span>}
+                   <time className="global-chat-time" dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
+                 </div>
+                 {message.imageData && <a href={message.imageData} target="_blank" rel="noreferrer" className="mt-1 block overflow-hidden"><img src={message.imageData} alt="채팅 첨부 이미지" loading="lazy" className="max-h-64 w-full object-contain" /></a>}
+               </div>
+             ))}
+             <div ref={desktopEndRef} />
+           </div>
 
-          <div className="global-lounge-composer border-t border-white/8 bg-[#0d1628]/45 p-3">
-         {user ? (
-           <form onSubmit={handleSend} className="space-y-2">
-             {imageData && <div className="relative w-fit overflow-hidden rounded-lg border border-white/10"><img src={imageData} alt="첨부 미리보기" className="h-16 w-24 object-cover" /><button type="button" onClick={() => setImageData('')} aria-label="사진 첨부 취소" className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/70 text-white"><X size={11} /></button></div>}
-             <div className="relative flex gap-2">
-              <input
-                type="text"
-                value={input}
-               onChange={(event) => setInput(event.target.value)}
-                placeholder={language === 'ko' ? '메시지를 입력하세요...' : 'Write a message...'}
-                 className="min-w-0 flex-1 border border-white/10 bg-white/5 py-2 pl-3 pr-3 text-sm text-white outline-none transition-all placeholder:text-slate-600 focus:border-teal-300/50 focus:ring-2 focus:ring-teal-300/20"
-              />
-              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
-              <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="사진 첨부" title="사진 첨부" className="grid h-9 w-9 shrink-0 place-items-center border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"><ImagePlus size={16} /></button>
-              <button type="submit" aria-label="메시지 보내기" className="flex h-9 w-9 shrink-0 items-center justify-center bg-teal-300 text-slate-950 transition-colors hover:bg-teal-200">
-                <Send size={14} />
-              </button>
-             </div>
-           </form>
-        ) : (
-             <div className="border border-white/8 bg-white/5 p-3 text-center text-sm font-medium text-slate-500">{language === 'ko' ? '로그인 후 채팅에 참여하세요.' : 'Log in to join the chat.'}</div>
-         )}
-       </div>
-     </aside>
+           <div className="global-lounge-composer border-t border-white/8 p-3">
+             {user ? (
+               <form onSubmit={handleSend} className="space-y-2">
+                 {imageData && <div className="relative w-fit overflow-hidden rounded-lg border border-white/10"><img src={imageData} alt="첨부 미리보기" className="h-16 w-24 object-cover" /><button type="button" onClick={() => setImageData('')} aria-label="사진 첨부 취소" className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/70 text-white"><X size={11} /></button></div>}
+                 <div className="relative flex gap-2">
+                   <input type="text" value={input} onChange={(event) => setInput(event.target.value)} placeholder={language === 'ko' ? '메시지를 입력하세요...' : 'Write a message...'} className="min-w-0 flex-1 border border-white/10 bg-white/5 py-2 pl-3 pr-3 text-sm text-white outline-none transition-all placeholder:text-slate-300/70 focus:border-teal-300/50 focus:ring-2 focus:ring-teal-300/20" />
+                   <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
+                   <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="사진 첨부" title="사진 첨부" className="grid h-9 w-9 shrink-0 place-items-center border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"><ImagePlus size={16} /></button>
+                   <button type="submit" aria-label="메시지 보내기" className="flex h-9 w-9 shrink-0 items-center justify-center bg-teal-300 text-slate-950 transition-colors hover:bg-teal-200"><Send size={14} /></button>
+                 </div>
+               </form>
+             ) : (
+               <div className="border border-white/15 bg-white/[.08] p-3 text-center text-sm font-medium text-slate-200/75">{language === 'ko' ? '로그인 후 채팅에 참여하세요.' : 'Log in to join the chat.'}</div>
+             )}
+           </div>
+         </> : <button ref={desktopToggleRef} type="button" onClick={() => onDesktopOpenChange(true)} aria-expanded={desktopOpen} aria-controls="global-lounge" aria-label={language === 'ko' ? '라운지 복원' : 'Restore lounge'} title={language === 'ko' ? '라운지 복원' : 'Restore lounge'} className="grid h-11 w-11 place-items-center border border-teal-200/25 bg-[#0a1120]/20 text-teal-100 hover:bg-[#0a1120]/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-200"><Plus size={18} /></button>}
+       </aside>
         <div className="global-mobile-lounge fixed bottom-3 left-3 right-3 z-40 lg:hidden">
           {mobileOpen && <div id="global-mobile-lounge-panel" role="region" aria-label={language === 'ko' ? '실시간 라운지' : 'Live Lounge'} className="global-mobile-lounge-panel mb-2 overflow-hidden border border-white/10 bg-white/10 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#10182b]/48">
           <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">

@@ -38,6 +38,7 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
   const pathname = usePathname();
   const [compact, setCompact] = useState<boolean | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [desktopLoungeOpen, setDesktopLoungeOpen] = useState(true);
   const drawerId = useId();
   const portalTarget = useSyncExternalStore(subscribeToDocument, () => document.body, () => null);
   const mode = getShellMode(pathname, compact);
@@ -73,7 +74,7 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
     <main className="global-main global-admin-main min-w-0">{children}</main>
   </div>;
 
-  return <div className={`global-app-shell${isCompact ? ' is-compact' : ''}${mediaRoute ? ' is-media-route' : ''}${hasGlobalChat ? ' has-lounge-open' : ''}`} data-shell-mode={mode} data-media-route={mediaRoute ? pathname.slice(1) : undefined}>
+  return <div className={`global-app-shell${isCompact ? ' is-compact' : ''}${mediaRoute ? ' is-media-route' : ''}${hasGlobalChat && desktopLoungeOpen ? ' has-lounge-open' : ''}`} data-shell-mode={mode} data-media-route={mediaRoute ? pathname.slice(1) : undefined}>
     {isCallRoute && <Suspense fallback={null}><CompactCallMode onChange={setCompact} /></Suspense>}
     {musicOwner === 'top' && <SiteBackgroundVideo />}
     {!isCompact && <AdSenseScript />}
@@ -91,6 +92,6 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
     {!isCompact && <Footer />}
     {!isCompact && <MobileBottomNav />}
     {!isCompact && <MobileDrawer id={drawerId} open={drawerOpen} onOpenChange={setDrawerOpen} />}
-    {!isCompact && portalTarget && createPortal(<div className="global-public-docks"><GlobalChat /><FriendDock /><AssistantDock /></div>, portalTarget)}
+    {!isCompact && portalTarget && createPortal(<div className="global-public-docks"><GlobalChat desktopOpen={desktopLoungeOpen} onDesktopOpenChange={setDesktopLoungeOpen} /><FriendDock /><AssistantDock /></div>, portalTarget)}
   </div>;
 }
