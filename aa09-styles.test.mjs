@@ -105,15 +105,12 @@ test('shared markup delegates geometry to the selected stylesheet', () => {
   assert.match(read('src/components/layout/MobileDrawer.tsx'), /min-width: 769px/);
 });
 
-test('sidebar friends action keeps guest navigation and opens a left-aligned dock', () => {
+test('sidebar omits its friends launcher while the mobile drawer keeps friend access', () => {
   const sidebar = read('src/components/layout/GlobalSidebar.tsx');
-  assert.match(sidebar, /className="global-friends-link"/);
-  assert.match(sidebar, /style=\{\{ borderRadius: 0 \}\}/);
-  assert.match(sidebar, /if \(!user\)\s*\{[\s\S]*?router\.push\('\/users'\)/);
-  assert.match(sidebar, /window\.dispatchEvent\(new CustomEvent\('gyopo-friends-open'/);
-  assert.match(sidebar, /top: rect\.top/);
-  assert.match(sidebar, /bottom: rect\.bottom/);
-  assert.match(sidebar, /onNavigate\?\.\(\)/);
+  assert.doesNotMatch(sidebar, /global-friends-link|gyopo-friends-open/);
+  const mobileDrawer = read('src/components/layout/MobileDrawer.tsx');
+  assert.match(mobileDrawer, /gyopo-friends-open/);
+  assert.match(mobileDrawer, /친구 채팅·통화/);
 
   const dock = read('src/components/layout/FriendDock.tsx');
   assert.match(dock, /new ResizeObserver\(updatePosition\)/);
@@ -131,7 +128,6 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(dock, /friend-chat-thread h-48/);
   assert.match(dock, /friend-message-author/);
   assert.match(dock, /formatFriendMessageTime\(message\.createdAt\)/);
-  assert.match(sidebar, /<span>\{language === 'ko' \? '친구·통화' : 'Friends & calls'\}<\/span>/);
   assert.doesNotMatch(dock, /friend-dock-launch-control|id="friend-dock-launch"/);
   assert.doesNotMatch(dock, /friends\.length\}명|friends\.length\} friends/);
   assert.doesNotMatch(dock, /<b className="block text-\[9px\] opacity-65">\{message\.user\}<\/b>/);
@@ -155,7 +151,6 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(styles, /@media \(max-width: 1023px\)\s*\{[\s\S]*?\.global-mobile-lounge-panel\s*\{/);
   assert.match(styles, /@media \(max-width: 768px\)\s*\{[\s\S]*?\.global-mobile-lounge-panel\s*\{[^}]*bottom:\s*calc\(var\(--bottom-nav-height,\s*68px\)\s*\+/);
   assert.match(styles, /\.global-chat-message-bubble\s*\{[^}]*border: 0 !important;[^}]*background: transparent !important;/);
-  assert.match(styles, /\.global-sidebar \.global-friends-link:hover\s*\{[^}]*border-color: transparent !important;/);
   assert.match(styles, /\.gyopo-friend-dock\s*\{[^}]*border-radius: 0 !important;/);
   assert.doesNotMatch(styles, /margin-right:\s*58px/);
 });

@@ -304,20 +304,27 @@ test('Firestore emulator authorization regressions', {
   });
 
   await t.test('existing Tetris members can sync but cannot create, change, or remove settlement fields', async () => {
-    const room = { playerAId: 'alice', playerBId: 'bob', betAmount: 10, phase: 'betting' };
+    const room = { playerAId: 'alice', playerBId: 'bob', betAmount: 0, phase: 'betting' };
     await allowed(write('tetrisRooms/room', room, 'alice'));
     await allowed(write('tetrisRooms/room', { ...room, phase: 'holding' }, 'bob'));
+    await denied(write('tetrisRooms/paid-room', { ...room, betAmount: 10 }, 'alice'));
     await denied(write('tetrisRooms/fractional-fee', { ...room, betAmount: 1.5 }, 'alice'));
     const freeRoom = { playerAId: 'alice', playerBId: 'bob', betAmount: 0, phase: 'betting', readyA: true };
     await allowed(write('tetrisRooms/free-room', freeRoom, 'alice'));
     await allowed(write('tetrisRooms/free-room', { ...freeRoom, readyB: true }, 'bob'));
     await denied(write('tetrisRooms/free-forged-stake', { ...freeRoom, stakeHeldA: true }, 'alice'));
     await denied(write('tetrisRooms/free-room', { ...freeRoom, betAmount: 1 }, 'alice'));
+    const noFeeReady = { ...room, readyA: true };
+    delete noFeeReady.betAmount;
+    await denied(write('tetrisRooms/no-fee-ready', noFeeReady, 'alice'));
+    const legacyPaidRoom = { ...room, betAmount: 10 };
+    await seed('tetrisRooms/legacy-paid', legacyPaidRoom);
+    await denied(write('tetrisRooms/legacy-paid', { ...legacyPaidRoom, readyA: true }, 'alice'));
     await denied(write('tetrisRooms/forged', { ...room, stakeHeldA: true }, 'alice'));
     for (const patch of [{ stakeHeldA: true }, { stakeHeldB: true }, { payoutStatus: 'PAID' }, { payoutAmount: 20 }, { betAmount: 99 }]) {
       await denied(write('tetrisRooms/room', { ...room, ...patch }, 'alice'));
     }
-    const settled = { ...room, stakeHeldA: true, stakeHeldB: true, payoutStatus: 'PAID', payoutAmount: 20 };
+    const settled = { ...freeRoom, readyB: true, stakeHeldA: true, stakeHeldB: true, payoutStatus: 'PAID', payoutAmount: 20 };
     await seed('tetrisRooms/settled', settled);
     await allowed(write('tetrisRooms/settled', { ...settled, phase: 'finished' }, 'bob'));
     await denied(write('tetrisRooms/settled', room, 'alice'));

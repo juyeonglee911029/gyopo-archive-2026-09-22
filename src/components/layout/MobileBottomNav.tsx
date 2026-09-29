@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, MapPin, MessageCircle, Search, UserRound } from 'lucide-react';
+import { Home, MessageCircle, Search, Store, UserRound } from 'lucide-react';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { getNavigationHref, isNavigationActive } from './GlobalSidebar';
 
@@ -13,8 +13,8 @@ export default function MobileBottomNav() {
   const language = useGlobalStore((state) => state.language);
   const links = [
     { href: '/', label: '홈', english: 'Home', icon: Home },
+    { href: '/directory', label: '업소록', english: 'Directory', icon: Store },
     { href: '/search', label: '검색', english: 'Search', icon: Search },
-    { href: '/regions', label: '지역', english: 'Regions', icon: MapPin },
     { href: getNavigationHref('/community', 'community', pathname, selectedCountry), label: '커뮤니티', english: 'Community', icon: MessageCircle },
     { href: user ? '/users' : '/login', label: 'MY', english: 'My', icon: UserRound },
   ];

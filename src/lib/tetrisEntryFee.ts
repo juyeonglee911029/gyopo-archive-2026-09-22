@@ -1,6 +1,6 @@
 export const DEFAULT_ENTRY_FEE = 0;
 export const MIN_ENTRY_FEE = 0;
-export const MAX_ENTRY_FEE = 100;
+export const MAX_ENTRY_FEE = 0;
 
 export function parseEntryFee(value: unknown): number | null {
   if (typeof value !== 'number' && typeof value !== 'string') return null;
@@ -10,5 +10,5 @@ export function parseEntryFee(value: unknown): number | null {
 }
 
 export function shouldReserveTetrisStake(amount: number) {
-  return amount > 0;
+  return amount > 0 && parseEntryFee(amount) === amount;
 }

@@ -809,8 +809,13 @@ service cloud.firestore {
       function hasValidTetrisBet(data) {
         return data.keys().hasAny(['betAmount'])
           && data.betAmount is int
-          && data.betAmount >= 0
-          && data.betAmount <= 100;
+          && data.betAmount == 0;
+      }
+      function hasValidTetrisReady(data) {
+        return (
+          (!data.keys().hasAny(['readyA']) || data.readyA != true)
+          && (!data.keys().hasAny(['readyB']) || data.readyB != true)
+        ) || hasValidTetrisBet(data);
       }
       function preservesTetrisBet() {
         return (
@@ -820,6 +825,7 @@ service cloud.firestore {
           resource.data.keys().hasAny(['betAmount'])
           && request.resource.data.keys().hasAny(['betAmount'])
           && request.resource.data.betAmount == resource.data.betAmount
+          && hasValidTetrisBet(request.resource.data)
         ) || (
           !resource.data.keys().hasAny(['betAmount'])
           && request.auth.uid == request.resource.data.playerAId
@@ -858,11 +864,13 @@ service cloud.firestore {
         allow read: if canAccessTetrisRoom(roomId, resource.data);
          allow create: if canAccessTetrisRoom(roomId, request.resource.data)
            && !request.resource.data.keys().hasAny(['stakeHeldA', 'stakeHeldB', 'payoutStatus', 'payoutAmount'])
+           && hasValidTetrisReady(request.resource.data)
            && (!request.resource.data.keys().hasAny(['betAmount'])
              || (request.resource.data.playerAId == request.auth.uid && hasValidTetrisBet(request.resource.data)));
-         allow update: if (canAccessTetrisRoom(roomId, resource.data) || canAccessTetrisRoom(roomId, request.resource.data))
-           && preservesTetrisBet()
-           && preservesTetrisSettlement();
+          allow update: if (canAccessTetrisRoom(roomId, resource.data) || canAccessTetrisRoom(roomId, request.resource.data))
+            && preservesTetrisBet()
+            && hasValidTetrisReady(request.resource.data)
+            && preservesTetrisSettlement();
         allow delete: if canAccessTetrisRoom(roomId, resource.data);
       }
   }
