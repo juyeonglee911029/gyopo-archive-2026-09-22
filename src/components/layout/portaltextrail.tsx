@@ -16,7 +16,6 @@ const links = [
   ['/jobs', '구인', 'Jobs'],
   ['/life', '생활', 'Life'],
   ['/community', '커뮤니티', 'Community'],
-  ['/apps', '앱', 'Apps'],
   ['/news', '오늘의 뉴스', 'News'],
   ['/directory', '업소록', 'Directory'],
   ['/market', '중고장터', 'Market'],

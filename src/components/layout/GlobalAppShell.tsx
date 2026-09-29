@@ -43,7 +43,7 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
   const mode = getShellMode(pathname, compact);
   const isCompact = mode === 'compact';
   const isCallRoute = pathname === '/webrtc' || pathname === '/apps/random-chat';
-  const hasGlobalChat = mode === 'public' && pathname !== '/webrtc';
+  const hasGlobalChat = mode === 'public' && pathname !== '/webrtc' && pathname !== '/apps/random-chat';
   const mediaRoute = pathname === '/music' || pathname === '/watch';
   const musicOwner = mode !== 'public' || isCallRoute ? null : pathname === '/music' ? 'video' : 'top';
   // Ordinary routes retain the same background host and controller, without pausing.

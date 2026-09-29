@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { AppWindow, BriefcaseBusiness, CalendarDays, CarFront, ChevronDown, Film, Gamepad2, GraduationCap, Home, Landmark, MapPin, MessageCircle, Music2, Newspaper, ShieldCheck, ShoppingBag, Store, UserRoundCheck } from 'lucide-react';
+import { BriefcaseBusiness, CalendarDays, CarFront, ChevronDown, Film, Gamepad2, GraduationCap, Home, Landmark, MapPin, MessageCircle, Music2, Newspaper, ShieldCheck, ShoppingBag, Store, UserRoundCheck, Video } from 'lucide-react';
 import { COUNTRY_ROUTES, cityHref, countryHref, countryForRegion, getCityRoute, getCountryRoute, getPublicServiceRoute, getRegionalCategory } from '@/lib/regionRoutes';
 import { REGIONS } from '@/lib/regions';
 import { PUBLIC_CATEGORIES } from '@/lib/publicCategories';
@@ -30,11 +30,10 @@ const navigationGroups = [
     { id: 'safety', href: '/regions', label: '안전', english: 'Safety', icon: ShieldCheck },
   ] },
   { title: 'DISCOVER', links: [
-    { id: 'apps', href: '/apps', label: '앱', english: 'Apps', icon: AppWindow },
     { id: 'music', href: '/music', label: '음악', english: 'Music', icon: Music2 },
     { id: 'watch', href: '/watch', label: '영상', english: 'Watch', icon: Film },
     { id: 'games', href: '/games', label: '테트리스', english: 'Tetris', icon: Gamepad2 },
-    { id: 'badball', href: '/games/brick-breaker', label: '배드볼', english: 'Badball', icon: Gamepad2 },
+    { id: 'webrtc', href: '/webrtc', label: '영상 통화', english: 'Video chat', icon: Video },
     { id: 'theater', href: '/theater', label: '라이브 룸', english: 'Live rooms', icon: Film },
   ] },
 ] as const;

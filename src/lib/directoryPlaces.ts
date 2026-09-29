@@ -16,6 +16,7 @@ export async function googlePlace(placeId: string) {
     address: data.formattedAddress, tel: data.internationalPhoneNumber || '', mapsUrl: data.googleMapsUri,
     businessStatus: data.businessStatus, rating: data.rating, reviews: data.userRatingCount,
     lat: data.location?.latitude, lng: data.location?.longitude,
+    locationAccuracy: typeof data.location?.latitude === 'number' && typeof data.location?.longitude === 'number' ? 'exact' : undefined,
     hours: data.currentOpeningHours?.weekdayDescriptions || [], openNow: data.currentOpeningHours?.openNow,
     images: (data.photos || []).slice(0, 8).map((p: { name: string }) => `/api/directory/photo?name=${encodeURIComponent(p.name)}`),
     photoAttributions: (data.photos || []).slice(0, 8).flatMap((p: { authorAttributions?: Array<{ displayName: string; uri?: string }> }) => p.authorAttributions || []),

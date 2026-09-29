@@ -131,12 +131,17 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(dock, /friend-chat-thread h-48/);
   assert.match(dock, /friend-message-author/);
   assert.match(dock, /formatFriendMessageTime\(message\.createdAt\)/);
-  assert.match(dock, /className="sr-only">친구·통화/);
+  assert.match(sidebar, /<span>\{language === 'ko' \? '친구·통화' : 'Friends & calls'\}<\/span>/);
+  assert.doesNotMatch(dock, /friend-dock-launch-control|id="friend-dock-launch"/);
   assert.doesNotMatch(dock, /friends\.length\}명|friends\.length\} friends/);
   assert.doesNotMatch(dock, /<b className="block text-\[9px\] opacity-65">\{message\.user\}<\/b>/);
 
   const lounge = read('src/components/layout/GlobalChat.tsx');
-  assert.match(lounge, /global-mobile-lounge-launch/);
+  assert.match(lounge, /gyopo-open-global-chat/);
+  assert.match(lounge, /if \(isCallRoute\) \{\s*setMobileOpen\(false\);\s*return;/);
+  assert.match(lounge, /aria-label=\{language === 'ko' \? '라운지 닫기' : 'Close lounge'\}/);
+  assert.doesNotMatch(lounge, /global-mobile-lounge-launch/);
+  assert.match(read('src/components/layout/MobileDrawer.tsx'), /!isCallRoute && <button[^\n]*gyopo-open-global-chat/);
   assert.match(lounge, /global-chat-line/);
   assert.match(lounge, /global-chat-author/);
   assert.match(lounge, /formatTime\(message\.createdAt\)/);
@@ -191,4 +196,9 @@ test('public routes reserve space for the always-open lounge and the directory m
   assert.doesNotMatch(shell, /has-lounge-maximized|setLoungeOpen|gyopo-lounge-change/);
   const directory = read('src/app/directory/page.tsx');
   assert.match(directory, /selectDirectory\(biz, 'map'\)/);
+  assert.match(directory, /if \(cached\) \{\s*applyGooglePlace\(directory, cached\)/);
+  assert.match(directory, /const verifiedLocation = \(directory: Directory\)/);
+  const runtime = read('src/components/layout/AppRuntime.tsx');
+  assert.match(runtime, /profileImageProcessing/);
+  assert.match(runtime, /if \(profileImageProcessing\) \{\s*setProfileError\(/);
 });

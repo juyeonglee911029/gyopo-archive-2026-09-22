@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { completeProfileOnboarding, createDocument, deleteDocument, getSessionToken, getStoredSession, hasCompletedProfile, isMasterUser, mergeDocument, queryDocumentsWhere, recordVisit, refreshStoredUser, saveProfile, type Gender } from '@/lib/firebase';
+import { completeProfileOnboarding, createDocument, deleteDocument, getSessionToken, getStoredSession, hasCompletedProfile, isMasterUser, mergeDocument, queryDocumentsWhere, recordVisit, refreshStoredUser, saveProfile, uploadStorageFile, type Gender } from '@/lib/firebase';
 import { detectRegionFromIp, REGIONS } from '@/lib/regions';
 import { getCountryRoute } from '@/lib/regionRoutes';
 import { useGlobalStore } from '@/store/useGlobalStore';
@@ -21,7 +21,7 @@ function FloatingRoomLayer({ children }: { children: React.ReactNode }) {
   return children;
 }
 
-function resizeProfileImage(file: File): Promise<string> {
+function resizeProfileImage(file: File): Promise<{ preview: string; blob: Blob }> {
   if (!file.type.startsWith('image/')) return Promise.reject(new Error('이미지 파일만 선택해주세요.'));
   if (file.size > 5 * 1024 * 1024) return Promise.reject(new Error('프로필 사진은 5MB 이하로 선택해주세요.'));
   return new Promise((resolve, reject) => {
@@ -36,8 +36,13 @@ function resizeProfileImage(file: File): Promise<string> {
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(image.width * scale));
         canvas.height = Math.max(1, Math.round(image.height * scale));
-        canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.82));
+        const context = canvas.getContext('2d');
+        if (!context) return reject(new Error('이미지를 처리하지 못했습니다.'));
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const preview = canvas.toDataURL('image/jpeg', 0.82);
+        canvas.toBlob((blob) => blob
+          ? resolve({ preview, blob })
+          : reject(new Error('이미지를 압축하지 못했습니다.')), 'image/jpeg', 0.82);
       };
       image.src = String(reader.result);
     };
@@ -63,8 +68,10 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [profileImageProcessing, setProfileImageProcessing] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileForm, setProfileForm] = useState({ name: '', country: '', image: '', defaultAiWritingPrompt: DEFAULT_AI_WRITING_PROMPT });
+  const [profileImageBlob, setProfileImageBlob] = useState<Blob | null>(null);
   const [floatingRoom, setFloatingRoom] = useState<LiveRoom | null>(null);
   const [floatingMinimized, setFloatingMinimized] = useState(false);
   const [floatingOffset, setFloatingOffset] = useState({ x: 0, y: 0 });
@@ -175,6 +182,7 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
     const openProfile = () => {
       if (!user) return;
         setProfileForm({ name: user.name, country: user.country || '', image: user.image, defaultAiWritingPrompt: normalizeAiWritingPrompt(user.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT });
+      setProfileImageBlob(null);
       setProfileError('');
       setProfileOpen(true);
     };
@@ -275,23 +283,32 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   };
 
   const handleProfileImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
     const file = event.target.files?.[0];
+    input.value = '';
     if (!file) return;
+    setProfileImageProcessing(true);
     try {
       const image = await resizeProfileImage(file);
-      setProfileForm((current) => ({ ...current, image }));
+      setProfileImageBlob(image.blob);
+      setProfileForm((current) => ({ ...current, image: image.preview }));
       setProfileError('');
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : '프로필 사진을 불러오지 못했습니다.');
+    } finally {
+      setProfileImageProcessing(false);
     }
-    event.target.value = '';
   };
 
   const saveEditableProfile = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!user) return;
+    if (profileImageProcessing) {
+      setProfileError('사진 처리가 끝난 후 저장해주세요.');
+      return;
+    }
     const name = profileForm.name.trim();
-    const country = profileForm.country.trim();
+    const country = String(user.country || '').trim();
     if (!name || !country || country === 'Global' || !profileForm.image) {
       setProfileError('이름, 국가, 프로필 사진을 확인해주세요.');
       return;
@@ -299,9 +316,16 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
     setProfileSaving(true);
     setProfileError('');
     try {
-      const nextUser = { ...user, name, country, image: profileForm.image, defaultAiWritingPrompt: normalizeAiWritingPrompt(profileForm.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT };
-      await saveProfile(nextUser, getSessionToken());
+      const token = getSessionToken();
+      if (!token) throw new Error('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
+      const imageBlob = profileImageBlob || (profileForm.image.startsWith('data:image/') ? await fetch(profileForm.image).then((response) => response.blob()) : null);
+      const image = imageBlob
+        ? await uploadStorageFile(imageBlob, `profiles/${user.id}/${crypto.randomUUID()}.jpg`, token)
+        : profileForm.image;
+      const nextUser = { ...user, name, country, image, defaultAiWritingPrompt: normalizeAiWritingPrompt(profileForm.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT };
+      await saveProfile(nextUser, token);
       setUser(nextUser);
+      setProfileImageBlob(null);
       setProfileOpen(false);
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : '프로필을 저장하지 못했습니다.');
@@ -418,17 +442,17 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
              <button type="button" onClick={() => setProfileOpen(false)} aria-label="닫기" className="rounded-none border-0 bg-white/[.05] px-3 py-2 text-sm text-slate-400 hover:bg-white/10 hover:text-white">닫기</button>
           </div>
           <form onSubmit={saveEditableProfile} className="mt-6 space-y-4">
-             <div className="flex items-center gap-4 bg-white/[.03] p-4">
-               <img src={profileForm.image} alt="Profile preview" className="h-20 w-20 rounded-none object-cover" />
-               <div><p className="text-sm font-black">프로필 사진 / Photo</p><p className="mt-1 text-xs leading-5 text-slate-500">정사각형으로 자동 정리됩니다. JPG, PNG, GIF 지원.</p><label className="mt-3 inline-flex cursor-pointer rounded-none bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 hover:bg-cyan-200">사진 선택<input type="file" accept="image/*" onChange={handleProfileImage} className="sr-only" /></label></div>
+              <div className="flex items-center gap-4 bg-white/[.03] p-4">
+                <img src={profileForm.image} alt="Profile preview" className="h-20 w-20 rounded-none object-cover" />
+                <div><p className="text-sm font-black">프로필 사진 / Photo</p><p className="mt-1 text-xs leading-5 text-slate-500">정사각형으로 자동 정리됩니다. JPG, PNG, GIF 지원.</p><label className={`mt-3 inline-flex rounded-none bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 hover:bg-cyan-200 ${profileImageProcessing || profileSaving ? 'cursor-wait opacity-50' : 'cursor-pointer'}`}>사진 선택<input type="file" accept="image/*" disabled={profileImageProcessing || profileSaving} onChange={handleProfileImage} className="sr-only" /></label></div>
             </div>
              <label className="block text-sm font-bold text-slate-200">이름 / Name<input value={profileForm.name} onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))} maxLength={40} className="mt-2 w-full rounded-none border-0 bg-[#070b17] px-4 py-3 text-white outline-none focus:bg-[#0b1221]" /></label>
-              <label className="block text-sm font-bold text-slate-200">국가·지역 / Country<input value={profileForm.country} onChange={(event) => setProfileForm((current) => ({ ...current, country: event.target.value }))} list="profile-country-options" className="mt-2 w-full rounded-none border-0 bg-[#070b17] px-4 py-3 text-white outline-none focus:bg-[#0b1221]" /><datalist id="profile-country-options">{REGIONS.filter((region) => region.id !== 'Global').map((region) => <option key={region.id} value={region.id}>{region.flag} {region.label}</option>)}</datalist></label>
+               <label className="block text-sm font-bold text-slate-200">국가·지역 / Country<input disabled value={user.country || profileForm.country} className="mt-2 w-full cursor-not-allowed border-0 bg-white/5 px-4 py-3 text-slate-500" /></label>
               <label className="block text-sm font-bold text-slate-200">AI 글쓰기 기본 지침 <span className="font-normal text-slate-500">비공개 · {profileForm.defaultAiWritingPrompt.length}/{MAX_AI_WRITING_PROMPT_LENGTH}</span><textarea value={profileForm.defaultAiWritingPrompt} onChange={(event) => setProfileForm((current) => ({ ...current, defaultAiWritingPrompt: event.target.value }))} maxLength={MAX_AI_WRITING_PROMPT_LENGTH} rows={4} placeholder="예: 교민 독자에게 친절하고 간결한 말투, 확인되지 않은 정보는 추측하지 말고 표시" className="mt-2 w-full resize-y border-0 bg-[#070b17] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-slate-600 focus:bg-[#0b1221]" /><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">커뮤니티·뉴스·생활 글의 AI 초안에만 사용됩니다. 비밀번호나 민감한 개인정보는 넣지 마세요.</span></label>
               <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-bold text-slate-200">성별 / Gender<input disabled value={user.gender === 'male' ? '남성 / Male' : '여성 / Female'} className="mt-2 w-full cursor-not-allowed rounded-none border-0 bg-white/5 px-4 py-3 text-slate-500" /></label><label className="block text-sm font-bold text-slate-200">나이 / Age<input disabled value={user.age ? `${user.age}세 / years` : ''} className="mt-2 w-full cursor-not-allowed rounded-none border-0 bg-white/5 px-4 py-3 text-slate-500" /></label></div>
-             <p className="bg-amber-300/[.06] p-3 text-xs leading-5 text-amber-100/70">성별과 나이는 최초 가입 시 저장되며 변경할 수 없습니다. Gender and age are locked after signup.</p>
+              <p className="bg-amber-300/[.06] p-3 text-xs leading-5 text-amber-100/70">성별·나이·거주 국가는 최초 가입 시 저장되며 변경할 수 없습니다. Gender, age, and country are locked after signup.</p>
              {profileError && <p role="alert" className="bg-rose-400/10 p-3 text-sm font-bold text-rose-200">{profileError}</p>}
-             <button disabled={profileSaving} className="w-full rounded-none bg-cyan-300 py-3.5 font-black text-slate-950 hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-50">{profileSaving ? '저장 중... / Saving...' : '프로필 저장 / Save profile'}</button>
+              <button disabled={profileSaving || profileImageProcessing} className="w-full rounded-none bg-cyan-300 py-3.5 font-black text-slate-950 hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-50">{profileImageProcessing ? '사진 처리 중... / Processing photo...' : profileSaving ? '저장 중... / Saving...' : '프로필 저장 / Save profile'}</button>
           </form>
         </section>
       </div>}

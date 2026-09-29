@@ -2,8 +2,6 @@
   --gyopo-glass: rgba(12, 20, 35, 0.55);
   --gyopo-glass-border: rgba(226, 232, 240, 0.14);
   --category-glass: rgba(8, 14, 27, 0.45);
-  --dock-control-size: 44px;
-  --dock-control-gap: 10px;
 }
 
 .global-page-body {
@@ -33,39 +31,6 @@
 .global-lounge-composer {
   border-color: var(--gyopo-glass-border) !important;
   background: rgba(12, 20, 35, 0.55) !important;
-}
-
-.friend-dock-launch-control,
-.global-mobile-lounge-launch {
-  display: grid !important;
-  width: 44px !important;
-  height: 44px !important;
-  min-height: 44px !important;
-  place-items: center;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 50% !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  color: #d8f7f1 !important;
-  transition: color 150ms ease, transform 150ms ease;
-}
-
-.friend-dock-launch-control:hover,
-.global-mobile-lounge-launch:hover {
-  color: #5eead4 !important;
-  transform: translateY(-2px);
-}
-
-.friend-dock-launch-control:focus-visible,
-.global-mobile-lounge-launch:focus-visible {
-  outline: 2px solid rgba(94, 234, 212, 0.72);
-  outline-offset: 3px;
-}
-
-.friend-dock-launch-control {
-  right: 14px !important;
-  bottom: 14px !important;
 }
 
 .gyopo-friend-dock {
@@ -419,26 +384,13 @@
   overflow-wrap: anywhere;
 }
 
-.global-mobile-lounge-launch {
-  align-self: flex-end;
-  margin-right: 0;
-}
-
 @media (max-width: 1023px) {
-  .global-mobile-lounge {
-    right: calc(14px + var(--dock-control-size) + var(--dock-control-gap)) !important;
-  }
-
   .global-mobile-lounge-panel {
     position: fixed !important;
     right: 14px !important;
-    bottom: calc(14px + var(--dock-control-size) + var(--dock-control-gap)) !important;
+    bottom: 14px !important;
     left: 14px !important;
     margin: 0 !important;
-  }
-
-  .global-mobile-lounge-launch {
-    margin-right: 0 !important;
   }
 
   .friend-row-actions {
@@ -449,7 +401,7 @@
 
 @media (max-width: 768px) {
   .global-mobile-lounge-panel {
-    bottom: calc(var(--bottom-nav-height, 68px) + 14px + var(--dock-control-size) + var(--dock-control-gap) + env(safe-area-inset-bottom)) !important;
+    bottom: calc(var(--bottom-nav-height, 68px) + 14px + env(safe-area-inset-bottom)) !important;
   }
 }
 

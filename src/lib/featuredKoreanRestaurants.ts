@@ -11,6 +11,7 @@ export type FeaturedRestaurant = {
   tel?: string;
   lat?: number;
   lng?: number;
+  locationAccuracy?: 'exact' | 'approximate';
   image: string;
   images: string[];
   mapUrl: string;
@@ -137,13 +138,16 @@ export const FEATURED_KOREAN_RESTAURANTS: FeaturedRestaurant[] = restaurants.map
   const id = `${restaurant.country}-${restaurant.city}-${restaurant.name}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const image = foodImages[index % foodImages.length];
   const reviewLabel = restaurant.reviews ? `리뷰 ${restaurant.reviews.toLocaleString()}개` : '공개 리뷰 수 미확인';
+  const hasExactCoordinates = typeof restaurant.lat === 'number' && typeof restaurant.lng === 'number';
+  const coordinates = hasExactCoordinates ? restaurant : cityCoordinates[restaurant.city];
   return {
     ...restaurant,
     id: `featured-${id}`,
     category: '음식점·카페',
     description: `평점 ${restaurant.rating.toFixed(1)} · ${reviewLabel} · GYOPO 추천 한식당`,
-    lat: restaurant.lat ?? cityCoordinates[restaurant.city]?.lat,
-    lng: restaurant.lng ?? cityCoordinates[restaurant.city]?.lng,
+    lat: coordinates?.lat,
+    lng: coordinates?.lng,
+    locationAccuracy: hasExactCoordinates ? 'exact' : coordinates ? 'approximate' : undefined,
     image,
     images: [image],
     mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${restaurant.name} ${restaurant.address}`)}`,

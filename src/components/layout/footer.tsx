@@ -8,10 +8,10 @@ export default function Footer() {
       <div className="global-footer-inner mx-auto w-full max-w-[1600px]">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
           <div><div className="text-[9px] font-black uppercase tracking-[.28em] text-cyan-300">Global Korean community</div><div className="mt-0.5 text-lg font-black tracking-tight">GYOPO NETWORK</div></div>
-           <div className="flex gap-1.5 text-[9px] font-black"><Link href="/regions" className="footer-link footer-link-regions">REGIONS</Link><Link href="/community" className="footer-link">COMMUNITY</Link><Link href="/apps" className="footer-link footer-link-apps">APPS</Link></div>
+           <div className="flex gap-1.5 text-[9px] font-black"><Link href="/regions" className="footer-link footer-link-regions">REGIONS</Link><Link href="/community" className="footer-link">COMMUNITY</Link></div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
-           <p className="text-[10px] text-slate-500">지역, 생활 정보, 커뮤니티와 앱으로 연결되는 글로벌 교민 네트워크</p>
+            <p className="text-[10px] text-slate-500">지역, 생활 정보와 커뮤니티로 연결되는 글로벌 교민 네트워크</p>
           <nav className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-bold text-slate-500" aria-label="푸터 메뉴">
             <Link href="/community?category=notice" className="transition-colors hover:text-cyan-200">공지사항</Link>
             <Link href="/ads" className="transition-colors hover:text-cyan-200">광고 문의</Link>

@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { BookOpen, CarFront, GraduationCap, House, Landmark, MapPin, ShieldCheck } from 'lucide-react';
 import { RouteErrorState, RouteSkeleton, useRouteReadiness } from '@/components/layout/RouteExperience';
 import { fetchRouteJson, withRouteTimeout } from '@/lib/routeExperience';
 import { createDocument, deleteDocument, getDocument, getSessionToken, isMasterUser, listDocuments, mergeDocument } from '@/lib/firebase';
@@ -15,8 +17,18 @@ import WriterComposer, { type WriterDraft } from '@/components/posts/WriterCompo
 import { editorialForStorage, normalizeEditorial, type EditorialContent } from '@/lib/editorialContent';
 import { countryForRegion, regionalPostHref } from '@/lib/regionRoutes';
 import { useEffectEvent } from '@/lib/useeffectevent';
+import { getNavigationHref } from '@/components/layout/GlobalSidebar';
 
 const locations = createFilterLocations(COUNTRY_LOCATIONS, REGIONS);
+const LIFE_ESSENTIAL_TABS = [
+  { id: 'life', href: '/life', label: '생활 가이드', english: 'Life guides', icon: BookOpen },
+  { id: 'immigration', href: '/regions', label: '이민·비자', english: 'Immigration', icon: Landmark },
+  { id: 'housing', href: '/housing', label: '주거', english: 'Housing', icon: House },
+  { id: 'education', href: '/regions', label: '교육', english: 'Education', icon: GraduationCap },
+  { id: 'cars', href: '/regions', label: '자동차', english: 'Cars', icon: CarFront },
+  { id: 'tax-finance', href: '/regions', label: '세금·금융', english: 'Tax & finance', icon: Landmark },
+  { id: 'safety', href: '/regions', label: '안전', english: 'Safety', icon: ShieldCheck },
+] as const;
 type SourceResponse = { items?: LiveSourceItem[]; sections?: Array<{ category: string; items: LiveSourceItem[] }>; fetchedAt?: string };
 
 type Post = CommunityFilterFields & {
@@ -90,7 +102,8 @@ function curateCommunityPosts(items: Post[]) {
 }
 
 export default function CommunityPage() {
-  const { selectedCountry, setSelectedCountry, user } = useGlobalStore();
+  const pathname = usePathname();
+  const { selectedCountry, setSelectedCountry, user, language } = useGlobalStore();
   const [posts, setPosts] = useState<Post[]>([]);
   const [isWriting, setIsWriting] = useState(false);
   const [draft, setDraft] = useState<WriterDraft>({ title: '', body: '', images: [] });
@@ -198,7 +211,14 @@ export default function CommunityPage() {
 
   return (
      <div className="category-page community-page container mx-auto max-w-5xl px-4 py-8 text-slate-100">
-      <div className="category-header">
+       <nav className="mb-5 overflow-x-auto border-y border-white/10 py-3" aria-label={language === 'ko' ? '생활 필수 메뉴' : 'Life essentials'}>
+         <div className="flex min-w-max gap-2">
+           {LIFE_ESSENTIAL_TABS.map(({ id, href, label, english, icon: Icon }) => <Link key={id} href={getNavigationHref(href, id, pathname, selectedCountry)} className="inline-flex min-h-10 items-center gap-2 border border-white/10 bg-white/[.04] px-3 text-xs font-bold text-slate-300 transition hover:border-cyan-300/30 hover:bg-cyan-300/10 hover:text-white">
+             <Icon size={15} aria-hidden="true" />{language === 'ko' ? label : english}
+           </Link>)}
+         </div>
+       </nav>
+       <div className="category-header">
         <div className="category-heading">
           <h1 className="text-3xl font-black text-white">교민 커뮤니티</h1>
           <p className="text-sm text-gray-500 mt-1">직접 쓴 이야기와 선별된 생활 질문·정보·유머를 나눠보세요.</p>

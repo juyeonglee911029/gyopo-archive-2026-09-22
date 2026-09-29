@@ -4,7 +4,6 @@ export const MAIN_NAV_LINKS = [
   { href: '/jobs', label: '구인', english: 'Jobs' },
   { href: '/life', label: '생활', english: 'Life' },
   { href: '/community', label: '커뮤니티', english: 'Community' },
-  { href: '/apps', label: '앱', english: 'Apps' },
 ] as const;
 
 export const UTILITY_NAV_LINKS = [

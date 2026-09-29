@@ -18,7 +18,7 @@ import PlaceLinker, { type LinkedPlace } from '@/components/directory/PlaceLinke
 import { parseGoogleMapsUrl } from '@/lib/directoryMaps';
 
 type DirectoryReview = { author: string; authorUrl?: string; rating: number; text: string; relativeTime?: string };
-type Directory = { id: string; name: string; category: string; desc: string; body?: string; tel: string; address?: string; rating?: number; reviews?: number; hours?: string[]; openNow?: boolean; recentReviews?: DirectoryReview[]; ratingSource?: string; lat?: number; lng?: number; country: string; image?: string; images?: string[]; authorId: string; createdAt: string; sourceId?: string; sourceUrl?: string; sourceName?: string; sourceContentId?: string; featured?: boolean; placeId?: string; mapsUrl?: string; verificationStatus?: 'unverified' | 'google_verified'; photoAttributions?: Array<{ displayName: string; uri?: string }> };
+type Directory = { id: string; name: string; category: string; desc: string; body?: string; tel: string; address?: string; rating?: number; reviews?: number; hours?: string[]; openNow?: boolean; recentReviews?: DirectoryReview[]; ratingSource?: string; lat?: number; lng?: number; locationAccuracy?: 'exact' | 'approximate'; country: string; image?: string; images?: string[]; authorId: string; createdAt: string; sourceId?: string; sourceUrl?: string; sourceName?: string; sourceContentId?: string; featured?: boolean; placeId?: string; mapsUrl?: string; verificationStatus?: 'unverified' | 'google_verified'; photoAttributions?: Array<{ displayName: string; uri?: string }> };
 type PlaceData = Partial<Directory> & { status?: string; source?: string; error?: string };
 type UserLocation = { lat: number; lng: number };
 type SourceResponse = { items?: LiveSourceItem[]; sections?: Array<{ category: string; items: LiveSourceItem[] }>; sourceName?: string; region?: string; fetchedAt?: string };
@@ -31,6 +31,16 @@ function directoryQuery(directory: Directory) {
   if (directory.address?.trim()) return `${directory.name}, ${directory.address}`;
   if (typeof directory.lat === 'number' && typeof directory.lng === 'number') return `${directory.lat},${directory.lng}`;
   return directory.name;
+}
+
+function mergeGooglePlace(directory: Directory, place: PlaceData): Directory {
+  return {
+    ...directory,
+    ...place,
+    image: place.images?.[0] || directory.image,
+    images: place.images?.length ? place.images : directory.images,
+    ratingSource: place.source,
+  };
 }
 
 function mapsEmbedUrl(directory: Directory) {
@@ -95,6 +105,8 @@ export default function DirectoryPage() {
   const [category, setCategory] = useState('전체');
   const [directoryTab, setDirectoryTab] = useState<'info' | 'map'>('info');
   const [minRating, setMinRating] = useState('0');
+  const [nearbyRadius, setNearbyRadius] = useState(50);
+  const [nearbyOnly, setNearbyOnly] = useState(false);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('idle');
   const [routeMode, setRouteMode] = useState<'place' | 'drive'>('place');
@@ -110,6 +122,12 @@ export default function DirectoryPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   useRouteReadiness(loading, Boolean(loadError));
+
+  const applyGooglePlace = (directory: Directory, place: PlaceData) => {
+    setPlacesByDirectory((current) => ({ ...current, [directory.id]: place }));
+    setDirectories((current) => current.map((item) => item.id === directory.id ? mergeGooglePlace(item, place) : item));
+    setSelectedDirectory((current) => current?.id === directory.id ? mergeGooglePlace(current, place) : current);
+  };
 
   useEffect(() => {
     if (user && new URLSearchParams(window.location.search).get('register') === '1') setIsWriting(true);
@@ -127,7 +145,7 @@ export default function DirectoryPage() {
     }
     const cached = placeCache.current.get(placeId);
     if (cached) {
-      setPlacesByDirectory((current) => ({ ...current, [directory.id]: cached }));
+      applyGooglePlace(directory, cached);
       setPlaceLoading(false);
       return;
     }
@@ -138,12 +156,14 @@ export default function DirectoryPage() {
       if (requestId !== placeRequest.current) return;
       if (!response.ok || place.status !== 'ready' || place.source !== 'Google Places' || place.placeId !== placeId) throw new Error(place.error || 'Google Places 정보를 확인하지 못했습니다.');
       placeCache.current.set(placeId, place);
-      setPlacesByDirectory((current) => ({ ...current, [directory.id]: place }));
-      setDirectories((current) => current.map((item) => item.id === directory.id ? { ...item, ...place, image: place.images?.[0] || item.image, images: place.images?.length ? place.images : item.images, ratingSource: place.source } : item));
-      setSelectedDirectory((current) => current?.id === directory.id ? { ...current, ...place, image: place.images?.[0] || current.image, images: place.images?.length ? place.images : current.images, ratingSource: place.source } : current);
+      applyGooglePlace(directory, place);
     } catch (error) { if (requestId === placeRequest.current) setPlaceError(error instanceof Error ? error.message : 'Google 정보를 확인하지 못했습니다.'); }
     finally { if (requestId === placeRequest.current) setPlaceLoading(false); }
   };
+  const enrichSelectedPlaceEffect = useEffectEvent(() => {
+    if (selectedDirectory) void enrichWithGooglePlace(selectedDirectory);
+  });
+  const invalidatePlaceRequestEffect = useEffectEvent(() => { placeRequest.current++; });
 
   const loadDirectories = async () => {
     const request = ++loadRequest.current;
@@ -166,8 +186,25 @@ export default function DirectoryPage() {
       const data = stored.status === 'fulfilled' ? stored.value : [];
       const source = imported.status === 'fulfilled' ? imported.value : null;
       if (stored.status === 'rejected' || imported.status === 'rejected') setLoadError('일부 업소 출처를 불러오지 못했습니다. 확인된 업소와 추천 목록만 표시합니다.');
-       const featured: Directory[] = FEATURED_KOREAN_RESTAURANTS.map((restaurant) => ({ id: restaurant.id, name: restaurant.name, category: restaurant.category, desc: 'GYOPO 추천 한식당 · 방문 전 Google Maps에서 최신 정보를 확인해주세요.', tel: restaurant.tel || '', address: restaurant.address, country: restaurant.country, authorId: 'gyopo-featured', createdAt: '2026-01-01T00:00:00.000Z', sourceUrl: restaurant.mapUrl, featured: true }));
-      const sourceDirectories: Directory[] = source?.items.map((item) => ({ id: sourceItemId('hanintoday-brazil', 'directory', item.url), name: item.title, category: item.tag || item.category || '한인 업소', desc: item.description || '출처에서 확인된 업소 정보입니다.', body: item.body, tel: item.phone || '', address: item.address || source.region, lat: item.lat, lng: item.lng, rating: 0, reviews: 0, country: source.region, image: item.image, images: item.images, authorId: 'source', createdAt: item.publishedAt || source.fetchedAt, sourceUrl: item.url, sourceName: source.sourceName, sourceContentId: sourceItemId('hanintoday-brazil', 'directory', item.url) })) || [];
+        const featured: Directory[] = FEATURED_KOREAN_RESTAURANTS.map((restaurant) => ({
+          id: restaurant.id,
+          name: restaurant.name,
+          category: restaurant.category,
+          desc: restaurant.locationAccuracy === 'approximate'
+            ? 'GYOPO 추천 한식당 · 위치와 거리는 도시 중심 기준 추정치입니다.'
+            : 'GYOPO 추천 한식당 · 방문 전 Google Maps에서 최신 정보를 확인해주세요.',
+          tel: restaurant.tel || '',
+          address: restaurant.address,
+          lat: restaurant.lat,
+          lng: restaurant.lng,
+          locationAccuracy: restaurant.locationAccuracy,
+          country: restaurant.country,
+          authorId: 'gyopo-featured',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          sourceUrl: restaurant.mapUrl,
+          featured: true,
+        }));
+       const sourceDirectories: Directory[] = source?.items.map((item) => ({ id: sourceItemId('hanintoday-brazil', 'directory', item.url), name: item.title, category: item.tag || item.category || '한인 업소', desc: item.description || '출처에서 확인된 업소 정보입니다.', body: item.body, tel: item.phone || '', address: item.address || source.region, lat: item.lat, lng: item.lng, locationAccuracy: typeof item.lat === 'number' && typeof item.lng === 'number' ? 'approximate' : undefined, rating: 0, reviews: 0, country: source.region, image: item.image, images: item.images, authorId: 'source', createdAt: item.publishedAt || source.fetchedAt, sourceUrl: item.url, sourceName: source.sourceName, sourceContentId: sourceItemId('hanintoday-brazil', 'directory', item.url) })) || [];
       const next = [...featured, ...sourceDirectories, ...data].filter((directory) => directory.authorId).sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setDirectories(next);
       setSelectedDirectory((current) => next.find((directory) => directory.id === current?.id) || null);
@@ -185,9 +222,9 @@ export default function DirectoryPage() {
   }, [selectedCountry]);
 
   useEffect(() => {
-    if (selectedDirectory) void enrichWithGooglePlace(selectedDirectory);
-    return () => { placeRequest.current++; };
-  }, [selectedDirectory?.id]);
+    enrichSelectedPlaceEffect();
+    return invalidatePlaceRequestEffect;
+  }, [selectedDirectory?.id, enrichSelectedPlaceEffect, invalidatePlaceRequestEffect]);
 
   useEffect(() => {
     let active = true;
@@ -254,26 +291,37 @@ export default function DirectoryPage() {
   };
 
   const categories = ['전체', ...Array.from(new Set(directories.map((directory) => directory.category).filter(Boolean)))];
+  const verifiedLocation = (directory: Directory) => {
+    const placeId = directory.placeId || parseGoogleMapsUrl(directory.mapsUrl || directory.sourceUrl || '')?.placeId;
+    const place = placesByDirectory[directory.id] || (placeId ? placeCache.current.get(placeId) : undefined);
+    if (place?.source !== 'Google Places' || place.locationAccuracy !== 'exact' || typeof place.lat !== 'number' || !Number.isFinite(place.lat) || typeof place.lng !== 'number' || !Number.isFinite(place.lng)) return directory;
+    return { ...directory, lat: place.lat, lng: place.lng, locationAccuracy: 'exact' as const };
+  };
   const distanceKm = (directory: Directory) => {
-    if (!userLocation || typeof directory.lat !== 'number' || typeof directory.lng !== 'number') return null;
+    const location = verifiedLocation(directory);
+    if (!userLocation || typeof location.lat !== 'number' || typeof location.lng !== 'number') return null;
     const r = Math.PI / 180;
-    const a = Math.sin((directory.lat - userLocation.lat) * r / 2) ** 2 + Math.cos(userLocation.lat * r) * Math.cos(directory.lat * r) * Math.sin((directory.lng - userLocation.lng) * r / 2) ** 2;
-    return (6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1);
+    const a = Math.sin((location.lat - userLocation.lat) * r / 2) ** 2 + Math.cos(userLocation.lat * r) * Math.cos(location.lat * r) * Math.sin((location.lng - userLocation.lng) * r / 2) ** 2;
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
   const filteredDirectories = directories.filter((directory) => {
     const place = placesByDirectory[directory.id];
     const verifiedRating = place?.status === 'ready' && place.source === 'Google Places' ? place.rating : undefined;
     const ratingMatches = Number(minRating) === 0 || typeof verifiedRating !== 'number' || verifiedRating >= Number(minRating);
-    return (selectedCountry === 'Global' || directory.country === selectedCountry) && (category === '전체' || directory.category === category) && ratingMatches && `${directory.name} ${directory.category} ${directory.desc} ${directory.address || ''}`.toLowerCase().includes(search.toLowerCase());
+    const location = verifiedLocation(directory);
+    const distance = distanceKm(directory);
+    const nearbyMatches = !nearbyOnly || (location.locationAccuracy === 'exact' && distance !== null && distance <= nearbyRadius);
+    return (selectedCountry === 'Global' || directory.country === selectedCountry) && (category === '전체' || directory.category === category) && ratingMatches && nearbyMatches && `${directory.name} ${directory.category} ${directory.desc} ${directory.address || ''}`.toLowerCase().includes(search.toLowerCase());
   });
-  if (userLocation) filteredDirectories.sort((a, b) => (Number(distanceKm(a) ?? Number.POSITIVE_INFINITY) - Number(distanceKm(b) ?? Number.POSITIVE_INFINITY)) || Number(Boolean(b.featured)) - Number(Boolean(a.featured)));
-  const routeDistance = selectedDirectory && userLocation ? distanceKm(selectedDirectory) : null;
+  if (userLocation) filteredDirectories.sort((a, b) => ((distanceKm(a) ?? Number.POSITIVE_INFINITY) - (distanceKm(b) ?? Number.POSITIVE_INFINITY)) || Number(Boolean(b.featured)) - Number(Boolean(a.featured)));
+  const routeDistanceValue = selectedDirectory && userLocation ? distanceKm(selectedDirectory) : null;
+  const routeDistance = routeDistanceValue === null ? null : routeDistanceValue.toFixed(1);
   const routeMinutes = routeDistance ? Math.max(1, Math.round(Number(routeDistance) / 35 * 60)) : null;
   const selectedPlace = selectedDirectory ? placesByDirectory[selectedDirectory.id] : undefined;
   const selectedDescription = selectedDirectory?.body?.trim() || selectedDirectory?.desc?.trim();
   const hasGooglePlaceData = selectedPlace?.status === 'ready' && selectedPlace.source === 'Google Places';
-  const locationLabel = locationStatus === 'loading' ? '위치 확인 중...' : locationStatus === 'ready' ? '가까운 순' : locationStatus === 'denied' ? '내 위치 다시 시도' : '내 위치';
-  const locationMessage = locationStatus === 'denied' ? '위치 권한이 없어 거리순 정렬을 사용할 수 없습니다.' : locationStatus === 'unavailable' ? '이 브라우저에서는 위치 기능을 사용할 수 없습니다.' : null;
+  const locationLabel = locationStatus === 'loading' ? '위치 확인 중...' : locationStatus === 'ready' ? '내 위치 갱신' : locationStatus === 'denied' ? '내 위치 다시 시도' : '내 위치';
+  const locationMessage = locationStatus === 'denied' ? '위치 권한이 없어 가까운 순 정렬과 반경 필터를 사용할 수 없습니다.' : locationStatus === 'unavailable' ? '이 브라우저에서는 위치 기능을 사용할 수 없습니다.' : null;
 
   return (
     <>
@@ -300,7 +348,18 @@ export default function DirectoryPage() {
 <option value="4">4점 이상</option>
 <option value="4.5">4.5점 이상</option>
 </select>
+{userLocation && <>
+  <label className="flex items-center gap-2 text-xs font-bold text-slate-400">반경
+    <select value={nearbyRadius} onChange={(event) => setNearbyRadius(Number(event.target.value))} aria-label="주변 검색 반경" className="border border-white/10 bg-[#0b1221] px-3 py-2 text-sm font-bold text-white">
+      {[5, 10, 25, 50, 100].map((radius) => <option key={radius} value={radius}>{radius} km</option>)}
+    </select>
+  </label>
+  <button type="button" aria-pressed={nearbyOnly} onClick={() => setNearbyOnly((current) => !current)} className={`border px-3 py-2 text-xs font-bold ${nearbyOnly ? 'border-cyan-300 bg-cyan-300/15 text-cyan-100' : 'border-white/10 bg-white/[.04] text-slate-300'}`}>
+    {nearbyOnly ? '반경 필터 해제' : `반경 ${nearbyRadius}km 내만`}
+  </button>
+</>}
 {minRating !== '0' && <p role="status" className="basis-full px-1 text-xs leading-5 text-slate-400">미확인 업소는 목록에 남고, Google Places에서 확인된 평점만 선택한 기준으로 거릅니다.</p>}
+{userLocation && <p className="basis-full px-1 text-xs leading-5 text-slate-400">거리는 직선 기준입니다. 반경 필터에는 Google Places에서 확인된 좌표만 포함하며, 추천 업소의 도시 중심 추정 위치는 제외합니다.</p>}
 </div>
         <div className="directory-workspace">
         {selectedDirectory ? <nav className="directory-detail-tabs" role="tablist" aria-label="업소 상세 보기">
@@ -323,7 +382,7 @@ export default function DirectoryPage() {
 </div>{routeMode === 'drive' && userLocation && routeDistance && <div className="directory-route-summary distance-readout flex flex-wrap items-center gap-3 px-4 py-3 text-xs text-cyan-100">
 <Navigation size={15} />
 <strong>내 위치에서 자동차 기준 예상 약 {routeMinutes}분</strong>
-<span className="text-cyan-100/70">약 {routeDistance} km · 실제 시간은 교통 상황에 따라 달라질 수 있습니다.</span>
+<span className="text-cyan-100/70">{selectedDirectory.locationAccuracy === 'approximate' ? '도시 중심 추정 ' : ''}약 {routeDistance} km · 실제 시간은 교통 상황에 따라 달라질 수 있습니다.</span>
 </div>}{locationStatus === 'loading' && routeRequested && <p className="px-4 py-3 text-xs text-cyan-100">현재 위치를 확인한 뒤 이 지도에 경로를 표시합니다.</p>}<iframe key={selectedMapUrl} title={`${selectedDirectory.name} 지도`} src={selectedMapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="directory-map-frame" />
 </section>; })()}
          {selectedDirectory && directoryTab === 'info' && <div className="directory-info-panel directory-detail-panel mb-5 overflow-hidden rounded-2xl border border-white/10">
@@ -370,13 +429,13 @@ export default function DirectoryPage() {
 </div>)}</div>
 </div> : <p className="p-3 text-xs text-slate-400">{hasGooglePlaceData ? 'Places API 응답에 공개 리뷰가 없습니다.' : 'Google Places API 응답이 없어 리뷰를 표시할 수 없습니다.'} 리뷰를 임의로 생성하지 않습니다.</p>}</div>}
           <div className="directory-summary mb-4 flex items-center justify-between text-xs text-slate-400">
-<span>{selectedCountry === 'Global' ? '전체 국가' : selectedCountry} · {filteredDirectories.length}개 업소{userLocation ? ' · 가까운 순' : ''}</span>
+<span>{selectedCountry === 'Global' ? '전체 국가' : selectedCountry} · {filteredDirectories.length}개 업소{userLocation ? ' · 가까운 순' : ''}{nearbyOnly ? ` · 반경 ${nearbyRadius}km 내` : ''}</span>
 <span>{FEATURED_KOREAN_RESTAURANTS.length}개 추천 한식당 포함</span>
 </div>
         <div className="directory-results" aria-busy={loading}>
         {loading && <RouteSkeleton label="업소 목록을 불러오는 중입니다." />}
         {!loading && loadError && <RouteErrorState message={loadError} onRetry={() => void loadDirectories()} />}
-        {!loading && !loadError && filteredDirectories.length === 0 && <div className="ui-state route-state">선택한 지역과 검색 조건에 맞는 업소가 없습니다.</div>}
+        {!loading && !loadError && filteredDirectories.length === 0 && <div className="ui-state route-state">{nearbyOnly ? '선택한 반경 안에 Google Places 좌표가 확인된 업소가 없습니다.' : '선택한 지역과 검색 조건에 맞는 업소가 없습니다.'}</div>}
         {filteredDirectories.length > 0 && <div className="directory-list overflow-hidden">
 <div className="hidden grid-cols-[minmax(0,1fr)_120px_180px_130px] gap-4 border-b border-white/10 px-4 py-3 text-[10px] font-black uppercase tracking-[.12em] text-slate-500 md:grid">
 <span>업소</span>
@@ -393,7 +452,7 @@ export default function DirectoryPage() {
 </div>
 <div className="text-xs font-bold text-slate-300">{biz.category}</div>
 <div className="text-xs text-slate-400">
-<div>{biz.address || biz.country}</div>{tel && <a href={tel} onClick={(event) => event.stopPropagation()} className="mt-1 block text-cyan-100 hover:text-cyan-300">{phoneLabel(biz)}</a>}{distance && <span className="distance-readout mt-1 block font-bold text-cyan-300">약 {distance} km</span>}</div>
+ <div>{biz.address || biz.country}</div>{tel && <a href={tel} onClick={(event) => event.stopPropagation()} className="mt-1 block text-cyan-100 hover:text-cyan-300">{phoneLabel(biz)}</a>}{distance !== null && <span className="distance-readout mt-1 block font-bold text-cyan-300">{biz.locationAccuracy === 'approximate' ? '도시 중심 추정 약 ' : '약 '}{distance.toFixed(1)} km</span>}</div>
 <div className="flex flex-wrap gap-1.5 text-[10px] font-black">
 <button type="button" onClick={(event) => { event.stopPropagation(); selectDirectory(biz, 'map'); }} className="border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-cyan-100">지도</button>{tel && <a href={tel} onClick={(event) => event.stopPropagation()} className="border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-emerald-100">전화</a>}{user && isNativeDirectory(biz) && (user.id === biz.authorId || isMasterUser(user)) && <button type="button" onClick={(event) => { event.stopPropagation(); void removeDirectory(biz); }} className="border border-rose-300/20 bg-rose-300/10 px-2 py-1 text-rose-100">삭제</button>}</div>
 </div>; })}</div>
