@@ -1451,6 +1451,7 @@ export default function WebRTCPage() {
 
   const sharedScreenVisible = isSharingScreen || remoteSharingScreen || hasRemoteScreen;
   const visiblePeerPhotos = getVisibleMatchPhotos(user?.profilePhotos, peer?.profilePhotos);
+  const callModeLabel = callKind === 'friend' ? '친구 통화' : callKind === 'game' ? '게임 통화' : '랜덤 채팅';
   const screenShareDisabled = !isConnected || videoOnly || screenShareBusy || (!isSharingScreen && Boolean(mediaOwnerId));
   const canToggleTogetherListen = !videoOnly && (isSharingScreen
     ? screenAudioTrackRef.current?.readyState === 'live'
@@ -1566,9 +1567,23 @@ export default function WebRTCPage() {
                   <button type="button" onClick={() => void toggleFullscreen(desktopStageRef.current)} disabled={!fullscreenSupported} aria-pressed={isFullscreen} aria-label={isFullscreen ? '전체 화면 종료' : '전체 화면'} title={fullscreenSupported ? (isFullscreen ? '전체 화면 종료' : '전체 화면') : '이 브라우저에서 전체 화면을 사용할 수 없습니다'} className="call-fullscreen-toggle flex min-h-11 items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 text-xs font-black disabled:opacity-40">{isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}{isFullscreen ? '축소' : '전체 화면'}</button>
                 </div>
               </div>
-          </div>
+            </div>
 
             <aside className="space-y-5">
+              <section aria-label="영상 통화 시작" className="hidden sm:block border border-cyan-300/30 bg-cyan-300/[.08] p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-200">{callKind === 'random' ? 'RANDOM MATCH' : callKind === 'friend' ? 'FRIEND CALL' : 'GAME CALL'}</div>
+                    <h2 className="mt-1 font-black text-white">{callModeLabel}</h2>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">{callKind === 'random' ? '시작을 누르면 안전 안내를 먼저 확인합니다.' : '카메라와 마이크를 확인하고 통화에 참여하세요.'}</p>
+                  </div>
+                  <span className="shrink-0 border border-white/10 bg-white/[.04] px-2 py-1 text-[10px] font-bold text-slate-300">{hasEnded ? 'ENDED' : isConnected ? 'CONNECTED' : isMatching ? 'MATCHING' : active ? 'CONNECTING' : 'READY'}</span>
+                </div>
+                <button type="button" onClick={active ? () => void endMatch() : startMatchFromUi} disabled={isStarting || hasEnded} className={`flex min-h-11 w-full items-center justify-center gap-2 px-3 py-2 text-sm font-black disabled:opacity-50 ${active ? 'bg-rose-500 text-white' : 'bg-cyan-300 text-slate-950'}`}>
+                  {active ? <VideoOff size={16} aria-hidden="true" /> : <PhoneCall size={16} aria-hidden="true" />}
+                  {active ? '연결 종료' : isStarting ? '카메라 연결 중...' : callKind === 'random' ? 'LIVE CHAT 시작' : `${callModeLabel} 시작`}
+                </button>
+              </section>
               {visiblePeerPhotos.length > 0 && <section className="border border-cyan-300/20 bg-[#111a2d] p-4"><div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-black">상대 공개 사진</h2><span className="text-[10px] font-bold text-cyan-200">{visiblePeerPhotos.length}장 표시</span></div><div className="grid grid-cols-3 gap-2">{visiblePeerPhotos.map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`상대 공개 사진 ${index + 1}`} loading="lazy" className="aspect-square w-full object-cover" />)}</div></section>}
               <section aria-label="화상 채팅" className="border border-cyan-300/20 bg-[#111a2d] p-4">
                <div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-black">화상 채팅</h2><span className="truncate text-[10px] font-bold text-cyan-200">{status}</span></div>
