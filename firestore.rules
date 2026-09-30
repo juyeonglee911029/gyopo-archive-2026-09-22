@@ -36,6 +36,161 @@ service cloud.firestore {
     function hasCompletedOnboarding(data) {
       return hasValidGender(data) && hasValidCountry(data) && hasValidAge(data);
     }
+     function isSafeGalleryPhotoUrl(value) {
+       return value is string
+         && value.size() <= 2048
+         && value.matches('^https://firebasestorage\\.googleapis\\.com/v0/b/gyopo-live-portal-506019\\.firebasestorage\\.app/o/profiles%2F[^/?&]+%2Fgallery%2F[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\.jpg\\?alt=media&token=[A-Za-z0-9_-]{16,256}$');
+     }
+     function hasSafeProfilePhotos(data, userId) {
+       return !data.keys().hasAny(['profilePhotos'])
+         || (data.profilePhotos is list
+           && data.profilePhotos.size() <= 5
+           && (data.profilePhotos.size() < 1 || isSafeGalleryPhotoUrl(data.profilePhotos[0]))
+           && (data.profilePhotos.size() < 2 || isSafeGalleryPhotoUrl(data.profilePhotos[1]))
+           && (data.profilePhotos.size() < 3 || isSafeGalleryPhotoUrl(data.profilePhotos[2]))
+           && (data.profilePhotos.size() < 4 || isSafeGalleryPhotoUrl(data.profilePhotos[3]))
+           && (data.profilePhotos.size() < 5 || isSafeGalleryPhotoUrl(data.profilePhotos[4]))
+           && (data.profilePhotos.size() < 2 || data.profilePhotos[0] != data.profilePhotos[1])
+           && (data.profilePhotos.size() < 3 || (data.profilePhotos[0] != data.profilePhotos[2] && data.profilePhotos[1] != data.profilePhotos[2]))
+           && (data.profilePhotos.size() < 4 || (data.profilePhotos[0] != data.profilePhotos[3] && data.profilePhotos[1] != data.profilePhotos[3] && data.profilePhotos[2] != data.profilePhotos[3]))
+           && (data.profilePhotos.size() < 5 || (data.profilePhotos[0] != data.profilePhotos[4] && data.profilePhotos[1] != data.profilePhotos[4] && data.profilePhotos[2] != data.profilePhotos[4] && data.profilePhotos[3] != data.profilePhotos[4]))
+            && (data.profilePhotos.size() == 0
+              || (exists(/databases/$(database)/documents/verifiedProfilePhotos/$(userId))
+                && get(/databases/$(database)/documents/verifiedProfilePhotos/$(userId)).data.get('profilePhotos', []) == data.profilePhotos)));
+     }
+     function verifiedGalleryHasMinimum(userId) {
+       let publicPhotos = get(/databases/$(database)/documents/publicProfiles/$(userId)).data.get('profilePhotos', []);
+       let verifiedPhotos = get(/databases/$(database)/documents/verifiedProfilePhotos/$(userId)).data.get('profilePhotos', []);
+       return publicPhotos is list && verifiedPhotos is list
+         && publicPhotos == verifiedPhotos
+         && publicPhotos.size() >= 3 && publicPhotos.size() <= 5;
+     }
+     function hasVerifiedPublicGallery(userId) {
+       return exists(/databases/$(database)/documents/publicProfiles/$(userId))
+         && exists(/databases/$(database)/documents/verifiedProfilePhotos/$(userId))
+         && verifiedGalleryHasMinimum(userId);
+     }
+     function hasMatchablePublicPhotos(userId) {
+       return hasVerifiedPublicGallery(userId);
+     }
+     function hasValidDirectWebrtcTarget(data) {
+       return data.keys().hasAny(['targetUserId'])
+         && data.targetUserId is string
+         && data.targetUserId.size() > 0
+         && data.targetUserId.size() <= 128
+         && !data.targetUserId.matches('.*[/].*');
+     }
+     function canonicalFriendshipId(first, second) {
+       return first < second ? 'friend-' + first + '-' + second : 'friend-' + second + '-' + first;
+     }
+     function isAcceptedFriendshipRecord(collection, friendshipId, userId, targetUserId) {
+       return exists(/databases/$(database)/documents/$(collection)/$(friendshipId))
+         && get(/databases/$(database)/documents/$(collection)/$(friendshipId)).data.get('status', '') == 'accepted'
+         && ((get(/databases/$(database)/documents/$(collection)/$(friendshipId)).data.get('requesterId', '') == userId
+             && get(/databases/$(database)/documents/$(collection)/$(friendshipId)).data.get('addresseeId', '') == targetUserId)
+           || (get(/databases/$(database)/documents/$(collection)/$(friendshipId)).data.get('requesterId', '') == targetUserId
+             && get(/databases/$(database)/documents/$(collection)/$(friendshipId)).data.get('addresseeId', '') == userId));
+     }
+      function hasAcceptedFriendship(userId, targetUserId) {
+        let friendshipId = canonicalFriendshipId(userId, targetUserId);
+        return userId != targetUserId
+          && (isAcceptedFriendshipRecord('friendships', friendshipId, userId, targetUserId)
+            || (!exists(/databases/$(database)/documents/friendships/$(friendshipId))
+              && isAcceptedFriendshipRecord('webrtcCalls', friendshipId, userId, targetUserId)));
+     }
+     function isValidWebrtcGamePair(gameType, gameRoomId, userId, targetUserId) {
+       return userId != targetUserId
+         && gameRoomId is string
+         && gameRoomId.size() > 0
+         && gameRoomId.size() <= 128
+         && !gameRoomId.matches('.*[/].*')
+         && (
+           (gameType == 'tetris'
+             && exists(/databases/$(database)/documents/tetrisRoomAccess/$(gameRoomId))
+             && get(/databases/$(database)/documents/tetrisRoomAccess/$(gameRoomId)).data.get('active', false) == true
+             && ((get(/databases/$(database)/documents/tetrisRoomAccess/$(gameRoomId)).data.get('playerAId', '') == userId
+                   && get(/databases/$(database)/documents/tetrisRoomAccess/$(gameRoomId)).data.get('playerBId', '') == targetUserId)
+               || (get(/databases/$(database)/documents/tetrisRoomAccess/$(gameRoomId)).data.get('playerAId', '') == targetUserId
+                   && get(/databases/$(database)/documents/tetrisRoomAccess/$(gameRoomId)).data.get('playerBId', '') == userId)))
+           || (gameType == 'brickBreaker'
+             && exists(/databases/$(database)/documents/brickBreakerRooms/$(gameRoomId))
+             && get(/databases/$(database)/documents/brickBreakerRooms/$(gameRoomId)).data.get('status', '') != 'closed'
+             && ((get(/databases/$(database)/documents/brickBreakerRooms/$(gameRoomId)).data.get('host', '') == userId
+                   && get(/databases/$(database)/documents/brickBreakerRooms/$(gameRoomId)).data.get('guest', '') == targetUserId)
+               || (get(/databases/$(database)/documents/brickBreakerRooms/$(gameRoomId)).data.get('host', '') == targetUserId
+                   && get(/databases/$(database)/documents/brickBreakerRooms/$(gameRoomId)).data.get('guest', '') == userId)))
+         );
+     }
+     function hasNoWebrtcDirectTarget(data) {
+       return !data.keys().hasAny(['targetUserId']) || data.get('targetUserId', null) == null;
+     }
+     function hasNoWebrtcGameDetails(data) {
+       return (!data.keys().hasAny(['gameType']) || data.get('gameType', null) == null)
+         && (!data.keys().hasAny(['gameRoomId']) || data.get('gameRoomId', null) == null);
+     }
+     function isRandomWebrtcQueue(data) {
+       return (data.get('queueKind', '') == 'random' || data.get('queueKind', '') == '')
+         && hasNoWebrtcDirectTarget(data)
+         && hasNoWebrtcGameDetails(data);
+     }
+     function isFriendWebrtcQueue(data, userId) {
+       return (data.get('queueKind', '') == 'friend' || data.get('queueKind', '') == '')
+         && hasValidDirectWebrtcTarget(data)
+         && hasNoWebrtcGameDetails(data)
+         && hasAcceptedFriendship(userId, data.targetUserId);
+     }
+     function isGameWebrtcQueue(data, userId) {
+       return data.get('queueKind', '') == 'game'
+         && hasValidDirectWebrtcTarget(data)
+         && data.get('gameType', '') in ['tetris', 'brickBreaker']
+         && data.keys().hasAny(['gameRoomId'])
+         && isValidWebrtcGamePair(data.gameType, data.gameRoomId, userId, data.targetUserId);
+     }
+     function isValidWebrtcQueueKind(data, userId) {
+       return isRandomWebrtcQueue(data)
+         || isFriendWebrtcQueue(data, userId)
+         || isGameWebrtcQueue(data, userId);
+     }
+     function hasReciprocalWebrtcQueue(firstId, firstData, secondId, secondData) {
+       return firstData.get('userId', '') == firstId
+         && secondData.get('userId', '') == secondId
+         && firstData.get('status', '') == 'matched'
+         && secondData.get('status', '') == 'matched'
+         && firstData.get('callId', '') is string
+         && firstData.get('callId', '').size() > 0
+         && firstData.get('callId', '') == secondData.get('callId', '')
+         && firstData.get('matchedBy', '') == secondData.get('matchedBy', '')
+         && firstData.get('opponent', {}) is map
+         && secondData.get('opponent', {}) is map
+         && firstData.opponent.get('id', '') == secondId
+          && secondData.opponent.get('id', '') == firstId
+          && ((isRandomWebrtcQueue(firstData)
+                && isRandomWebrtcQueue(secondData))
+           || (isFriendWebrtcQueue(firstData, firstId)
+               && isFriendWebrtcQueue(secondData, secondId)
+               && firstData.targetUserId == secondId
+               && secondData.targetUserId == firstId)
+           || (isGameWebrtcQueue(firstData, firstId)
+               && isGameWebrtcQueue(secondData, secondId)
+               && firstData.targetUserId == secondId
+               && secondData.targetUserId == firstId
+               && firstData.gameType == secondData.gameType
+               && firstData.gameRoomId == secondData.gameRoomId));
+     }
+     function canSetMatchedQueueEntry(userId) {
+       let peerId = request.resource.data.get('opponent', {}).get('id', '');
+       return request.auth != null
+         && resource.data.get('status', '') == 'waiting'
+         && request.resource.data.get('status', '') == 'matched'
+         && request.resource.data.get('userId', '') == userId
+         && request.resource.data.get('matchedBy', '') == request.auth.uid
+         && request.resource.data.opponent is map
+         && peerId != userId
+         && request.auth.uid in [userId, peerId]
+         && existsAfter(/databases/$(database)/documents/webrtcQueue/$(peerId))
+         && hasReciprocalWebrtcQueue(userId, request.resource.data, peerId,
+           getAfter(/databases/$(database)/documents/webrtcQueue/$(peerId)).data);
+     }
     function hasNoOnboardingFields(data) {
       return !data.keys().hasAny(['gender', 'country', 'age']);
     }
@@ -46,12 +201,13 @@ service cloud.firestore {
        return (!data.keys().hasAny(['usdtBalance']) || (data.usdtBalance is number && data.usdtBalance >= 0))
          && (!data.keys().hasAny(['usdBalance']) || (data.usdBalance is number && data.usdBalance >= 0));
      }
-     function hasSafeProfileValues(data) {
-       return hasNonNegativeBalances(data)
-         && (!data.keys().hasAny(['name']) || (data.name is string && data.name.size() > 0 && data.name.size() <= 120))
-         && (!data.keys().hasAny(['email']) || (data.email is string && data.email.size() <= 320))
-         && (!data.keys().hasAny(['image']) || (data.image is string && data.image.size() <= 2000))
-         && (!data.keys().hasAny(['isSubscribed']) || data.isSubscribed is bool)
+       function hasSafeProfileValues(data, userId) {
+        return hasNonNegativeBalances(data)
+          && (!data.keys().hasAny(['name']) || (data.name is string && data.name.size() > 0 && data.name.size() <= 120))
+          && (!data.keys().hasAny(['email']) || (data.email is string && data.email.size() <= 320))
+          && (!data.keys().hasAny(['image']) || (data.image is string && data.image.size() <= 2000))
+           && hasSafeProfilePhotos(data, userId)
+          && (!data.keys().hasAny(['isSubscribed']) || data.isSubscribed is bool)
          && (!data.keys().hasAny(['walletAddress']) || (data.walletAddress is string && data.walletAddress.size() == 34))
          && (!data.keys().hasAny(['walletNetwork']) || data.walletNetwork == 'TRC20')
           && (!data.keys().hasAny(['walletPublic']) || data.walletPublic is bool)
@@ -64,14 +220,14 @@ service cloud.firestore {
          'usdtBalance', 'usdBalance', 'lastTransferId', 'lastUsdOperationId', 'isSubscribed', 'premiumExpiresAt'
        ]);
      }
-     function hasSafeProfileCreate(data) {
-       return data.keys().hasOnly([
-           'name', 'email', 'image', 'usdtBalance', 'usdBalance', 'isSubscribed', 'gender', 'genderPreference',
+      function hasSafeProfileCreate(data, userId) {
+        return data.keys().hasOnly([
+            'name', 'email', 'image', 'profilePhotos', 'usdtBalance', 'usdBalance', 'isSubscribed', 'gender', 'genderPreference',
             'premiumExpiresAt', 'age', 'country', 'defaultAiWritingPrompt', 'walletAddress', 'walletNetwork', 'walletPublic', 'walletPinHash',
            'walletPinSalt', 'transferPinHash', 'transferPinSalt', 'musicFavorites', 'updatedAt'
          ])
          && data.keys().hasAll(['name', 'email', 'image', 'usdtBalance', 'usdBalance', 'isSubscribed', 'updatedAt'])
-         && hasSafeProfileValues(data)
+          && hasSafeProfileValues(data, userId)
          && data.usdtBalance == 0
          && data.usdBalance == 0
          && data.isSubscribed == false
@@ -93,12 +249,13 @@ service cloud.firestore {
         && request.resource.data.usdBalance == 0
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usdBalance', 'updatedAt']);
     }
-     function isSafePublicProfile(data) {
-       return data.keys().hasOnly(['name', 'image', 'gender', 'country', 'age', 'isSubscribed', 'isPublic', 'updatedAt', 'walletAddress', 'walletNetwork', 'walletPublic'])
+       function isSafePublicProfile(data, userId) {
+        return data.keys().hasOnly(['name', 'image', 'profilePhotos', 'gender', 'country', 'age', 'isSubscribed', 'isPublic', 'updatedAt', 'walletAddress', 'walletNetwork', 'walletPublic'])
         && data.keys().hasAll(['name', 'image', 'gender', 'country', 'isSubscribed', 'isPublic', 'updatedAt'])
         && data.name is string
         && data.name.size() > 0
-        && data.image is string
+         && data.image is string
+          && hasSafeProfilePhotos(data, userId)
         && hasCompletedOnboarding(data)
          && data.isPublic == true
          && data.isSubscribed is bool
@@ -108,11 +265,12 @@ service cloud.firestore {
          && (!data.keys().hasAny(['walletNetwork']) || data.walletNetwork == 'TRC20')
          && (!data.keys().hasAny(['age']) || (data.age is int && data.age > 0 && data.age <= 130));
     }
-     function publicProfileMatchesPrivate(userId) {
-       return request.resource.data.gender == getAfter(/databases/$(database)/documents/profiles/$(userId)).data.gender
-         && request.resource.data.country == getAfter(/databases/$(database)/documents/profiles/$(userId)).data.country
-         && request.resource.data.age == getAfter(/databases/$(database)/documents/profiles/$(userId)).data.age
-         && request.resource.data.isSubscribed == getAfter(/databases/$(database)/documents/profiles/$(userId)).data.isSubscribed;
+      function publicProfileMatchesPrivate(userId) {
+        return request.resource.data.gender == getAfter(/databases/$(database)/documents/profiles/$(userId)).data.gender
+          && request.resource.data.country == getAfter(/databases/$(database)/documents/profiles/$(userId)).data.country
+          && request.resource.data.age == getAfter(/databases/$(database)/documents/profiles/$(userId)).data.age
+          && request.resource.data.isSubscribed == getAfter(/databases/$(database)/documents/profiles/$(userId)).data.isSubscribed
+          && request.resource.data.get('profilePhotos', []) == getAfter(/databases/$(database)/documents/profiles/$(userId)).data.get('profilePhotos', []);
      }
      function isSafePresence(data) {
       return data.keys().hasOnly(['userId', 'name', 'image', 'gender', 'country', 'age', 'lastSeenAt', 'updatedAt'])
@@ -311,24 +469,24 @@ service cloud.firestore {
      }
     match /profiles/{userId} {
       allow read: if request.auth != null && (request.auth.uid == userId || isMaster());
-       allow create: if (isMaster() && hasNonNegativeBalances(request.resource.data))
-         || (request.auth != null && request.auth.uid == userId && hasSafeProfileCreate(request.resource.data));
+        allow create: if (isMaster() && hasNonNegativeBalances(request.resource.data))
+          || (request.auth != null && request.auth.uid == userId && hasSafeProfileCreate(request.resource.data, userId));
        allow update: if (isMaster() && hasNonNegativeBalances(request.resource.data))
          || canInitializeUsdBalance(userId)
          || (request.auth != null
            && request.auth.uid == userId
            && hasImmutableOnboardingFields()
-           && hasSafeProfileValues(request.resource.data)
+            && hasSafeProfileValues(request.resource.data, userId)
            && hasNoWalletBalanceChange()
            && hasNoServerManagedProfileChange());
       allow delete: if isMaster();
     }
-    match /publicProfiles/{userId} {
-      allow read: if resource.data.isPublic == true;
-      allow read: if request.auth != null && (request.auth.uid == userId || isMaster());
+     match /publicProfiles/{userId} {
+       allow read: if resource.data.isPublic == true;
+       allow read: if request.auth != null && (request.auth.uid == userId || isMaster());
       allow create, update: if request.auth != null
         && request.auth.uid == userId
-        && isSafePublicProfile(request.resource.data)
+         && isSafePublicProfile(request.resource.data, userId)
         && publicProfileMatchesPrivate(userId);
       allow delete: if false;
     }
@@ -344,6 +502,9 @@ service cloud.firestore {
          && request.resource.data.status in ['APPROVED', 'REJECTED']
          && request.resource.data.reviewedBy == request.auth.token.email;
        allow delete: if false;
+     }
+     match /verifiedProfilePhotos/{userId} {
+       allow read, write: if false;
      }
      match /transferRequests/{requestId} {
        allow read: if request.auth != null && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid || isMaster());
@@ -439,25 +600,103 @@ service cloud.firestore {
          && request.resource.data.createdAt is timestamp;
        allow update, delete: if false;
      }
-     match /webrtcQueue/{userId} {
+      match /webrtcQueue/{userId} {
        allow read: if request.auth != null && isAdultUser(request.auth.uid) && isAccountAllowed(request.auth.uid);
-       allow create: if request.auth != null
-         && request.auth.uid == userId
-         && isAdultUser(request.auth.uid)
-         && isAccountAllowed(request.auth.uid)
-         && request.resource.data.userId == request.auth.uid
-         && request.resource.data.age is int
-         && request.resource.data.age >= 18;
-       allow update: if request.auth != null
-         && isAdultUser(request.auth.uid)
-         && isAccountAllowed(request.auth.uid)
-         && (request.auth.uid == userId
-           || (resource.data.status == 'waiting'
-             && request.resource.data.status == 'matched'
-             && request.resource.data.matchedBy == request.auth.uid));
+        allow create: if request.auth != null
+          && request.auth.uid == userId
+          && isAdultUser(request.auth.uid)
+          && isAccountAllowed(request.auth.uid)
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.age is int
+          && request.resource.data.age >= 18
+          && request.resource.data.get('status', '') == 'waiting'
+          && isValidWebrtcQueueKind(request.resource.data, userId)
+          && (!isRandomWebrtcQueue(request.resource.data) || hasMatchablePublicPhotos(userId));
+        allow update: if request.auth != null
+          && isAdultUser(request.auth.uid)
+          && isAccountAllowed(request.auth.uid)
+          && request.resource.data.get('userId', '') == userId
+          && request.resource.data.get('status', '') in ['waiting', 'matched']
+          && isValidWebrtcQueueKind(request.resource.data, userId)
+          && ((request.auth.uid == userId && request.resource.data.get('status', '') != 'matched'
+                && (!isRandomWebrtcQueue(request.resource.data) || hasMatchablePublicPhotos(userId)))
+            || (canSetMatchedQueueEntry(userId)
+                && (!isRandomWebrtcQueue(request.resource.data) || hasMatchablePublicPhotos(userId))));
        allow delete: if request.auth != null && (request.auth.uid == userId || isMaster());
-     }
-      match /webrtcCalls/{callId} {
+      }
+       match /webrtcCalls/{callId} {
+        function isLegacyFriendConnection(data) {
+          return data.keys().hasAll(['requesterId', 'addresseeId', 'status'])
+            && data.get('requesterId', '') is string
+            && data.get('addresseeId', '') is string
+            && data.get('status', '') in ['pending', 'accepted', 'declined'];
+        }
+        function canReadLegacyFriendConnection() {
+          return request.auth != null
+            && isLegacyFriendConnection(resource.data)
+            && request.auth.uid in [resource.data.requesterId, resource.data.addresseeId];
+        }
+        function canCreateLegacyFriendConnection() {
+          return request.auth != null
+            && request.resource.data.keys().hasOnly(['requesterId', 'addresseeId', 'status', 'createdAt', 'updatedAt'])
+            && request.resource.data.keys().hasAll(['requesterId', 'addresseeId', 'status', 'createdAt', 'updatedAt'])
+            && request.resource.data.requesterId == request.auth.uid
+            && request.resource.data.addresseeId is string
+            && request.resource.data.addresseeId.size() > 0
+            && request.resource.data.addresseeId.size() <= 128
+            && request.resource.data.addresseeId != request.auth.uid
+            && !request.resource.data.addresseeId.matches('.*[/].*')
+            && callId == canonicalFriendshipId(request.auth.uid, request.resource.data.addresseeId)
+            && request.resource.data.status == 'pending'
+            && request.resource.data.createdAt is timestamp
+            && request.resource.data.updatedAt is timestamp
+            && hasMatchablePublicPhotos(request.auth.uid)
+            && hasMatchablePublicPhotos(request.resource.data.addresseeId);
+        }
+        function canUpdateLegacyFriendConnection() {
+          return request.auth != null
+            && isLegacyFriendConnection(resource.data)
+            && resource.data.status == 'pending'
+            && resource.data.addresseeId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+            && request.resource.data.get('status', '') in ['accepted', 'declined']
+            && request.resource.data.get('updatedAt', null) is timestamp
+            && (request.resource.data.status == 'declined'
+              || (hasMatchablePublicPhotos(resource.data.requesterId)
+                && hasMatchablePublicPhotos(resource.data.addresseeId)));
+        }
+        function canDeleteLegacyFriendConnection() {
+          return request.auth != null
+            && isLegacyFriendConnection(resource.data)
+            && request.auth.uid in [resource.data.requesterId, resource.data.addresseeId];
+        }
+        function hasMatchedWebrtcQueuePair(targetCallId, callerId, calleeId) {
+          return exists(/databases/$(database)/documents/webrtcQueue/$(callerId))
+            && exists(/databases/$(database)/documents/webrtcQueue/$(calleeId))
+            && get(/databases/$(database)/documents/webrtcQueue/$(callerId)).data.get('callId', '') == targetCallId
+            && get(/databases/$(database)/documents/webrtcQueue/$(calleeId)).data.get('callId', '') == targetCallId
+            && hasReciprocalWebrtcQueue(
+              callerId,
+              get(/databases/$(database)/documents/webrtcQueue/$(callerId)).data,
+              calleeId,
+              get(/databases/$(database)/documents/webrtcQueue/$(calleeId)).data
+            );
+        }
+        function isAuthorizedWebrtcEndMarker(data) {
+          return data.keys().hasAll(['callerId', 'calleeId', 'queueKind', 'targetUserId', 'status', 'endedAt'])
+            && data.keys().hasOnly(['callerId', 'calleeId', 'queueKind', 'targetUserId', 'gameType', 'gameRoomId', 'status', 'endedAt'])
+            && data.callerId == request.auth.uid
+            && data.calleeId == data.targetUserId
+            && data.status == 'ended'
+            && data.endedAt is timestamp
+            && ((data.queueKind == 'friend'
+                 && callId.matches('^webrtc-end-friend-.+$')
+                 && !data.keys().hasAny(['gameType', 'gameRoomId'])
+                 && isFriendWebrtcQueue(data, data.callerId))
+              || (data.queueKind == 'game'
+                 && callId.matches('^webrtc-end-game-.+$')
+                 && isGameWebrtcQueue(data, data.callerId)));
+        }
         function hasValidCallMediaState(data) {
           return data.keys().hasAll(['mediaOwnerId', 'mediaLeaseId', 'mediaMode', 'systemAudio', 'mediaUpdatedAt'])
             && data.mediaMode in ['camera', 'screen']
@@ -484,10 +723,11 @@ service cloud.firestore {
           let oldMediaUpdatedAt = resource.data.get('mediaUpdatedAt', null);
           let oldLeaseExpired = !(oldMediaUpdatedAt is timestamp)
             || request.time >= oldMediaUpdatedAt + duration.value(45, 's');
-          return request.auth != null
-            && isAdultUser(request.auth.uid)
-            && isAccountAllowed(request.auth.uid)
-            && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid)
+           return request.auth != null
+             && resource.data.keys().hasAny(['callerId'])
+             && isAdultUser(request.auth.uid)
+             && isAccountAllowed(request.auth.uid)
+             && (resource.data.get('callerId', '') == request.auth.uid || resource.data.get('calleeId', '') == request.auth.uid)
             && resource.data.get('status', '') != 'ended'
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'mediaOwnerId', 'mediaLeaseId', 'mediaMode', 'systemAudio', 'mediaUpdatedAt'
@@ -503,11 +743,12 @@ service cloud.firestore {
                 && request.resource.data.mediaLeaseId == oldLeaseId)
             );
         }
-        function canUpdateCallSignal() {
-          return request.auth != null
-            && isAdultUser(request.auth.uid)
+         function canUpdateCallSignal() {
+           return request.auth != null
+             && resource.data.keys().hasAny(['callerId'])
+             && isAdultUser(request.auth.uid)
             && isAccountAllowed(request.auth.uid)
-            && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid)
+            && (resource.data.get('callerId', '') == request.auth.uid || resource.data.get('calleeId', '') == request.auth.uid)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offer', 'answer', 'status', 'endedAt'])
             && request.resource.data.callerId == resource.data.callerId
             && request.resource.data.calleeId == resource.data.calleeId
@@ -516,26 +757,36 @@ service cloud.firestore {
               || request.resource.data.status in ['offer', 'answer', 'connected', 'ended'])
             && (resource.data.get('status', '') != 'ended' || request.resource.data.get('status', '') == 'ended');
         }
-        allow read: if request.auth != null
-          && isAdultUser(request.auth.uid)
-          && isAccountAllowed(request.auth.uid)
-          && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid);
-        allow create: if request.auth != null
-          && isAdultUser(request.auth.uid)
-          && isAccountAllowed(request.auth.uid)
-          && request.resource.data.keys().hasOnly(['callId', 'callerId', 'calleeId', 'offer', 'answer', 'status', 'endedAt'])
-          && request.resource.data.callerId == request.auth.uid
-          && request.resource.data.calleeId is string
-          && request.resource.data.calleeId != request.auth.uid
-          && (!request.resource.data.keys().hasAny(['callId']) || request.resource.data.callId == callId)
-          && (!request.resource.data.keys().hasAny(['status'])
-            || request.resource.data.status in ['offer', 'answer', 'connected', 'ended'])
-          && isAdultUser(request.resource.data.calleeId)
-          && isAccountAllowed(request.resource.data.calleeId);
-        allow update: if canUpdateCallSignal() || canUpdateCallMedia();
-        allow delete: if request.auth != null && (isMaster()
-          || (isAccountAllowed(request.auth.uid)
-            && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid)));
+        allow read: if (request.auth != null
+            && resource.data.keys().hasAny(['callerId'])
+            && isAdultUser(request.auth.uid)
+            && isAccountAllowed(request.auth.uid)
+            && (resource.data.get('callerId', '') == request.auth.uid || resource.data.get('calleeId', '') == request.auth.uid))
+          || canReadLegacyFriendConnection();
+         allow create: if (
+           request.auth != null
+           && request.resource.data.keys().hasAny(['callerId'])
+           && isAdultUser(request.auth.uid)
+           && isAccountAllowed(request.auth.uid)
+           && (
+              (request.resource.data.get('callerId', '') == request.auth.uid
+                && request.resource.data.get('calleeId', '') is string
+                && request.resource.data.get('calleeId', '') != request.auth.uid
+                && isAdultUser(request.resource.data.get('calleeId', ''))
+                && isAccountAllowed(request.resource.data.get('calleeId', ''))
+               && request.resource.data.keys().hasOnly(['callId', 'callerId', 'calleeId', 'offer', 'answer', 'status', 'endedAt'])
+               && (!request.resource.data.keys().hasAny(['callId']) || request.resource.data.callId == callId)
+               && (!request.resource.data.keys().hasAny(['status'])
+                || request.resource.data.get('status', '') in ['offer', 'answer', 'connected', 'ended'])
+                && hasMatchedWebrtcQueuePair(callId, request.resource.data.get('callerId', ''), request.resource.data.get('calleeId', '')))
+             || isAuthorizedWebrtcEndMarker(request.resource.data)
+           )
+         ) || canCreateLegacyFriendConnection();
+         allow update: if canUpdateCallSignal() || canUpdateCallMedia() || canUpdateLegacyFriendConnection();
+          allow delete: if request.auth != null && (isMaster()
+           || (resource.data.keys().hasAny(['callerId']) && isAccountAllowed(request.auth.uid)
+              && (resource.data.get('callerId', '') == request.auth.uid || resource.data.get('calleeId', '') == request.auth.uid))
+          || canDeleteLegacyFriendConnection());
       }
       match /webrtcCandidates/{candidateId} {
         allow read: if request.auth != null
@@ -614,15 +865,24 @@ service cloud.firestore {
     match /friendships/{friendshipId} {
       allow read: if request.auth != null
         && (resource.data.requesterId == request.auth.uid || resource.data.addresseeId == request.auth.uid);
-      allow create: if request.auth != null
-        && request.resource.data.requesterId == request.auth.uid
+       allow create: if request.auth != null
+         && request.resource.data.requesterId == request.auth.uid
         && request.resource.data.addresseeId is string
-        && request.resource.data.addresseeId != request.auth.uid
-        && request.resource.data.status == 'pending';
-      allow update: if request.auth != null
-        && (resource.data.requesterId == request.auth.uid || resource.data.addresseeId == request.auth.uid)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
-        && (request.resource.data.status == 'accepted' || request.resource.data.status == 'declined');
+         && request.resource.data.addresseeId != request.auth.uid
+         && !request.resource.data.addresseeId.matches('.*[/].*')
+         && friendshipId == canonicalFriendshipId(request.auth.uid, request.resource.data.addresseeId)
+         && request.resource.data.status == 'pending'
+         && hasMatchablePublicPhotos(request.auth.uid)
+         && hasMatchablePublicPhotos(request.resource.data.addresseeId);
+       allow update: if request.auth != null
+         && resource.data.status == 'pending'
+         && resource.data.addresseeId == request.auth.uid
+         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+         && request.resource.data.status in ['declined', 'accepted']
+         && (request.resource.data.status == 'declined'
+           || (request.resource.data.status == 'accepted'
+             && hasMatchablePublicPhotos(resource.data.requesterId)
+             && hasMatchablePublicPhotos(resource.data.addresseeId)));
       allow delete: if request.auth != null
         && (resource.data.requesterId == request.auth.uid || resource.data.addresseeId == request.auth.uid);
     }
@@ -843,15 +1103,34 @@ service cloud.firestore {
         allow read: if request.auth != null && (
           resource.data.playerAId == request.auth.uid || resource.data.playerBId == request.auth.uid
         );
-        allow create: if request.auth != null && (
-          request.resource.data.playerAId == request.auth.uid || request.resource.data.playerBId == request.auth.uid
-        );
-        allow update: if request.auth != null && (
-          resource.data.playerAId == request.auth.uid
-          || resource.data.playerBId == request.auth.uid
-          || request.resource.data.playerAId == request.auth.uid
-          || request.resource.data.playerBId == request.auth.uid
-        );
+        allow create: if request.auth != null
+          && request.resource.data.keys().hasOnly(['roomNumber', 'matchId', 'playerAId', 'playerBId', 'active', 'updatedAt'])
+          && request.resource.data.get('matchId', '') == matchId
+          && request.resource.data.get('roomNumber', 0) is int
+          && request.resource.data.roomNumber >= 1
+          && request.resource.data.roomNumber <= 10
+          && request.resource.data.playerAId == request.auth.uid
+          && request.resource.data.playerBId == null
+          && request.resource.data.active == true;
+        allow update: if request.auth != null
+          && request.resource.data.keys().hasOnly(['roomNumber', 'matchId', 'playerAId', 'playerBId', 'active', 'updatedAt'])
+          && request.resource.data.get('matchId', '') == matchId
+          && request.resource.data.roomNumber == resource.data.roomNumber
+          && request.resource.data.playerAId == resource.data.playerAId
+          && (
+            (resource.data.active == true
+              && resource.data.playerBId == null
+              && request.auth.uid == request.resource.data.playerBId
+              && request.resource.data.playerBId != request.resource.data.playerAId
+              && request.resource.data.active == true)
+            || (request.auth.uid in [resource.data.playerAId, resource.data.playerBId]
+              && request.resource.data.playerBId == resource.data.playerBId
+              && request.resource.data.active == resource.data.active)
+            || (resource.data.active == true
+              && request.resource.data.active == false
+              && request.resource.data.playerBId == resource.data.playerBId
+              && request.auth.uid in [resource.data.playerAId, resource.data.playerBId])
+          );
         allow delete: if false;
       }
       match /tetrisRooms/{roomId} {

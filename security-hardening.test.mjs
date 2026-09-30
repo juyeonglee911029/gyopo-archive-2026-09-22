@@ -12,6 +12,7 @@ const crawler = read('./src/app/api/content/preview/route.ts');
 const paddle = read('./src/lib/paddle.ts');
 const jobWriter = read('./src/components/posts/JobPostWriter.tsx');
 const newsPage = read('./src/app/news/page.tsx');
+const galleryVerifier = read('./src/app/api/profile-photos/verify/route.ts');
 
 assert.match(rules, /match \/tetrisScores\/\{scoreId\}/);
 assert.match(rules, /request\.resource\.data\.userId == request\.auth\.uid[\s\S]*hasValidTetrisScore/);
@@ -23,6 +24,24 @@ assert.match(rules, /function hasValidTetrisBet[\s\S]*data\.betAmount is int[\s\
 assert.match(firebase, /const freeMatch = room\.betAmount === 0[\s\S]*!freeMatch && \(!room\.stakeHeldA \|\| !room\.stakeHeldB\)/);
 assert.match(rules, /match \/profiles\/\{userId\}[\s\S]*hasNoServerManagedProfileChange/);
 assert.match(rules, /match \/walletVault\/\{userId\}[\s\S]*request\.auth\.uid == userId/);
+assert.match(rules, /function hasSafeProfilePhotos[\s\S]*data\.profilePhotos\.size\(\) <= 5/);
+assert.match(rules, /function hasSafeProfilePhotos[\s\S]*verifiedProfilePhotos/);
+assert.match(rules, /function verifiedGalleryHasMinimum[\s\S]*publicPhotos\.size\(\) >= 3[\s\S]*function hasMatchablePublicPhotos[\s\S]*hasVerifiedPublicGallery/);
+assert.match(rules, /match \/friendships\/\{friendshipId\}[\s\S]*hasMatchablePublicPhotos/);
+assert.match(rules, /match \/friendships\/\{friendshipId\}[\s\S]*resource\.data\.status == 'pending'[\s\S]*resource\.data\.addresseeId == request\.auth\.uid/);
+assert.match(rules, /function canCreateLegacyFriendConnection[\s\S]*canonicalFriendshipId[\s\S]*hasMatchablePublicPhotos/);
+assert.match(rules, /function canUpdateLegacyFriendConnection[\s\S]*resource\.data\.addresseeId == request\.auth\.uid/);
+assert.match(rules, /match \/webrtcQueue\/\{userId\}[\s\S]*canSetMatchedQueueEntry/);
+assert.match(rules, /function canSetMatchedQueueEntry[\s\S]*existsAfter[\s\S]*hasReciprocalWebrtcQueue/);
+assert.match(rules, /function hasMatchedWebrtcQueuePair[\s\S]*hasReciprocalWebrtcQueue/);
+assert.match(rules, /function isAuthorizedWebrtcEndMarker[\s\S]*isFriendWebrtcQueue[\s\S]*isGameWebrtcQueue/);
+assert.match(rules, /match \/tetrisRoomAccess\/\{matchId\}[\s\S]*request\.auth\.uid == request\.resource\.data\.playerBId/);
+assert.match(firebase, /profilePhotos: normalizeProfilePhotos\(user\.profilePhotos\)/);
+assert.match(firebase, /getVisibleMatchPhotos\(requesterPhotos, candidatePhotos\)/);
+assert.match(firebase, /gameRoomMatches/);
+assert.match(firebase, /viewerId !== connection\.addresseeId/);
+assert.match(galleryVerifier, /serviceAccountAccessToken\('https:\/\/www\.googleapis\.com\/auth\/devstorage\.read_only'\)/);
+assert.match(galleryVerifier, /firebaseStorageDownloadTokens/);
 
 for (const collection of ['gameStakes', 'gamePayouts', 'genderMatchStakes', 'premiumSubscriptions', 'transferRequests']) {
   assert.match(firebase, new RegExp(`'${collection}'`), `${collection} must be client-blocked`);
