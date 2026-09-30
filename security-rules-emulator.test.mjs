@@ -316,6 +316,53 @@ test('Firestore emulator authorization regressions', {
     await allowed(write('profiles/legacy', profile, 'legacy'));
   });
 
+  await t.test('dating profiles are private to their owner and require an adult opt-in', async () => {
+    const now = new Date();
+    await seed('profiles/alice', { age: 29, gender: 'female', country: 'USA' });
+    await seed('profiles/bob', { age: 31, gender: 'male', country: 'USA' });
+    await seed('profiles/minor', { age: 17, gender: 'female', country: 'USA' });
+    const alice = {
+      displayName: 'Alice', image: '', age: 29, gender: 'female', country: 'USA', city: 'Los Angeles', bio: 'Hiking and food',
+      preferredGender: 'male', minAge: 25, maxAge: 35, isActive: true, consentedAt: now, createdAt: now, updatedAt: now,
+    };
+    const bob = {
+      displayName: 'Bob', image: '', age: 31, gender: 'male', country: 'USA', city: 'Irvine', bio: 'Music and travel',
+      preferredGender: 'female', minAge: 27, maxAge: 35, isActive: true, consentedAt: now, createdAt: now, updatedAt: now,
+    };
+    await allowed(write('datingProfiles/alice', alice, 'alice'));
+    await allowed(write('datingProfiles/bob', bob, 'bob'));
+    await allowed(read('datingProfiles/alice', 'alice'));
+    await denied(read('datingProfiles/alice', 'bob'));
+    await denied(request(`${documents}/datingProfiles`, 'GET', undefined, 'bob'));
+    await denied(write('datingProfiles/minor', { ...alice, age: 17, gender: 'female' }, 'minor'));
+    await denied(write('datingProfiles/alice', { ...alice, age: 30 }, 'alice'));
+    await denied(write('datingProfiles/alice', { ...alice, bio: '연락은 min@example.com' }, 'alice'));
+    await denied(write('datingProfiles/alice', { ...alice, image: 'javascript:alert(1)' }, 'alice'));
+
+    const interest = { fromId: 'alice', toId: 'bob', status: 'pending', createdAt: now, updatedAt: now };
+    await allowed(write('datingInterests/5_alice_bob', interest, 'alice'));
+    await denied(write('datingInterests/wrong-id', interest, 'alice'));
+    await allowed(read('datingInterests/5_alice_bob', 'bob'));
+    await denied(read('datingInterests/5_alice_bob', 'minor'));
+    await denied(write('datingInterests/5_alice_bob', { ...interest, status: 'accepted', updatedAt: now }, 'alice'));
+    await allowed(write('datingInterests/5_alice_bob', { ...interest, status: 'accepted', updatedAt: now }, 'bob'));
+    await denied(write('datingInterests/5_alice_bob', { ...interest, status: 'pending', updatedAt: now }, 'alice'));
+
+    const reverseInterest = { fromId: 'bob', toId: 'alice', status: 'pending', createdAt: now, updatedAt: now };
+    await allowed(write('datingInterests/3_bob_alice', reverseInterest, 'bob'));
+    await seed('profiles/bob', { age: 17, gender: 'male', country: 'USA' });
+    await denied(write('datingInterests/3_bob_alice', { ...reverseInterest, status: 'accepted', updatedAt: now }, 'alice'));
+    await seed('profiles/bob', { age: 31, gender: 'male', country: 'USA' });
+
+    await seed('userBlocks/alice-bob', { ownerId: 'alice', blockedUserId: 'bob', blockedName: 'Bob', callId: null, createdAt: now });
+    await denied(write('datingInterests/3_bob_alice', { fromId: 'bob', toId: 'alice', status: 'pending', createdAt: now, updatedAt: now }, 'bob'));
+
+    await seed('profiles/suspended', { age: 30, gender: 'male', country: 'USA' });
+    await seed('datingProfiles/suspended', { ...bob, displayName: 'Suspended', age: 30 });
+    await seed('accountModeration/suspended', { status: 'banned' });
+    await denied(write('datingInterests/5_alice_suspended', { fromId: 'alice', toId: 'suspended', status: 'pending', createdAt: now, updatedAt: now }, 'alice'));
+  });
+
   await t.test('existing Tetris members can sync but cannot create, change, or remove settlement fields', async () => {
     const room = { playerAId: 'alice', playerBId: 'bob', betAmount: 10, phase: 'betting' };
     await allowed(write('tetrisRooms/room', room, 'alice'));

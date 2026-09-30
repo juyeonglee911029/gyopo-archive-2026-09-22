@@ -8,7 +8,8 @@ service cloud.firestore {
       return request.auth != null
         && exists(/databases/$(database)/documents/profiles/$(userId))
         && get(/databases/$(database)/documents/profiles/$(userId)).data.age is int
-        && get(/databases/$(database)/documents/profiles/$(userId)).data.age >= 18;
+        && get(/databases/$(database)/documents/profiles/$(userId)).data.age >= 18
+        && get(/databases/$(database)/documents/profiles/$(userId)).data.age <= 130;
     }
     function isAccountAllowed(userId) {
       return !exists(/databases/$(database)/documents/accountModeration/$(userId))
@@ -16,6 +17,54 @@ service cloud.firestore {
         || (get(/databases/$(database)/documents/accountModeration/$(userId)).data.status == 'suspended'
           && get(/databases/$(database)/documents/accountModeration/$(userId)).data.until is timestamp
           && request.time >= get(/databases/$(database)/documents/accountModeration/$(userId)).data.until);
+    }
+    function hasDatingBlockBetween(firstUserId, secondUserId) {
+      return exists(/databases/$(database)/documents/userBlocks/$(firstUserId + '-' + secondUserId))
+        || exists(/databases/$(database)/documents/userBlocks/$(secondUserId + '-' + firstUserId));
+    }
+    function hasDatingContactInfo(value) {
+      return value.matches('(?i).*(https?://|www\\.|[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}|\\+?[0-9][0-9\\s().-]{7,}[0-9]|카카오톡|카톡|텔레그램|telegram|whatsapp|discord|wechat|위챗|인스타|instagram|연락처|아이디|주소|우편번호|zip\\s*code).*');
+    }
+    function hasValidDatingProfile(userId, data) {
+      let account = get(/databases/$(database)/documents/profiles/$(userId)).data;
+      return data.keys().hasOnly([
+          'displayName', 'image', 'age', 'gender', 'country', 'city', 'bio', 'preferredGender',
+          'minAge', 'maxAge', 'isActive', 'consentedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'displayName', 'image', 'age', 'gender', 'country', 'city', 'bio', 'preferredGender',
+          'minAge', 'maxAge', 'isActive', 'consentedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 80
+        && data.image is string && data.image.size() <= 2000
+        && (data.image == '' || data.image.matches('(?i)^https://[^\\s]+$'))
+        && data.age is int && data.age >= 18 && data.age == account.age
+        && data.gender in ['male', 'female'] && data.gender == account.gender
+        && data.country is string && data.country.size() > 0 && data.country.size() <= 80 && data.country != 'Global' && data.country == account.country
+        && data.city is string && data.city.size() <= 80
+        && data.bio is string && data.bio.size() <= 280
+        && !hasDatingContactInfo(data.displayName)
+        && !hasDatingContactInfo(data.city)
+        && !hasDatingContactInfo(data.bio)
+        && data.preferredGender in ['any', 'male', 'female']
+        && data.minAge is int && data.minAge >= 18 && data.minAge <= 130
+        && data.maxAge is int && data.maxAge >= data.minAge && data.maxAge <= 130
+        && data.isActive is bool
+        && data.consentedAt is timestamp
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+    function areDatingProfilesCompatible(firstUserId, secondUserId) {
+      let first = get(/databases/$(database)/documents/datingProfiles/$(firstUserId)).data;
+      let second = get(/databases/$(database)/documents/datingProfiles/$(secondUserId)).data;
+      return isAdultUser(firstUserId)
+        && isAdultUser(secondUserId)
+        && first.isActive == true
+        && second.isActive == true
+        && first.age >= second.minAge && first.age <= second.maxAge
+        && second.age >= first.minAge && second.age <= first.maxAge
+        && (first.preferredGender == 'any' || first.preferredGender == second.gender)
+        && (second.preferredGender == 'any' || second.preferredGender == first.gender);
     }
     function hasValidGender(data) {
       return data.keys().hasAny(['gender']) && (data.gender == 'male' || data.gender == 'female');
@@ -321,8 +370,87 @@ service cloud.firestore {
            && hasSafeProfileValues(request.resource.data)
            && hasNoWalletBalanceChange()
            && hasNoServerManagedProfileChange());
-      allow delete: if isMaster();
-    }
+       allow delete: if isMaster();
+     }
+    match /datingProfiles/{userId} {
+       allow get: if request.auth != null && request.auth.uid == userId;
+       allow list: if false;
+       allow create: if request.auth != null
+         && request.auth.uid == userId
+         && isAdultUser(userId)
+         && isAccountAllowed(userId)
+         && hasValidDatingProfile(userId, request.resource.data);
+       allow update: if request.auth != null
+         && request.auth.uid == userId
+         && isAdultUser(userId)
+         && isAccountAllowed(userId)
+         && hasValidDatingProfile(userId, request.resource.data)
+         && request.resource.data.createdAt == resource.data.createdAt
+         && request.resource.data.consentedAt == resource.data.consentedAt;
+       allow delete: if request.auth != null && request.auth.uid == userId;
+     }
+    match /datingInterests/{interestId} {
+       function isInterestParticipant(data) {
+         return request.auth != null
+           && (data.fromId == request.auth.uid || data.toId == request.auth.uid);
+       }
+       function isValidInterest(data) {
+         return data.keys().hasOnly(['fromId', 'toId', 'status', 'createdAt', 'updatedAt'])
+           && data.keys().hasAll(['fromId', 'toId', 'status', 'createdAt', 'updatedAt'])
+           && data.fromId is string && data.fromId.size() > 0
+           && data.toId is string && data.toId.size() > 0 && data.toId != data.fromId
+            && interestId == string(data.fromId.size()) + '_' + data.fromId + '_' + data.toId
+           && data.status in ['pending', 'accepted', 'declined']
+           && data.createdAt is timestamp && data.updatedAt is timestamp;
+       }
+       allow read: if request.auth != null
+         && isInterestParticipant(resource.data)
+         && isAdultUser(request.auth.uid)
+         && isAccountAllowed(request.auth.uid);
+       allow create: if request.auth != null
+         && request.auth.uid == request.resource.data.fromId
+         && isAdultUser(request.auth.uid)
+         && isAccountAllowed(request.auth.uid)
+         && isAdultUser(request.resource.data.toId)
+         && isAccountAllowed(request.resource.data.toId)
+         && isValidInterest(request.resource.data)
+         && request.resource.data.status == 'pending'
+         && exists(/databases/$(database)/documents/datingProfiles/$(request.auth.uid))
+         && get(/databases/$(database)/documents/datingProfiles/$(request.auth.uid)).data.isActive == true
+         && exists(/databases/$(database)/documents/datingProfiles/$(request.resource.data.toId))
+         && get(/databases/$(database)/documents/datingProfiles/$(request.resource.data.toId)).data.isActive == true
+         && areDatingProfilesCompatible(request.auth.uid, request.resource.data.toId)
+         && !hasDatingBlockBetween(request.auth.uid, request.resource.data.toId);
+       allow update: if request.auth != null
+         && isInterestParticipant(resource.data)
+         && isAdultUser(request.auth.uid)
+         && isAccountAllowed(request.auth.uid)
+         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+         && request.resource.data.fromId == resource.data.fromId
+         && request.resource.data.toId == resource.data.toId
+         && request.resource.data.createdAt == resource.data.createdAt
+         && request.resource.data.updatedAt is timestamp
+         && ((request.auth.uid == resource.data.toId
+             && resource.data.status == 'pending'
+              && request.resource.data.status in ['accepted', 'declined']
+              && (request.resource.data.status == 'declined'
+                || (!hasDatingBlockBetween(resource.data.fromId, resource.data.toId)
+                  && isAccountAllowed(resource.data.fromId)
+                  && isAccountAllowed(resource.data.toId)
+                  && exists(/databases/$(database)/documents/datingProfiles/$(resource.data.fromId))
+                 && exists(/databases/$(database)/documents/datingProfiles/$(resource.data.toId))
+                 && areDatingProfilesCompatible(resource.data.fromId, resource.data.toId))))
+           || (request.auth.uid == resource.data.fromId
+              && resource.data.status == 'declined'
+              && request.resource.data.status == 'pending'
+              && !hasDatingBlockBetween(resource.data.fromId, resource.data.toId)
+              && isAccountAllowed(resource.data.fromId)
+              && isAccountAllowed(resource.data.toId)
+              && exists(/databases/$(database)/documents/datingProfiles/$(resource.data.fromId))
+             && exists(/databases/$(database)/documents/datingProfiles/$(resource.data.toId))
+             && areDatingProfilesCompatible(resource.data.fromId, resource.data.toId)));
+       allow delete: if false;
+     }
     match /publicProfiles/{userId} {
       allow read: if resource.data.isPublic == true;
       allow read: if request.auth != null && (request.auth.uid == userId || isMaster());
