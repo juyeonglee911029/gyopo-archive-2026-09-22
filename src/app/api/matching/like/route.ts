@@ -37,7 +37,12 @@ function allowedAccount(document: AdminFirestoreDocument | null): boolean {
 }
 
 export async function POST(request: Request) {
-  const user = await authenticateRequest(request).catch(() => null);
+  let user: Awaited<ReturnType<typeof authenticateRequest>>;
+  try {
+    user = await authenticateRequest(request);
+  } catch (error) {
+    return unauthorizedResponse(error);
+  }
   if (!user || !uidPattern.test(user.uid)) return unauthorizedResponse(new Error('Login required.'));
   const rate = consumeRateLimit(`matching-like:${user.uid}`, 60, 60_000);
   if (!rate.allowed) return rateLimitResponse(rate.retryAfterMs);

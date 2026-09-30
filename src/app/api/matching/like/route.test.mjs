@@ -15,7 +15,7 @@ const field = (value) => typeof value === 'string' ? { stringValue: value }
 const decode = (value) => value?.stringValue ?? value?.booleanValue ?? (value?.integerValue === undefined ? value?.arrayValue?.values?.map(decode) : Number(value.integerValue));
 
 async function harness() {
-  const state = { user: { uid: 'alice' }, documents: new Map(), transactions: [], failCommit: false };
+  const state = { user: { uid: 'alice' }, authError: null, lastAuthorization: '', documents: new Map(), transactions: [], failCommit: false };
   const put = (collection, id, data) => state.documents.set(`${collection}/${id}`, {
     updateTime: new Date().toISOString(), fields: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, field(value)])),
   });
@@ -33,10 +33,14 @@ async function harness() {
   }, { context });
   const modules = {
     '@/lib/apiSecurity': mock({
-      authenticateRequest: async () => state.user,
+      authenticateRequest: async (request) => {
+        state.lastAuthorization = request.headers.get('authorization') || '';
+        if (state.authError) throw state.authError;
+        return state.user;
+      },
       consumeRateLimit: () => ({ allowed: true }),
       rateLimitResponse: () => Response.json({ error: 'rate limited' }, { status: 429 }),
-      unauthorizedResponse: () => Response.json({ error: 'unauthorized' }, { status: 401 }),
+      unauthorizedResponse: (error) => Response.json({ error: 'unauthorized' }, { status: error?.status || 401 }),
     }),
     '@/lib/firebaseAdmin': mock({
       adminDocumentName: (projectId, collection, id) => `projects/${projectId}/databases/(default)/documents/${collection}/${id}`,
@@ -75,7 +79,7 @@ async function harness() {
   await route.evaluate();
   const post = async (input = { targetUserId: 'bob' }) => {
     const response = await route.namespace.POST(new Request('https://gyopo.test/api/matching/like', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: typeof input === 'string' ? input : JSON.stringify(input),
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer test-token' }, body: typeof input === 'string' ? input : JSON.stringify(input),
     }));
     return { status: response.status, data: await response.json(), cache: response.headers.get('cache-control') };
   };
@@ -86,6 +90,7 @@ test('verified adults get a pending like, and identical retries spend no extra q
   const { state, post } = await harness();
   const first = await post();
   assert.equal(first.status, 200);
+  assert.equal(state.lastAuthorization, 'Bearer test-token');
   assert.equal(first.data.matched, false);
   assert.equal(first.data.remaining, 29);
   assert.equal(first.cache, 'no-store, private');
@@ -93,6 +98,14 @@ test('verified adults get a pending like, and identical retries spend no extra q
   assert.equal(state.documents.get(`matchingLikeDaily/alice-${day}`).fields.count.integerValue, '1');
   assert.equal(state.documents.get('friendships/friend-alice-bob').fields.status.stringValue, 'pending');
   assert.equal(state.transactions[1].writes.length, 0);
+});
+
+test('a temporarily unavailable identity verifier is not reported as a missing login', async () => {
+  const { state, post } = await harness();
+  state.authError = Object.assign(new Error('verification unavailable'), { status: 503 });
+  const result = await post();
+  assert.equal(result.status, 503);
+  assert.equal(state.documents.has(`matchingLikeDaily/alice-${day}`), false);
 });
 
 test('the receiving member creates an accepted match and both directions are charged once', async () => {
