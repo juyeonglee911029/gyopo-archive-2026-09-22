@@ -22,6 +22,8 @@ interface GlobalState {
   
   user: PortalUser | null;
   setUser: (user: GlobalState['user']) => void;
+  unreadFriendCount: number;
+  setUnreadFriendCount: (count: number) => void;
   updateUsdt: (amount: number, txDetails?: Omit<Transaction, 'id' | 'date'>) => void;
   subscribe: () => void;
   
@@ -46,6 +48,8 @@ export const useGlobalStore = create<GlobalState>((set) => ({
   
   user: null,
   setUser: (user) => set({ user }),
+  unreadFriendCount: 0,
+  setUnreadFriendCount: (count) => set({ unreadFriendCount: Math.max(0, Math.floor(count)) }),
   subscribe: () => {
     let nextUser: PortalUser | null = null;
     set((state) => {

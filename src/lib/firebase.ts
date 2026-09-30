@@ -271,11 +271,14 @@ function buildFieldFilter(filter: FirestoreFilter) {
   };
 }
 
-async function runQueryDocuments(collection: string, filters: FirestoreFilter[], token?: string, limit?: number): Promise<FirestoreDocument[]> {
+type FirestoreOrder = { field: string; direction: 'ASCENDING' | 'DESCENDING' };
+
+async function runQueryDocuments(collection: string, filters: FirestoreFilter[], token?: string, limit?: number, orderBy?: FirestoreOrder[]): Promise<FirestoreDocument[]> {
   const structuredQuery: Record<string, unknown> = { from: [{ collectionId: collection }] };
   if (filters.length === 1) structuredQuery.where = buildFieldFilter(filters[0]);
   if (filters.length > 1) structuredQuery.where = { compositeFilter: { op: 'AND', filters: filters.map(buildFieldFilter) } };
   if (limit) structuredQuery.limit = limit;
+  if (orderBy?.length) structuredQuery.orderBy = orderBy.map(({ field, direction }) => ({ field: { fieldPath: field }, direction }));
   const data = await firestoreRequest<Array<{ document?: FirestoreDocument }>>(
     `${firestoreBase}:runQuery`,
     { method: 'POST', body: JSON.stringify({ structuredQuery }) },
@@ -1132,6 +1135,8 @@ export async function listEscrowOrdersForMember(memberId: string, token = getSes
 }
 
 export type FriendStatus = 'pending' | 'accepted' | 'declined';
+export type FriendReadMarker = { userId: string; lastReadAt: string; updatedAt: string };
+
 export async function listFriendMessages<T>(userId: string, friendshipId: string): Promise<Array<T & { id: string }>> {
   const token = await getFreshSessionToken();
   if (!token || getTokenUserId(token) !== userId) throw new Error('다시 로그인해주세요.');
@@ -1140,6 +1145,33 @@ export async function listFriendMessages<T>(userId: string, friendshipId: string
     { field: 'friendshipId', op: 'EQUAL', value: friendshipId },
     { field: 'participants', op: 'ARRAY_CONTAINS', value: userId },
   ], token);
+}
+
+export async function getLatestFriendMessage<T>(userId: string, friendshipId: string): Promise<(T & { id: string }) | null> {
+  const token = await getFreshSessionToken();
+  if (!token || getTokenUserId(token) !== userId) throw new Error('다시 로그인해주세요.');
+  const [document] = await runQueryDocuments('friendMessages', [
+    { field: 'friendshipId', op: 'EQUAL', value: friendshipId },
+    { field: 'participants', op: 'ARRAY_CONTAINS', value: userId },
+  ], token, 1, [{ field: 'createdAt', direction: 'DESCENDING' }]);
+  return document ? decodeDocument<T>(document) : null;
+}
+
+export async function getFriendReadMarker(userId: string, friendshipId: string, token = getSessionToken()): Promise<(FriendReadMarker & { id: string }) | null> {
+  if (!token || getTokenUserId(token) !== userId) throw new Error('다시 로그인해주세요.');
+  return getDocument<FriendReadMarker>(`friendReadMarkers/${friendshipId}/users`, userId, token);
+}
+
+export async function markFriendMessagesRead(userId: string, friendshipId: string, readAt?: string | Date, token = getSessionToken()): Promise<string> {
+  if (!token || getTokenUserId(token) !== userId) throw new Error('다시 로그인해주세요.');
+  const collection = `friendReadMarkers/${friendshipId}/users`;
+  const current = await getDocument<FriendReadMarker>(collection, userId, token);
+  const currentTime = Date.parse(current?.lastReadAt || '');
+  const requestedTime = readAt instanceof Date ? readAt.getTime() : readAt ? Date.parse(readAt) : Date.now();
+  if (!Number.isFinite(requestedTime)) throw new Error('읽음 시간을 확인해주세요.');
+  const lastReadAt = new Date(Math.max(Number.isFinite(currentTime) ? currentTime : 0, requestedTime));
+  await mergeDocument(collection, userId, { userId, lastReadAt, updatedAt: new Date() }, token);
+  return lastReadAt.toISOString();
 }
 
 export type FriendConnection = {
