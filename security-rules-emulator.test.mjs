@@ -213,6 +213,19 @@ test('Firestore emulator authorization regressions', {
     await allowed(remove('friendMessages/alice-message', 'bob'));
   });
 
+  await t.test('friend read markers are private, monotonic, and bound to accepted participants', async () => {
+    const path = 'friendReadMarkers/accepted/users/alice';
+    const marker = { userId: 'alice', lastReadAt: new Date(1_000), updatedAt: new Date(1_000) };
+    await allowed(write(path, marker, 'alice'));
+    await allowed(read(path, 'alice'));
+    await denied(read(path, 'bob'));
+    await denied(write('friendReadMarkers/pending/users/alice', marker, 'alice'));
+    await denied(write('friendReadMarkers/accepted/users/bob', marker, 'alice'));
+    await allowed(write(path, { ...marker, lastReadAt: new Date(2_000), updatedAt: new Date(2_000) }, 'alice'));
+    await denied(write(path, { ...marker, lastReadAt: new Date(1_500), updatedAt: new Date(2_500) }, 'alice'));
+    await denied(remove(path, 'alice'));
+  });
+
   await t.test('WebRTC screen sharing is participant-bound, leased, and exclusive', async () => {
     await seed('profiles/alice', { age: 30 });
     await seed('profiles/bob', { age: 30 });

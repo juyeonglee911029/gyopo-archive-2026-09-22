@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "friendMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "friendshipId", "order": "ASCENDING" },
+        { "fieldPath": "participants", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

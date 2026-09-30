@@ -23,6 +23,7 @@ assert.match(rules, /function hasValidTetrisBet[\s\S]*data\.betAmount is int[\s\
 assert.match(firebase, /const freeMatch = room\.betAmount === 0[\s\S]*!freeMatch && \(!room\.stakeHeldA \|\| !room\.stakeHeldB\)/);
 assert.match(rules, /match \/profiles\/\{userId\}[\s\S]*hasNoServerManagedProfileChange/);
 assert.match(rules, /match \/walletVault\/\{userId\}[\s\S]*request\.auth\.uid == userId/);
+assert.match(rules, /match \/friendReadMarkers\/\{friendshipId\}\/users\/\{userId\}[\s\S]*request\.auth\.uid == userId[\s\S]*belongsToAcceptedFriendship[\s\S]*request\.resource\.data\.lastReadAt >= resource\.data\.lastReadAt/);
 
 for (const collection of ['gameStakes', 'gamePayouts', 'genderMatchStakes', 'premiumSubscriptions', 'transferRequests']) {
   assert.match(firebase, new RegExp(`'${collection}'`), `${collection} must be client-blocked`);

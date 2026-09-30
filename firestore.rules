@@ -646,6 +646,31 @@ service cloud.firestore {
          && resource.data.expiresAt != null
          && request.time >= resource.data.expiresAt;
      }
+      match /friendReadMarkers/{friendshipId}/users/{userId} {
+        function belongsToAcceptedFriendship() {
+          return exists(/databases/$(database)/documents/friendships/$(friendshipId))
+            && get(/databases/$(database)/documents/friendships/$(friendshipId)).data.status == 'accepted'
+            && (get(/databases/$(database)/documents/friendships/$(friendshipId)).data.requesterId == userId
+              || get(/databases/$(database)/documents/friendships/$(friendshipId)).data.addresseeId == userId);
+        }
+        function hasValidReadMarker() {
+          return request.auth != null
+            && request.auth.uid == userId
+            && request.resource.data.keys().hasOnly(['userId', 'lastReadAt', 'updatedAt'])
+            && request.resource.data.keys().hasAll(['userId', 'lastReadAt', 'updatedAt'])
+            && request.resource.data.userId == userId
+            && request.resource.data.lastReadAt is timestamp
+            && request.resource.data.updatedAt is timestamp
+            && belongsToAcceptedFriendship();
+        }
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if hasValidReadMarker();
+        allow update: if hasValidReadMarker()
+          && resource.data.userId == userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastReadAt', 'updatedAt'])
+          && request.resource.data.lastReadAt >= resource.data.lastReadAt;
+        allow delete: if false;
+      }
       match /friendCallRequests/{requestId} {
        allow read: if request.auth != null
          && (resource.data.callerId == request.auth.uid || resource.data.calleeId == request.auth.uid);
