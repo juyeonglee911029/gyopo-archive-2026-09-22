@@ -1,3 +1,6 @@
+import { datingInterestDocumentId, validateDatingProfileDraft } from './dating.ts';
+import type { DatingInterest, DatingProfile, DatingProfileDraft, DatingProfileSummary } from './dating.ts';
+
 const firebaseConfig = {
   apiKey: 'AIzaSyAne5XuEzN2sL3px0oY5Wxsgf3m0nHHIoY',
   authDomain: 'gyopo-live-portal-506019.firebaseapp.com',
@@ -88,6 +91,8 @@ export type PublicProfile = {
   walletPublic?: boolean;
   updatedAt?: string;
 };
+
+export type { DatingInterest, DatingProfile, DatingProfileDraft, DatingProfileSummary } from './dating.ts';
 
 export type WalletLedgerEntry = {
   userId: string;
@@ -629,6 +634,90 @@ export async function createSafetyReport(report: SafetyReport, token = getSessio
 export async function createSafetyAuditLog(data: { actorId: string; action: 'report' | 'block' | 'call_start' | 'call_end'; targetUserId?: string; callId?: string; metadata?: string }, token = getSessionToken()): Promise<void> {
   if (!token || !data.actorId) return;
   await createDocument('safetyAuditLogs', `audit-${crypto.randomUUID()}`, { ...data, metadata: data.metadata?.slice(0, 500) || '', createdAt: new Date() }, token).catch(() => undefined);
+}
+
+export async function getDatingProfile(userId: string, token = getSessionToken()): Promise<DatingProfile | null> {
+  if (!token || getTokenUserId(token) !== userId) throw new Error('로그인 세션을 확인해주세요.');
+  return getDocument<DatingProfile>('datingProfiles', userId, token);
+}
+
+export async function saveDatingProfile(
+  user: PortalUser,
+  draft: DatingProfileDraft,
+  consentConfirmed: boolean,
+  token = getSessionToken(),
+): Promise<void> {
+  if (!token || getTokenUserId(token) !== user.id) throw new Error('로그인 세션을 확인해주세요.');
+  if (!consentConfirmed) throw new Error('프로필 공개와 안전 수칙에 동의해주세요.');
+  const validationError = validateDatingProfileDraft(draft, user);
+  if (validationError) throw new Error(validationError);
+  if (user.gender !== 'male' && user.gender !== 'female') throw new Error('회원 프로필의 성별 정보를 확인해주세요.');
+
+  const existing = await getDocument<DatingProfile>('datingProfiles', user.id, token);
+  const now = new Date();
+  await upsertDocument('datingProfiles', user.id, {
+    displayName: draft.displayName.trim(),
+    image: user.image,
+    age: user.age,
+    gender: user.gender,
+    country: user.country!.trim(),
+    city: draft.city.trim(),
+    bio: draft.bio.trim(),
+    preferredGender: draft.preferredGender,
+    minAge: draft.minAge,
+    maxAge: draft.maxAge,
+    isActive: draft.isActive,
+    consentedAt: existing?.consentedAt || now,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  }, token);
+}
+
+export async function listDatingProfiles(token = getSessionToken()): Promise<DatingProfileSummary[]> {
+  if (!token || !getTokenUserId(token)) throw new Error('로그인 후 회원을 둘러볼 수 있습니다.');
+  const response = await authenticatedFetch('/api/dating/discover', {}, token);
+  const payload = await response.json().catch(() => null) as { profiles?: DatingProfileSummary[]; error?: string } | null;
+  if (!response.ok || !Array.isArray(payload?.profiles)) throw new Error(payload?.error || '회원 프로필을 불러오지 못했습니다.');
+  return payload.profiles;
+}
+
+export async function listDatingInterests(userId: string, token = getSessionToken()): Promise<DatingInterest[]> {
+  if (!token || getTokenUserId(token) !== userId) throw new Error('로그인 세션을 확인해주세요.');
+  const [outgoing, incoming] = await Promise.all([
+    queryDocumentsWhere<Omit<DatingInterest, 'id'>>('datingInterests', [{ field: 'fromId', op: 'EQUAL', value: userId }], token, 200),
+    queryDocumentsWhere<Omit<DatingInterest, 'id'>>('datingInterests', [{ field: 'toId', op: 'EQUAL', value: userId }], token, 200),
+  ]);
+  const byId = new Map<string, DatingInterest>();
+  for (const interest of [...outgoing, ...incoming]) byId.set(interest.id, interest);
+  return [...byId.values()].sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
+}
+
+export async function sendDatingInterest(fromId: string, toId: string, token = getSessionToken()): Promise<void> {
+  if (!token || getTokenUserId(token) !== fromId) throw new Error('로그인 세션을 확인해주세요.');
+  const id = datingInterestDocumentId(fromId, toId);
+  const ownProfile = await getDocument<DatingProfile>('datingProfiles', fromId, token);
+  if (!ownProfile?.isActive) throw new Error('먼저 데이트 프로필 공개를 켜주세요.');
+  const now = new Date();
+  try {
+    await createDocument('datingInterests', id, { fromId, toId, status: 'pending', createdAt: now, updatedAt: now }, token);
+    return;
+  } catch (createError) {
+    const existing = await getDocument<DatingInterest>('datingInterests', id, token).catch(() => null);
+    if (!existing) throw createError;
+    if (existing.status === 'pending' || existing.status === 'accepted') return;
+    if (existing.status !== 'declined') throw createError;
+  }
+  await mergeDocument('datingInterests', id, { status: 'pending', updatedAt: now }, token);
+}
+
+export async function respondToDatingInterest(
+  interest: DatingInterest,
+  status: Extract<DatingInterest['status'], 'accepted' | 'declined'>,
+  token = getSessionToken(),
+): Promise<void> {
+  if (!token || getTokenUserId(token) !== interest.toId) throw new Error('관심 요청 권한을 확인해주세요.');
+  if (interest.status !== 'pending') throw new Error('이미 처리된 관심 요청입니다.');
+  await mergeDocument('datingInterests', interest.id, { status, updatedAt: new Date() }, token);
 }
 
 const TETRIS_LOBBY_ROOM_COUNT = 10;
