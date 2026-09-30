@@ -2,13 +2,14 @@
 
 import { Suspense, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { completeProfileOnboarding, createDocument, deleteDocument, getSessionToken, getStoredSession, hasCompletedProfile, isMasterUser, mergeDocument, queryDocumentsWhere, recordVisit, refreshStoredUser, saveProfile, uploadStorageFile, type Gender } from '@/lib/firebase';
+import { completeProfileOnboarding, createDocument, deleteDocument, deleteProfileGalleryPhoto, getSessionToken, getStoredSession, hasCompletedProfile, isMasterUser, mergeDocument, queryDocumentsWhere, recordVisit, refreshStoredUser, saveProfile, uploadStorageFile, verifyProfileGalleryPhotos, type Gender } from '@/lib/firebase';
 import { detectRegionFromIp, REGIONS } from '@/lib/regions';
 import { getCountryRoute } from '@/lib/regionRoutes';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { trackGrowth } from '@/lib/growthTracking';
 import { startSerialPoll } from '@/lib/rtcSignaling';
 import { DEFAULT_AI_WRITING_PROMPT, MAX_AI_WRITING_PROMPT_LENGTH, normalizeAiWritingPrompt } from '@/lib/writerPreferences';
+import { MAX_PROFILE_PHOTOS, normalizeProfilePhotos } from '@/lib/profilePhotos';
 import StartupExperience from '@/components/layout/StartupExperience';
 import { FloatingRoomTitle, LiveRoomPlayer, RoomChatPanel, type LiveRoom } from '@/app/theater/liveRoomShared';
 
@@ -70,8 +71,9 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileImageProcessing, setProfileImageProcessing] = useState(false);
   const [profileError, setProfileError] = useState('');
-  const [profileForm, setProfileForm] = useState({ name: '', country: '', image: '', defaultAiWritingPrompt: DEFAULT_AI_WRITING_PROMPT });
+  const [profileForm, setProfileForm] = useState({ name: '', country: '', image: '', profilePhotos: [] as string[], defaultAiWritingPrompt: DEFAULT_AI_WRITING_PROMPT });
   const [profileImageBlob, setProfileImageBlob] = useState<Blob | null>(null);
+  const [pendingProfilePhotoDeletes, setPendingProfilePhotoDeletes] = useState<string[]>([]);
   const [floatingRoom, setFloatingRoom] = useState<LiveRoom | null>(null);
   const [floatingMinimized, setFloatingMinimized] = useState(false);
   const [floatingOffset, setFloatingOffset] = useState({ x: 0, y: 0 });
@@ -181,7 +183,7 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     const openProfile = () => {
       if (!user) return;
-        setProfileForm({ name: user.name, country: user.country || '', image: user.image, defaultAiWritingPrompt: normalizeAiWritingPrompt(user.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT });
+        setProfileForm({ name: user.name, country: user.country || '', image: user.image, profilePhotos: normalizeProfilePhotos(user.profilePhotos), defaultAiWritingPrompt: normalizeAiWritingPrompt(user.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT });
       setProfileImageBlob(null);
       setProfileError('');
       setProfileOpen(true);
@@ -238,6 +240,10 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   const savedAge = user?.age && user.age >= 13 ? String(user.age) : '';
   const onboardingRequired = Boolean(sessionChecked && user && !hasCompletedProfile(user));
   const blocked = onboardingRequired;
+
+  useEffect(() => {
+    setPendingProfilePhotoDeletes([]);
+  }, [user?.id]);
 
   useEffect(() => {
     setGender(savedGender);
@@ -300,6 +306,28 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
     }
   };
 
+  const handleProfilePhotos = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const files = Array.from(input.files || []);
+    input.value = '';
+    if (files.length === 0) return;
+    const remaining = MAX_PROFILE_PHOTOS - profileForm.profilePhotos.length;
+    if (files.length > remaining) {
+      setProfileError(`프로필 공개 사진은 최대 ${MAX_PROFILE_PHOTOS}장까지 등록할 수 있습니다.`);
+      return;
+    }
+    setProfileImageProcessing(true);
+    try {
+      const images = await Promise.all(files.map(resizeProfileImage));
+      setProfileForm((current) => ({ ...current, profilePhotos: normalizeProfilePhotos([...current.profilePhotos, ...images.map((image) => image.preview)]) }));
+      setProfileError('');
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : '프로필 사진을 불러오지 못했습니다.');
+    } finally {
+      setProfileImageProcessing(false);
+    }
+  };
+
   const saveEditableProfile = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!user) return;
@@ -322,9 +350,26 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
       const image = imageBlob
         ? await uploadStorageFile(imageBlob, `profiles/${user.id}/${crypto.randomUUID()}.jpg`, token)
         : profileForm.image;
-      const nextUser = { ...user, name, country, image, defaultAiWritingPrompt: normalizeAiWritingPrompt(profileForm.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT };
+      const oldPhotos = normalizeProfilePhotos(user.profilePhotos);
+      const profilePhotos = await Promise.all(normalizeProfilePhotos(profileForm.profilePhotos).map(async (photo) => {
+        if (!photo.startsWith('data:image/')) return photo;
+        const photoBlob = await fetch(photo).then((response) => response.blob());
+        return uploadStorageFile(photoBlob, `profiles/${user.id}/gallery/${crypto.randomUUID()}.jpg`, token);
+      }));
+      const nextUser = { ...user, name, country, image, profilePhotos, defaultAiWritingPrompt: normalizeAiWritingPrompt(profileForm.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT };
+      setProfileForm((current) => ({ ...current, image, profilePhotos }));
+      await verifyProfileGalleryPhotos(profilePhotos, token);
       await saveProfile(nextUser, token);
       setUser(nextUser);
+      const photosToDelete = [...new Set([...pendingProfilePhotoDeletes, ...oldPhotos.filter((photo) => !profilePhotos.includes(photo))])];
+      setPendingProfilePhotoDeletes(photosToDelete);
+      const deleteResults = await Promise.allSettled(photosToDelete.map((photo) => deleteProfileGalleryPhoto(photo, user.id, token)));
+      const failedDeletes = photosToDelete.filter((_, index) => deleteResults[index].status === 'rejected');
+      setPendingProfilePhotoDeletes(failedDeletes);
+      if (failedDeletes.length > 0) {
+        setProfileError(`프로필은 저장했지만 이전 공개 사진 ${failedDeletes.length}장을 삭제하지 못했습니다. 저장 버튼을 다시 눌러 삭제를 재시도해주세요.`);
+        return;
+      }
       setProfileImageBlob(null);
       setProfileOpen(false);
     } catch (error) {
@@ -445,14 +490,23 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
               <div className="flex items-center gap-4 bg-white/[.03] p-4">
                 <img src={profileForm.image} alt="Profile preview" className="h-20 w-20 rounded-none object-cover" />
                 <div><p className="text-sm font-black">프로필 사진 / Photo</p><p className="mt-1 text-xs leading-5 text-slate-500">정사각형으로 자동 정리됩니다. JPG, PNG, GIF 지원.</p><label className={`mt-3 inline-flex rounded-none bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 hover:bg-cyan-200 ${profileImageProcessing || profileSaving ? 'cursor-wait opacity-50' : 'cursor-pointer'}`}>사진 선택<input type="file" accept="image/*" disabled={profileImageProcessing || profileSaving} onChange={handleProfileImage} className="sr-only" /></label></div>
-            </div>
+             </div>
+             <div className="bg-white/[.03] p-4">
+               <div className="flex flex-wrap items-start justify-between gap-3">
+                 <div><p className="text-sm font-black">공개 프로필 사진 / Public gallery</p><p className="mt-1 text-xs leading-5 text-slate-400">최대 {MAX_PROFILE_PHOTOS}장 · 기본 프로필 사진은 개수에서 제외됩니다. 업로드한 갤러리는 누구나 볼 수 있습니다. 랜덤 매칭은 양쪽 모두 3장 이상부터 가능하며, 내 사진이 3–4장이면 상대 사진 3장, 5장이면 전체 사진을 표시합니다.</p></div>
+                 <span className="shrink-0 text-xs font-black text-cyan-200">{profileForm.profilePhotos.length}/{MAX_PROFILE_PHOTOS}</span>
+               </div>
+               {profileForm.profilePhotos.length > 0 && <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-5">{profileForm.profilePhotos.map((photo, index) => <div key={`${photo}-${index}`} className="relative aspect-square overflow-hidden bg-black/20"><img src={photo} alt={`공개 프로필 사진 ${index + 1}`} className="h-full w-full object-cover" /><button type="button" disabled={profileSaving || profileImageProcessing} onClick={() => setProfileForm((current) => ({ ...current, profilePhotos: current.profilePhotos.filter((_, photoIndex) => photoIndex !== index) }))} className="absolute right-1 top-1 bg-black/75 px-2 py-1 text-[10px] font-black text-white disabled:opacity-50">삭제</button></div>)}</div>}
+               <label className={`mt-3 inline-flex rounded-none border border-cyan-300/40 px-3 py-2 text-xs font-black text-cyan-100 hover:bg-cyan-300/10 ${profileImageProcessing || profileSaving || profileForm.profilePhotos.length >= MAX_PROFILE_PHOTOS ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>공개 사진 추가<input type="file" accept="image/*" multiple disabled={profileImageProcessing || profileSaving || profileForm.profilePhotos.length >= MAX_PROFILE_PHOTOS} onChange={handleProfilePhotos} className="sr-only" /></label>
+             </div>
              <label className="block text-sm font-bold text-slate-200">이름 / Name<input value={profileForm.name} onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))} maxLength={40} className="mt-2 w-full rounded-none border-0 bg-[#070b17] px-4 py-3 text-white outline-none focus:bg-[#0b1221]" /></label>
                <label className="block text-sm font-bold text-slate-200">국가·지역 / Country<input disabled value={user.country || profileForm.country} className="mt-2 w-full cursor-not-allowed border-0 bg-white/5 px-4 py-3 text-slate-500" /></label>
               <label className="block text-sm font-bold text-slate-200">AI 글쓰기 기본 지침 <span className="font-normal text-slate-500">비공개 · {profileForm.defaultAiWritingPrompt.length}/{MAX_AI_WRITING_PROMPT_LENGTH}</span><textarea value={profileForm.defaultAiWritingPrompt} onChange={(event) => setProfileForm((current) => ({ ...current, defaultAiWritingPrompt: event.target.value }))} maxLength={MAX_AI_WRITING_PROMPT_LENGTH} rows={4} placeholder="예: 교민 독자에게 친절하고 간결한 말투, 확인되지 않은 정보는 추측하지 말고 표시" className="mt-2 w-full resize-y border-0 bg-[#070b17] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-slate-600 focus:bg-[#0b1221]" /><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">커뮤니티·뉴스·생활 글의 AI 초안에만 사용됩니다. 비밀번호나 민감한 개인정보는 넣지 마세요.</span></label>
               <div className="grid gap-3 sm:grid-cols-2"><label className="block text-sm font-bold text-slate-200">성별 / Gender<input disabled value={user.gender === 'male' ? '남성 / Male' : '여성 / Female'} className="mt-2 w-full cursor-not-allowed rounded-none border-0 bg-white/5 px-4 py-3 text-slate-500" /></label><label className="block text-sm font-bold text-slate-200">나이 / Age<input disabled value={user.age ? `${user.age}세 / years` : ''} className="mt-2 w-full cursor-not-allowed rounded-none border-0 bg-white/5 px-4 py-3 text-slate-500" /></label></div>
               <p className="bg-amber-300/[.06] p-3 text-xs leading-5 text-amber-100/70">성별·나이·거주 국가는 최초 가입 시 저장되며 변경할 수 없습니다. Gender, age, and country are locked after signup.</p>
-             {profileError && <p role="alert" className="bg-rose-400/10 p-3 text-sm font-bold text-rose-200">{profileError}</p>}
-              <button disabled={profileSaving || profileImageProcessing} className="w-full rounded-none bg-cyan-300 py-3.5 font-black text-slate-950 hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-50">{profileImageProcessing ? '사진 처리 중... / Processing photo...' : profileSaving ? '저장 중... / Saving...' : '프로필 저장 / Save profile'}</button>
+              {profileError && <p role="alert" className="bg-rose-400/10 p-3 text-sm font-bold text-rose-200">{profileError}</p>}
+              {pendingProfilePhotoDeletes.length > 0 && <p role="status" className="bg-amber-300/[.06] p-3 text-xs leading-5 text-amber-100">이전 공개 사진 {pendingProfilePhotoDeletes.length}장의 삭제 확인이 남아 있습니다. 저장을 다시 누르면 재시도합니다.</p>}
+               <button disabled={profileSaving || profileImageProcessing} className="w-full rounded-none bg-cyan-300 py-3.5 font-black text-slate-950 hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-50">{profileImageProcessing ? '사진 처리 중... / Processing photo...' : profileSaving ? '저장 중... / Saving...' : '프로필 저장 / Save profile'}</button>
           </form>
         </section>
       </div>}

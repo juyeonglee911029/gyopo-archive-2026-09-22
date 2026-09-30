@@ -111,6 +111,25 @@ export function mergeAdminFields(document: AdminFirestoreDocument, fields: Recor
   return { ...(document.fields || {}), ...fields };
 }
 
+export function parseBatchGet(body: string, requestedNames: string[]): Array<{ found?: AdminFirestoreDocument; missing?: string }> {
+  let entries: unknown;
+  try {
+    entries = JSON.parse(body);
+  } catch {
+    entries = body.trim().split(/\r?\n/).map((line) => JSON.parse(line));
+  }
+  if (!Array.isArray(entries)) entries = [entries];
+  const names = new Set(requestedNames);
+  const seen = new Set<string>();
+  for (const entry of entries as Array<{ found?: AdminFirestoreDocument; missing?: string }>) {
+    const name = entry?.found?.name || entry?.missing;
+    if (typeof name !== 'string' || !names.has(name) || seen.has(name)) throw new Error('Firebase 거래 응답의 문서 목록이 올바르지 않습니다.');
+    seen.add(name);
+  }
+  if (seen.size !== names.size) throw new Error('Firebase 거래 응답에 누락된 문서가 있습니다.');
+  return entries as Array<{ found?: AdminFirestoreDocument; missing?: string }>;
+}
+
 export async function runFirestoreTransaction<T>(
   documents: TransactionDocument[],
   plan: (context: { projectId: string; get: (document: TransactionDocument) => AdminFirestoreDocument | null }) => { writes: FirestoreWrite[]; result: T },
@@ -126,25 +145,39 @@ export async function runFirestoreTransaction<T>(
     const beginBody = await begin.json().catch(() => null) as { transaction?: string; error?: { message?: string } } | null;
     if (!begin.ok || !beginBody?.transaction) throw new Error(beginBody?.error?.message || 'Firebase 거래를 시작하지 못했습니다.');
 
-    const batch = await fetch(`https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents:batchGet`, {
+    const rollback = () => fetch(`https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents:rollback`, {
       method: 'POST',
       headers: { authorization: `Bearer ${auth.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ documents: names, transaction: beginBody.transaction }),
-    });
-    const batchBody = await batch.json().catch(() => null) as Array<{ found?: AdminFirestoreDocument; missing?: { name?: string } }> | { error?: { message?: string } } | null;
-    if (!batch.ok || !Array.isArray(batchBody)) throw new Error((batchBody && 'error' in batchBody ? batchBody.error?.message : '') || 'Firebase 거래 문서를 읽지 못했습니다.');
-    const found = new Map(batchBody.filter((entry) => entry.found?.name).map((entry) => [entry.found!.name!, entry.found!]));
-    const get = (document: TransactionDocument) => found.get(transactionDocumentName(auth.projectId, document)) || null;
-    const prepared = plan({ projectId: auth.projectId, get });
-    const commit = await fetch(`https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents:commit`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${auth.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ writes: prepared.writes, transaction: beginBody.transaction }),
-    });
-    if (commit.ok) return prepared.result;
-    const body = await commit.text().catch(() => '');
-    if (attempt < 2 && /ABORTED|FAILED_PRECONDITION|409/i.test(body)) continue;
-    throw new Error(body || 'Firebase 거래를 완료하지 못했습니다.');
+      body: JSON.stringify({ transaction: beginBody.transaction }),
+      signal: AbortSignal.timeout(2_000),
+    }).catch(() => undefined);
+    try {
+      const batch = await fetch(`https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents:batchGet`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${auth.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ documents: names, transaction: beginBody.transaction }),
+      });
+      if (!batch.ok) throw new Error('Firebase 거래 문서를 읽지 못했습니다.');
+      const batchBody = parseBatchGet(await batch.text(), names);
+      const found = new Map(batchBody.filter((entry) => entry.found?.name).map((entry) => [entry.found!.name!, entry.found!]));
+      const get = (document: TransactionDocument) => found.get(transactionDocumentName(auth.projectId, document)) || null;
+      const prepared = plan({ projectId: auth.projectId, get });
+      const commit = await fetch(`https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents:commit`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${auth.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ writes: prepared.writes, transaction: beginBody.transaction }),
+      });
+      if (commit.ok) return prepared.result;
+      const body = await commit.text().catch(() => '');
+      if (attempt < 2 && /ABORTED|FAILED_PRECONDITION|409/i.test(body)) {
+        await rollback();
+        continue;
+      }
+      throw new Error(body || 'Firebase 거래를 완료하지 못했습니다.');
+    } catch (error) {
+      await rollback();
+      throw error;
+    }
   }
   throw new Error('Firebase 거래 재시도 횟수를 초과했습니다.');
 }

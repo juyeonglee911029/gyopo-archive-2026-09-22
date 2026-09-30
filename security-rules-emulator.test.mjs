@@ -87,6 +87,12 @@ test('Firestore emulator authorization regressions', {
   }
   const fields = (data) => Object.fromEntries(Object.entries(data).map(([key, data]) => [key, value(data)]));
   const write = (path, data, uid) => request(`${documents}/${path}`, 'PATCH', { fields: fields(data) }, uid);
+  const commit = (writes, uid) => request(`${documents}:commit`, 'POST', {
+    writes: writes.map(({ path, data }) => ({
+      update: { name: `projects/${projectId}/databases/(default)/documents/${path}`, fields: fields(data) },
+      currentDocument: { exists: true },
+    })),
+  }, uid);
   const writeMedia = (path, data, uid) => {
     const media = Object.fromEntries(Object.entries(data).filter(([key]) => key.startsWith('media') || key === 'systemAudio'));
     delete media.mediaUpdatedAt;
@@ -101,6 +107,11 @@ test('Firestore emulator authorization regressions', {
   };
   const remove = (path, uid) => request(`${documents}/${path}`, 'DELETE', undefined, uid);
   const read = (path, uid) => request(`${documents}/${path}`, 'GET', undefined, uid);
+  const query = (collection, field, value, uid) => request(`${documents}:runQuery`, 'POST', {
+    structuredQuery: { from: [{ collectionId: collection }], where: { fieldFilter: {
+      field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: value },
+    } } },
+  }, uid);
   async function allowed(result) {
     const response = await result;
     assert.ok(response.status >= 200 && response.status < 300, JSON.stringify(response));
@@ -153,7 +164,7 @@ test('Firestore emulator authorization regressions', {
   });
 
   await t.test('live-room host, offline takeover, stale takeover, and master flows remain unchanged', async () => {
-    const room = { hostId: 'host', status: 'live', updatedAt: new Date() };
+    const room = { hostId: 'host', title: 'Test room', status: 'live', updatedAt: new Date() };
     await allowed(write('liveRooms/lifecycle', room, 'host'));
     await allowed(write('liveRooms/lifecycle', { ...room, title: 'Host edit' }, 'host'));
     await denied(write('liveRooms/lifecycle', { ...room, hostId: 'stranger' }, 'stranger'));
@@ -210,6 +221,18 @@ test('Firestore emulator authorization regressions', {
     await denied(write('friendMessages/missing', { ...message, friendshipId: 'missing' }, 'alice'));
     await denied(write('friendMessages/guest', message));
     await denied(write('friendMessages/alice-message', { ...message, text: 'edited' }, 'alice'));
+    await seed('friendships/friend-alice-bob', { requesterId: 'alice', addresseeId: 'bob', status: 'accepted' });
+    const callRequest = { callerId: 'alice', calleeId: 'bob', status: 'pending' };
+    await allowed(write('friendCallRequests/friend-call', callRequest, 'alice'));
+    await denied(write('friendCallRequests/not-a-friend', { ...callRequest, calleeId: 'stranger' }, 'alice'));
+    await seed('userBlocks/alice-bob', { ownerId: 'alice', blockedUserId: 'bob', blockedName: 'Bob', createdAt: new Date() });
+    await denied(write('friendCallRequests/blocked', callRequest, 'alice'));
+    await denied(write('friendMessages/blocked', message, 'bob'));
+    await allowed(remove('userBlocks/alice-bob', 'alice'));
+    await seed('accountModeration/alice', { status: 'banned' });
+    await denied(write('friendCallRequests/banned', callRequest, 'alice'));
+    await denied(write('friendMessages/banned', message, 'alice'));
+    await seed('accountModeration/alice', { status: 'active' });
     await allowed(remove('friendMessages/alice-message', 'bob'));
   });
 
@@ -227,7 +250,7 @@ test('Firestore emulator authorization regressions', {
       mediaUpdatedAt: Date.now(),
     });
 
-    await allowed(write('webrtcCalls/media-call', call, 'alice'));
+    await seed('webrtcCalls/media-call', call);
     await denied(write('webrtcCalls/extra-metadata', { ...call, callId: 'extra-metadata', injected: true }, 'alice'));
     await denied(writeMedia('webrtcCalls/media-call', screenState(null, 'alice-lease', true), 'alice'));
     await allowed(writeMedia('webrtcCalls/media-call', screenState('alice', 'alice-lease', true), 'alice'));
@@ -290,7 +313,8 @@ test('Firestore emulator authorization regressions', {
   });
 
   await t.test('ordinary profile edits remain valid; member balance and subscription changes are denied', async () => {
-    const profile = { name: 'Alice', email: 'alice@example.invalid', image: '', defaultAiWritingPrompt: 'Warm, concise style', usdtBalance: 0, usdBalance: 0, isSubscribed: false, updatedAt: new Date() };
+    const profile = { name: 'Alice', email: 'alice@example.invalid', image: '', gender: 'female', country: 'Netherlands', age: 30, defaultAiWritingPrompt: 'Warm, concise style', usdtBalance: 0, usdBalance: 0, isSubscribed: false, updatedAt: new Date() };
+    await seed('profiles/alice', profile);
     await allowed(write('profiles/alice', profile, 'alice'));
     await allowed(write('profiles/alice', { ...profile, name: 'Alice updated' }, 'alice'));
     await allowed(write('profiles/alice', { ...profile, defaultAiWritingPrompt: 'Updated preference' }, 'alice'));
@@ -301,6 +325,192 @@ test('Firestore emulator authorization regressions', {
     delete legacy.usdBalance;
     await seed('profiles/legacy', legacy);
     await allowed(write('profiles/legacy', profile, 'legacy'));
+  });
+
+  await t.test('public profile galleries require a server-verified Firebase Storage registry', async () => {
+    const bucket = 'gyopo-live-portal-506019.firebasestorage.app';
+    const photos = (userId, count) => Array.from({ length: count }, (_, index) => {
+      const file = `profiles/${userId}/gallery/00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}.jpg`;
+      return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(file)}?alt=media&token=gallerytoken_${String(index + 1).padStart(24, '0')}`;
+    });
+    const urls = photos('photo-member', 5);
+    await seed('verifiedProfilePhotos/photo-member', { profilePhotos: urls, updatedAt: new Date() });
+    const profile = {
+      name: 'Photo Member', email: 'photo@example.invalid', image: 'https://photos.example/avatar.jpg', profilePhotos: urls,
+      usdtBalance: 0, usdBalance: 0, isSubscribed: false, gender: 'female', country: 'Netherlands', age: 30, updatedAt: new Date(),
+    };
+    const publicProfile = {
+      name: profile.name, image: profile.image, profilePhotos: urls, gender: profile.gender,
+      country: profile.country, age: profile.age, isSubscribed: false, isPublic: true, updatedAt: new Date(),
+    };
+    await allowed(write('profiles/photo-member', profile, 'photo-member'));
+    await allowed(write('publicProfiles/photo-member', publicProfile, 'photo-member'));
+    await allowed(read('publicProfiles/photo-member'));
+    await allowed(read('publicProfiles/photo-member', 'visitor'));
+    await denied(read('verifiedProfilePhotos/photo-member', 'photo-member'));
+    await denied(write('verifiedProfilePhotos/photo-member', { profilePhotos: urls, updatedAt: new Date() }, 'photo-member'));
+    await denied(write('profiles/photo-member', { ...profile, profilePhotos: [...urls, photos('photo-member', 1)[0]] }, 'photo-member'));
+    await denied(write('profiles/photo-member', { ...profile, profilePhotos: ['data:image/jpeg;base64,private-preview'] }, 'photo-member'));
+    await denied(write('profiles/photo-member', { ...profile, profilePhotos: [...urls.slice(0, 2), urls[0]] }, 'photo-member'));
+    await denied(write('profiles/photo-member', { ...profile, profilePhotos: ['http://photos.example/photo.jpg'] }, 'photo-member'));
+    await denied(write('profiles/photo-member', { ...profile, profilePhotos: ['https://photos.example/copied.jpg'] }, 'photo-member'));
+    await denied(write('profiles/photo-member', { ...profile, profilePhotos: [photos('another-member', 1)[0]] }, 'photo-member'));
+    await denied(write('publicProfiles/photo-member', { ...publicProfile, profilePhotos: urls.slice(0, 4) }, 'photo-member'));
+  });
+
+  await t.test('friend and WebRTC matching require verified eligibility and reciprocal room membership', async () => {
+    const bucket = 'gyopo-live-portal-506019.firebasestorage.app';
+    const photos = (userId, count) => Array.from({ length: count }, (_, index) => {
+      const file = `profiles/${userId}/gallery/00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}.jpg`;
+      return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(file)}?alt=media&token=gallerytoken_${String(index + 1).padStart(24, '0')}`;
+    });
+    const publicProfile = (name, profilePhotos) => ({
+      name, image: `https://photos.example/${name}.jpg`, profilePhotos, gender: 'female', country: 'Netherlands',
+      age: 30, isSubscribed: false, isPublic: true, updatedAt: new Date(),
+    });
+    const seedGallery = async (userId, name, count) => {
+      const gallery = photos(userId, count);
+      await seed(`verifiedProfilePhotos/${userId}`, { profilePhotos: gallery, updatedAt: new Date() });
+      await seed(`publicProfiles/${userId}`, publicProfile(name, gallery));
+      return gallery;
+    };
+    await seed('profiles/alice', { age: 30 });
+    await seed('profiles/bob', { age: 30 });
+    await seed('profiles/carol', { age: 30 });
+    await seedGallery('alice', 'Alice', 2);
+    await seedGallery('bob', 'Bob', 2);
+    await seedGallery('carol', 'Carol', 2);
+
+    const friendship = { requesterId: 'alice', addresseeId: 'bob', status: 'pending', createdAt: new Date(), updatedAt: new Date() };
+    await denied(write('friendships/friend-alice-bob', friendship, 'alice'));
+    await seedGallery('alice', 'Alice', 3);
+    await denied(write('friendships/friend-alice-bob', friendship, 'alice'));
+    await seedGallery('bob', 'Bob', 3);
+    await denied(write('friendships/friend-alice-bob', friendship, 'alice'));
+    await seed('friendships/friend-alice-bob', friendship);
+    await denied(write('friendships/friend-alice-bob', { ...friendship, status: 'accepted' }, 'alice'));
+    await denied(write('friendships/friend-alice-bob', { ...friendship, status: 'accepted' }, 'bob'));
+    await denied(remove('friendships/friend-alice-bob', 'alice'));
+    await denied(write('friendships/fake-id', friendship, 'alice'));
+    await denied(write('friendships/friend-alice-bob', { ...friendship, status: 'declined' }, 'bob'));
+
+    const pendingCarol = { requesterId: 'alice', addresseeId: 'carol', status: 'pending', createdAt: new Date(), updatedAt: new Date() };
+    await seed('friendships/friend-alice-carol', pendingCarol);
+    await denied(write('friendships/friend-alice-carol', { ...pendingCarol, status: 'accepted' }, 'alice'));
+    await denied(write('friendships/friend-alice-carol', { ...pendingCarol, status: 'accepted' }, 'carol'));
+    await denied(write('friendships/friend-alice-carol', { ...pendingCarol, status: 'declined' }, 'carol'));
+
+    const queueEntry = (userId, queueKind = 'random', targetUserId, gameType, gameRoomId) => ({
+      userId, name: userId, image: '', age: 30, status: 'waiting', queueKind,
+      ...(targetUserId ? { targetUserId } : {}),
+      ...(gameType ? { gameType, gameRoomId } : {}),
+    });
+    await seed('profiles/dave', { age: 30 });
+    await seedGallery('dave', 'Dave', 3);
+    const legacyFriendship = { requesterId: 'alice', addresseeId: 'dave', status: 'pending', createdAt: new Date(), updatedAt: new Date() };
+    await denied(write('webrtcCalls/friend-alice-dave', legacyFriendship, 'alice'));
+    await seed('webrtcCalls/friend-alice-dave', legacyFriendship);
+    await allowed(read('webrtcCalls/friend-alice-dave', 'dave'));
+    await allowed(query('webrtcCalls', 'addresseeId', 'dave', 'dave'));
+    await allowed(query('webrtcCalls', 'requesterId', 'alice', 'alice'));
+    await denied(read('webrtcCalls/friend-alice-dave', 'stranger'));
+    await denied(write('webrtcCalls/friend-alice-dave', { ...legacyFriendship, status: 'accepted' }, 'alice'));
+    await denied(write('webrtcCalls/friend-alice-dave', { ...legacyFriendship, status: 'accepted' }, 'dave'));
+    await denied(remove('webrtcCalls/friend-alice-dave', 'dave'));
+    await seed('webrtcCalls/friend-alice-dave', { ...legacyFriendship, status: 'accepted' });
+    await allowed(write('webrtcQueue/alice', queueEntry('alice', 'friend', 'dave'), 'alice'));
+    await seed('friendships/friend-alice-dave', { ...legacyFriendship, status: 'pending' });
+    await denied(write('webrtcQueue/alice', queueEntry('alice', 'friend', 'dave'), 'alice'));
+    await allowed(remove('webrtcQueue/alice', 'alice'));
+    await seedGallery('alice', 'Alice', 2);
+    await denied(write('webrtcQueue/alice', queueEntry('alice'), 'alice'));
+    await seedGallery('alice', 'Alice', 3);
+    await allowed(write('webrtcQueue/alice', queueEntry('alice'), 'alice'));
+    await allowed(write('webrtcQueue/bob', queueEntry('bob'), 'bob'));
+    await denied(write('webrtcQueue/alice', {
+      ...queueEntry('alice'), status: 'matched', matchedBy: 'alice', callId: 'self-match',
+      opponent: { id: 'bob', name: 'Bob', image: '' },
+    }, 'alice'));
+
+    const matchRows = (callId, first, second) => [
+      { path: `webrtcQueue/${first.userId}`, data: {
+        ...first, status: 'matched', matchedBy: 'alice', callId,
+        opponent: { id: second.userId, name: second.name, image: '' },
+      } },
+      { path: `webrtcQueue/${second.userId}`, data: {
+        ...second, status: 'matched', matchedBy: 'alice', callId,
+        opponent: { id: first.userId, name: first.name, image: '' },
+      } },
+    ];
+    await seedGallery('bob', 'Bob', 2);
+    await denied(commit(matchRows('photo-match', queueEntry('alice'), queueEntry('bob')), 'alice'));
+    await seedGallery('bob', 'Bob', 3);
+    const photoMatch = matchRows('photo-match', queueEntry('alice'), queueEntry('bob'));
+    await allowed(commit(photoMatch, 'alice'));
+    await allowed(write('webrtcCalls/photo-match', {
+      callId: 'photo-match', callerId: 'alice', calleeId: 'bob', status: 'offer', offer: { type: 'offer', sdp: 'x' },
+    }, 'alice'));
+    await denied(write('webrtcCalls/unpaired-call', {
+      callId: 'unpaired-call', callerId: 'alice', calleeId: 'bob', status: 'offer', offer: { type: 'offer', sdp: 'x' },
+    }, 'alice'));
+
+    await seedGallery('alice', 'Alice', 2);
+    await seedGallery('bob', 'Bob', 2);
+    await seed('friendships/friend-alice-bob', { ...friendship, status: 'accepted' });
+    const aliceFriendQueue = queueEntry('alice', 'friend', 'bob');
+    const bobFriendQueue = queueEntry('bob', 'friend', 'alice');
+    await allowed(write('webrtcQueue/alice', aliceFriendQueue, 'alice'));
+    await allowed(write('webrtcQueue/bob', bobFriendQueue, 'bob'));
+    await allowed(commit(matchRows('friend-match', aliceFriendQueue, bobFriendQueue), 'alice'));
+
+    await seed('tetrisRoomAccess/tetris-duel', {
+      roomNumber: 1, matchId: 'tetris-duel', playerAId: 'alice', playerBId: 'bob', active: true, updatedAt: new Date(),
+    });
+    await seed('tetrisRooms/tetris-duel', { matchId: 'tetris-duel', playerAId: 'alice', playerBId: 'bob', phase: 'betting' });
+    const aliceTetrisQueue = queueEntry('alice', 'game', 'bob', 'tetris', 'tetris-duel');
+    const bobTetrisQueue = queueEntry('bob', 'game', 'alice', 'tetris', 'tetris-duel');
+    await allowed(write('webrtcQueue/alice', aliceTetrisQueue, 'alice'));
+    await allowed(write('webrtcQueue/bob', bobTetrisQueue, 'bob'));
+    await seed('profiles/charlie', { age: 30 });
+    await denied(write('webrtcQueue/charlie', queueEntry('charlie', 'game', 'bob', 'tetris', 'tetris-duel'), 'charlie'));
+    await allowed(commit(matchRows('tetris-match', aliceTetrisQueue, bobTetrisQueue), 'alice'));
+    await allowed(write('webrtcCalls/webrtc-end-game-tetris-duel', {
+      callerId: 'alice', calleeId: 'bob', queueKind: 'game', targetUserId: 'bob',
+      gameType: 'tetris', gameRoomId: 'tetris-duel', status: 'ended', endedAt: new Date(),
+    }, 'alice'));
+
+    await seed('brickBreakerRooms/brick-duel', { host: 'alice', guest: 'bob', status: 'playing' });
+    const aliceBrickQueue = queueEntry('alice', 'game', 'bob', 'brickBreaker', 'brick-duel');
+    const bobBrickQueue = queueEntry('bob', 'game', 'alice', 'brickBreaker', 'brick-duel');
+    await allowed(write('webrtcQueue/alice', aliceBrickQueue, 'alice'));
+    await allowed(write('webrtcQueue/bob', bobBrickQueue, 'bob'));
+    await allowed(commit(matchRows('brick-match', aliceBrickQueue, bobBrickQueue), 'alice'));
+
+    await seed('profiles/direct-caller', { age: 30 });
+    await denied(write('webrtcQueue/direct-caller', queueEntry('direct-caller', 'friend', 'existing-friend'), 'direct-caller'));
+    await denied(write('webrtcCalls/webrtc-end-friend-unrelated', {
+      callerId: 'alice', calleeId: 'charlie', queueKind: 'friend', targetUserId: 'charlie', status: 'ended', endedAt: new Date(),
+    }, 'alice'));
+  });
+
+  await t.test('matching daily quota cannot be read or changed by members and blocks use canonical IDs', async () => {
+    await seed('matchingLikeDaily/alice-20260930', { userId: 'alice', day: '20260930', count: 30 });
+    await denied(read('matchingLikeDaily/alice-20260930', 'alice'));
+    await denied(write('matchingLikeDaily/alice-20260930', { userId: 'alice', day: '20260930', count: 0 }, 'alice'));
+    await denied(remove('matchingLikeDaily/alice-20260930', 'alice'));
+    const block = { ownerId: 'alice', blockedUserId: 'bob', blockedName: 'Bob', createdAt: new Date() };
+    await denied(write('userBlocks/arbitrary', block, 'alice'));
+    await allowed(write('userBlocks/alice-bob', block, 'alice'));
+  });
+
+  await t.test('Tetris room access requires the second player to join as themself', async () => {
+    const access = { roomNumber: 2, matchId: 'joined-tetris', playerAId: 'alice', playerBId: null, active: true, updatedAt: new Date() };
+    await allowed(write('tetrisRoomAccess/joined-tetris', access, 'alice'));
+    await denied(write('tetrisRoomAccess/joined-tetris', { ...access, playerBId: 'bob' }, 'alice'));
+    const joined = { ...access, playerBId: 'bob', updatedAt: new Date() };
+    await allowed(write('tetrisRoomAccess/joined-tetris', joined, 'bob'));
+    await denied(write('tetrisRoomAccess/joined-tetris', { ...joined, playerBId: 'charlie' }, 'alice'));
+    await allowed(write('tetrisRoomAccess/joined-tetris', { ...joined, active: false }, 'bob'));
   });
 
   await t.test('existing Tetris members can sync but cannot create, change, or remove settlement fields', async () => {

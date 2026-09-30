@@ -1,0 +1,36 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isOwner(userId) {
+      return bucket == 'gyopo-live-portal-506019.firebasestorage.app'
+        && request.auth != null && request.auth.uid == userId;
+    }
+    function isSmallImage() {
+      return request.resource.size > 0 && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|gif|webp|avif|heic|heif|bmp)');
+    }
+    function isUuidJpeg(fileName) {
+      return fileName.matches('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\.jpg$');
+    }
+
+    match /profiles/{userId}/gallery/{fileName} {
+      allow create: if resource == null && isOwner(userId) && isUuidJpeg(fileName)
+        && request.resource.contentType == 'image/jpeg' && isSmallImage();
+      allow read, update, delete: if false;
+    }
+    match /profiles/{userId}/{fileName} {
+      allow create: if resource == null && isOwner(userId) && isUuidJpeg(fileName)
+        && request.resource.contentType == 'image/jpeg' && isSmallImage();
+      allow read, update, delete: if false;
+    }
+    match /{collection}/{userId}/{fileName} {
+      allow create: if resource == null && collection in ['posts', 'jobs'] && isOwner(userId)
+        && fileName.matches('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-[A-Za-z0-9._-]{1,180}$')
+        && isSmallImage();
+      allow read, update, delete: if false;
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
