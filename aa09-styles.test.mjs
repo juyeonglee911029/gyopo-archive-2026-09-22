@@ -212,6 +212,7 @@ test('public routes reserve space only while the lounge is expanded and the dire
   assert.match(shell, /hasGlobalChat && desktopLoungeOpen \? ' has-lounge-open' : ''/);
   assert.match(shell, /<GlobalChat desktopOpen=\{desktopLoungeOpen\} onDesktopOpenChange=\{setDesktopLoungeOpen\}/);
   assert.doesNotMatch(shell, /has-lounge-maximized|setLoungeOpen|gyopo-lounge-change/);
+  assert.match(shell, /if \(mode !== 'public'\) setDesktopLoungeOpen\(false\)/);
   const directory = read('src/app/directory/page.tsx');
   assert.match(directory, /selectDirectory\(biz, 'map'\)/);
   assert.match(directory, /if \(cached\) \{\s*applyGooglePlace\(directory, cached\)/);
