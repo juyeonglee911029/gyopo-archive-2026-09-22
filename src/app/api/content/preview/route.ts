@@ -727,15 +727,16 @@ export async function GET(request: Request) {
       const response = await fetch('https://hanintoday.com.br/api/businesses', { headers: { 'User-Agent': `GYOPO-Content-Crawler/1.0 (+${SITE_URL})` }, signal: AbortSignal.timeout(8_000) });
       if (!response.ok) throw new Error(`업소 API 응답 ${response.status}`);
       const payload = await response.json() as { businesses?: Array<{ id?: string; tradeName?: string; entityType?: string; category?: string; phone?: string; whatsapp?: string; area?: string; address?: string; description?: string; logoUrl?: string; coverImageUrl?: string; latitude?: number; longitude?: number }> };
-      const categoryLabels: Record<string, string> = { health_clinic: '병원·의료', grocery_market: '마트·식품', restaurant_cafe: '음식점·카페', it_services: 'IT·서비스', buddhist_temple: '종교·단체', consulate_organization: '공공기관·단체' };
+      const categoryLabels: Record<string, string> = { health_clinic: '병원·의료', grocery_market: '마트·식품', restaurant_cafe: '음식점·카페', it_services: 'IT·서비스', other: '기타', buddhist_temple: '종교·단체', consulate_organization: '공공기관·단체' };
       const items = curateSourceItems((payload.businesses || []).filter((business) => business.id && business.tradeName && business.entityType !== 'job').slice(0, 100).map((business) => ({
         title: clean(business.tradeName),
         url: `https://hanintoday.com.br/businesses/${business.id}`,
-        description: clean(business.description || `${categoryLabels[business.category || ''] || '한인 업소'} · ${business.area || ''}`),
+        description: clean(business.description || ''),
         body: clean([business.description, business.address, business.phone || business.whatsapp].filter(Boolean).join('\n\n')),
         category: 'directory' as ContentCategory,
+        entityType: clean(business.entityType || ''),
         company: clean(business.tradeName),
-        tag: categoryLabels[business.category || ''] || '한인 업소',
+        tag: categoryLabels[business.category || ''] || '기타',
         phone: clean(business.phone || business.whatsapp || ''),
         address: clean([business.area, business.address].filter(Boolean).join(' · ')),
         image: business.coverImageUrl || business.logoUrl,

@@ -293,7 +293,7 @@ export default function DirectoryPage() {
     } catch { window.alert('운영자 권한이 적용된 뒤 다시 시도해주세요.'); }
   };
 
-  const categories = ['전체', ...Array.from(new Set(directories.map((directory) => directory.category).filter(Boolean)))];
+  const categories = ['전체', ...DIRECTORY_CATEGORIES];
   const verifiedLocation = (directory: Directory) => {
     const placeId = directory.placeId || parseGoogleMapsUrl(directory.mapsUrl || directory.sourceUrl || '')?.placeId;
     const place = placesByDirectory[directory.id] || (placeId ? placeCache.current.get(placeId) : undefined);
