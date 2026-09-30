@@ -91,8 +91,8 @@ export default function FriendDiscoveryDeck({ viewerId, candidates, busyId, erro
         <span className="rounded-full border border-white/10 bg-white/[.04] px-3 py-1.5 text-xs font-bold text-slate-300">{candidates.length}명 둘러보기</span>
       </header>
 
-      <div className="grid items-center gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,.8fr)]">
-        <div className="mx-auto w-full max-w-[27rem]">
+      <div className="grid items-center gap-7" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 24rem), 1fr))' }}>
+        <div className="mx-auto w-full" style={{ maxWidth: '27rem' }}>
           {member ? <>
             <article
               tabIndex={0}
@@ -105,8 +105,8 @@ export default function FriendDiscoveryDeck({ viewerId, candidates, busyId, erro
               onPointerMove={moveDrag}
               onPointerUp={endDrag}
               onPointerCancel={() => { dragStart.current = null; setIsDragging(false); setDragX(0); }}
-              style={{ transform: `translateX(${dragX}px) rotate(${dragX / 24}deg)`, touchAction: 'pan-y', transition: isDragging ? 'none' : 'transform 160ms ease-out' }}
-              className="relative isolate aspect-[4/5] max-h-[68dvh] min-h-[25rem] overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 sm:min-h-[30rem]"
+              style={{ transform: `translateX(${dragX}px) rotate(${dragX / 24}deg)`, touchAction: 'pan-y', transition: isDragging ? 'none' : 'transform 160ms ease-out', aspectRatio: '4 / 5', minHeight: 'min(25rem, 68dvh)', maxHeight: '68dvh' }}
+              className="relative isolate overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
             >
               {member.image && <img src={member.image} alt={`${member.name} 프로필`} draggable={false} className="absolute inset-0 h-full w-full select-none object-cover" />}
               <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,.5)_0%,transparent_35%,rgba(2,6,23,.08)_48%,rgba(2,6,23,.92)_100%)]" />
