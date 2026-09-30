@@ -46,8 +46,10 @@ function isNewsEntry(entry: SnapshotItem, source: Snapshot) {
 
 function hasNewsStories(source: Snapshot) {
   const sourceCategory = CONTENT_SOURCES.find((item) => item.id === source.sourceId)?.categories[0];
-  return Boolean(source.sections?.some((section) => section.category === 'news' && section.items.some((entry) => isNewsEntry(entry, source)))
-    || source.items?.some((entry) => (entry.category || sourceCategory || 'news') === 'news' && isNewsEntry(entry, source));
+  return Boolean(
+    source.sections?.some((section) => section.category === 'news' && section.items.some((entry) => isNewsEntry(entry, source)))
+    || source.items?.some((entry) => (entry.category || sourceCategory || 'news') === 'news' && isNewsEntry(entry, source)),
+  );
 }
 
 function readBrowserNewsCache(region: string) {
