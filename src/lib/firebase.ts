@@ -1,3 +1,6 @@
+import { canPhotoMatch, getVisibleMatchPhotos, normalizeProfilePhotos, parseProfileGalleryUrl } from './profilePhotos';
+import { friendLikeIntent } from '@/lib/friendMatching';
+
 const firebaseConfig = {
   apiKey: 'AIzaSyAne5XuEzN2sL3px0oY5Wxsgf3m0nHHIoY',
   authDomain: 'gyopo-live-portal-506019.firebaseapp.com',
@@ -33,6 +36,7 @@ export type PortalUser = {
   age?: number;
   country?: string;
   defaultAiWritingPrompt?: string;
+  profilePhotos?: string[];
   walletAddress?: string;
   walletNetwork?: string;
   walletPublic?: boolean;
@@ -78,6 +82,7 @@ export type OnlineUser = {
 export type PublicProfile = {
   name: string;
   image: string;
+  profilePhotos?: string[];
   gender: Gender;
   country: string;
   isPublic: true;
@@ -384,6 +389,28 @@ export async function uploadStorageFile(file: Blob, path: string, token?: string
   return `https://firebasestorage.googleapis.com/v0/b/${firebaseStorageBucket}/o/${encodeURIComponent(result.name)}?alt=media${query}`;
 }
 
+export async function verifyProfileGalleryPhotos(profilePhotos: string[], token = getSessionToken()): Promise<void> {
+  if (!token) throw new Error('로그인 세션이 없어 공개 사진을 인증할 수 없습니다.');
+  const response = await fetch('/api/profile-photos/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ profilePhotos: normalizeProfilePhotos(profilePhotos) }),
+  });
+  const result = await response.json().catch(() => null) as { verified?: boolean; error?: string } | null;
+  if (!response.ok || result?.verified !== true) throw new Error(result?.error || '공개 사진 인증을 완료하지 못했습니다.');
+}
+
+export async function deleteProfileGalleryPhoto(photoUrl: string, userId: string, token?: string): Promise<void> {
+  if (!token || !userId) throw new Error('로그인 세션이 없어 공개 사진을 삭제할 수 없습니다.');
+  const object = parseProfileGalleryUrl(photoUrl, userId, firebaseStorageBucket);
+  if (!object) throw new Error('이전 공개 사진의 저장 경로를 확인하지 못했습니다.');
+  const response = await fetch(`https://firebasestorage.googleapis.com/v0/b/${firebaseStorageBucket}/o/${encodeURIComponent(object.objectName)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok && response.status !== 404) throw new Error('프로필 사진 파일을 삭제하지 못했습니다.');
+}
+
 export async function recordLedgerTransaction(entry: Omit<LedgerTransaction, 'createdAt'> & { id: string; createdAt?: string }, token?: string): Promise<void> {
   void entry;
   void token;
@@ -561,6 +588,7 @@ export type TetrisQueueProfile = {
   targetUserId?: string;
   queueKind?: 'random' | 'friend' | 'game';
 };
+export type WebrtcQueueProfile = TetrisQueueProfile & { profilePhotos?: string[]; gameType?: 'tetris' | 'brickBreaker'; gameRoomId?: string };
 export type TetrisMatchClaim = { matchId: string; role: 'A' | 'B'; opponent: TetrisQueueProfile };
 export type TetrisLobbyRoom = {
   roomNumber?: number;
@@ -577,7 +605,7 @@ export type TetrisLobbyRoom = {
   updatedAt?: string;
 };
 export type TetrisLobbyClaim = { roomNumber: number; matchId: string; role: 'A' | 'B'; opponent?: TetrisQueueProfile };
-export type WebrtcMatchClaim = { callId: string; opponent: TetrisQueueProfile; initiator: boolean };
+export type WebrtcMatchClaim = { callId: string; opponent: WebrtcQueueProfile; initiator: boolean };
 export type BrickBreakerQueueProfile = { id: string; name: string; image?: string; country?: string };
 export type BrickBreakerMatchClaim = { roomCode: string; opponent: BrickBreakerQueueProfile };
 
@@ -960,38 +988,55 @@ export async function claimTetrisMatch(profile: TetrisQueueProfile, token?: stri
   return { matchId, role: 'A', opponent };
 }
 
-export async function claimWebrtcMatch(profile: TetrisQueueProfile, token?: string, blockedUserIds: string[] = []): Promise<WebrtcMatchClaim | null> {
+export async function claimWebrtcMatch(profile: WebrtcQueueProfile, token?: string, blockedUserIds: string[] = []): Promise<WebrtcMatchClaim | null> {
   const waiting = await getWaitingQueueDocuments('webrtcQueue', token);
   const ownRow = waiting.find((row) => decodeDocument<{ userId?: string }>(row).userId === profile.id);
   if (!ownRow?.updateTime || !isFreshQueueDocument(ownRow, 120_000)) return null;
+  const requesterPublicProfile = await getDocument<PublicProfile>('publicProfiles', profile.id, token).catch(() => null);
+  const requesterPhotos = normalizeProfilePhotos(requesterPublicProfile?.profilePhotos);
+  const requesterKind = profile.queueKind || (profile.targetUserId ? 'friend' : 'random');
+  if (requesterKind === 'random' && !canPhotoMatch(requesterPhotos)) return null;
   const blocked = new Set(blockedUserIds);
-  const candidateRow = waiting.find((row) => {
-    const candidate = decodeDocument<TetrisQueueProfile & { userId?: string }>(row);
-    const candidateId = candidate.userId || candidate.id;
-    const requesterKind = profile.queueKind || (profile.targetUserId ? 'friend' : 'random');
-    const candidateKind = candidate.queueKind || (candidate.targetUserId ? 'friend' : 'random');
+  let candidateRow: (typeof waiting)[number] | undefined;
+  let candidate: WebrtcQueueProfile & { userId: string } | undefined;
+  let candidatePhotos: string[] = [];
+  for (const row of waiting) {
+    const candidateEntry = decodeDocument<WebrtcQueueProfile & { userId?: string }>(row);
+    const candidateId = candidateEntry.userId || candidateEntry.id;
+    const candidateKind = candidateEntry.queueKind || (candidateEntry.targetUserId ? 'friend' : 'random');
+    if (candidateId === profile.id || blocked.has(candidateId) || candidateKind !== requesterKind || !isFreshQueueDocument(row, 120_000)) continue;
     const requesterPreference = profile.genderPreference || 'any';
-    const candidatePreference = candidate.genderPreference || 'any';
-    const requesterMatches = requesterPreference === 'any' || candidate.gender === requesterPreference;
+    const candidatePreference = candidateEntry.genderPreference || 'any';
+    const requesterMatches = requesterPreference === 'any' || candidateEntry.gender === requesterPreference;
     const candidateMatches = candidatePreference === 'any' || profile.gender === candidatePreference;
-    const candidateAge = Number(candidate.age || 0);
+    const candidateAge = Number(candidateEntry.age || 0);
     const targetMatches = (!profile.targetUserId || candidateId === profile.targetUserId)
-      && (!candidate.targetUserId || candidate.targetUserId === profile.id);
-    const directCall = Boolean(profile.targetUserId || candidate.targetUserId);
+      && (!candidateEntry.targetUserId || candidateEntry.targetUserId === profile.id);
+    const gameRoomMatches = requesterKind !== 'game'
+      || (profile.gameType === candidateEntry.gameType && profile.gameRoomId === candidateEntry.gameRoomId);
+    const directCall = Boolean(profile.targetUserId || candidateEntry.targetUserId);
     const requesterAgeMatches = directCall || ((!profile.ageMin && !profile.ageMax)
       || (candidateAge >= (profile.ageMin || 18) && candidateAge <= (profile.ageMax || 60)));
-    const candidateAgeMatches = directCall || ((!candidate.ageMin && !candidate.ageMax)
-      || (Number(profile.age || 0) >= (candidate.ageMin || 18) && Number(profile.age || 0) <= (candidate.ageMax || 60)));
-    return candidateId !== profile.id && !blocked.has(candidateId) && candidateKind === requesterKind && isFreshQueueDocument(row, 120_000) && requesterMatches && candidateMatches && requesterAgeMatches && candidateAgeMatches && targetMatches;
-  });
+    const candidateAgeMatches = directCall || ((!candidateEntry.ageMin && !candidateEntry.ageMax)
+      || (Number(profile.age || 0) >= (candidateEntry.ageMin || 18) && Number(profile.age || 0) <= (candidateEntry.ageMax || 60)));
+    if (!requesterMatches || !candidateMatches || !requesterAgeMatches || !candidateAgeMatches || !targetMatches || !gameRoomMatches) continue;
+    const publicProfile = await getDocument<PublicProfile>('publicProfiles', candidateId, token).catch(() => null);
+    const photos = normalizeProfilePhotos(publicProfile?.profilePhotos);
+    if (requesterKind === 'random' && !canPhotoMatch(photos)) continue;
+    candidateRow = row;
+    candidate = { ...candidateEntry, userId: candidateId };
+    candidatePhotos = photos;
+    break;
+  }
   if (!candidateRow?.name || !candidateRow.updateTime) return null;
-  const candidate = decodeDocument<TetrisQueueProfile & { userId: string }>(candidateRow);
-  candidate.userId = candidate.userId || candidate.id;
+  if (!candidate) return null;
   const callId = `webrtc-${profile.id}-${candidate.userId}-${crypto.randomUUID()}`;
-  const opponent: TetrisQueueProfile = {
+  const requester: WebrtcQueueProfile = { ...profile, profilePhotos: requesterPhotos };
+  const opponent: WebrtcQueueProfile = {
     id: candidate.userId,
     name: candidate.name,
     image: candidate.image,
+    profilePhotos: getVisibleMatchPhotos(requesterPhotos, candidatePhotos),
     country: candidate.country,
     age: candidate.age,
     gender: candidate.gender,
@@ -999,9 +1044,13 @@ export async function claimWebrtcMatch(profile: TetrisQueueProfile, token?: stri
     isSubscribed: candidate.isSubscribed,
     targetUserId: candidate.targetUserId,
   };
+  const candidateOpponent: WebrtcQueueProfile = {
+    ...requester,
+    profilePhotos: getVisibleMatchPhotos(candidatePhotos, requesterPhotos),
+  };
   const candidateFields = {
     ...(candidateRow.fields || {}),
-    ...encodeFields({ status: 'matched', matchedBy: profile.id, callId, opponent: profile, lastSeenAt: new Date(), updatedAt: new Date() }),
+    ...encodeFields({ status: 'matched', matchedBy: profile.id, callId, opponent: candidateOpponent, lastSeenAt: new Date(), updatedAt: new Date() }),
   };
    const ownName = firestoreDocumentName('webrtcQueue', profile.id);
   const response = await authenticatedFetch(`${firestoreBase}:commit`, {
@@ -1171,23 +1220,54 @@ export async function listFriendConnections(userId: string, token = getSessionTo
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
-export async function sendFriendRequest(addresseeId: string, token = getSessionToken()): Promise<void> {
+export async function sendFriendRequest(addresseeId: string, token = getSessionToken()): Promise<boolean> {
   const requesterId = getTokenUserId(token);
   if (!token || !requesterId || !addresseeId || requesterId === addresseeId) throw new Error('친구 요청 대상을 확인해주세요.');
   const id = friendshipId(requesterId, addresseeId);
-  const existing = await Promise.all(collectionsForFriendship().map((collection) => getDocument<FriendConnection>(collection, id, token).then((item) => item ? { ...item, sourceCollection: collection } : null).catch(() => null))).then((items) => items.find(Boolean) || null);
-  if (existing?.status === 'accepted' || existing?.status === 'pending') return;
+  const readExisting = async () => Promise.all(collectionsForFriendship().map((collection) => getDocument<FriendConnection>(collection, id, token).then((item) => item ? { ...item, sourceCollection: collection } : null).catch(() => null))).then((items) => items.find(Boolean) || null);
+  const settleExisting = async (connection: FriendConnection | null): Promise<'matched' | 'waiting' | 'create'> => {
+    const intent = friendLikeIntent(connection, requesterId);
+    if (intent === 'matched') {
+      if (connection?.status === 'pending') await respondToFriendRequest(connection, 'accepted', token);
+      return 'matched';
+    }
+    if (intent === 'waiting') return 'waiting';
+    return 'create';
+  };
+
+  const existing = await readExisting();
+  const existingIntent = await settleExisting(existing);
+  if (existingIntent === 'matched') return true;
+  if (existingIntent === 'waiting') return false;
+  const [requesterProfile, addresseeProfile] = await Promise.all([
+    getDocument<PublicProfile>('publicProfiles', requesterId, token).catch(() => null),
+    getDocument<PublicProfile>('publicProfiles', addresseeId, token).catch(() => null),
+  ]);
+  if (!canPhotoMatch(requesterProfile?.profilePhotos)) throw new Error('친구 매칭을 시작하려면 프로필 사진을 3장 이상 공개해주세요.');
+  if (!canPhotoMatch(addresseeProfile?.profilePhotos)) throw new Error('상대 회원이 아직 프로필 사진을 3장 이상 공개하지 않아 매칭할 수 없습니다.');
   if (existing?.status === 'declined') {
     await deleteDocument(existing.sourceCollection || friendConnectionCollection, id, token);
   }
   const now = new Date();
   try {
     await createDocument(friendConnectionCollection, id, { requesterId, addresseeId, status: 'pending', createdAt: now, updatedAt: now }, token);
+    return false;
   } catch (error) {
-    await createDocument(legacyFriendConnectionCollection, id, { requesterId, addresseeId, status: 'pending', createdAt: now, updatedAt: now }, token).catch(async (legacyError) => {
-      const current = await getDocument<FriendConnection>(legacyFriendConnectionCollection, id, token).catch(() => null);
-      if (!current) throw legacyError || error;
-    });
+    const raced = await readExisting();
+    const racedIntent = await settleExisting(raced);
+    if (racedIntent === 'matched') return true;
+    if (racedIntent === 'waiting') return false;
+    if (raced?.status === 'declined') await deleteDocument(raced.sourceCollection || friendConnectionCollection, id, token);
+    try {
+      await createDocument(legacyFriendConnectionCollection, id, { requesterId, addresseeId, status: 'pending', createdAt: now, updatedAt: now }, token);
+      return false;
+    } catch (legacyError) {
+      const current = await readExisting();
+      const currentIntent = await settleExisting(current);
+      if (currentIntent === 'matched') return true;
+      if (currentIntent === 'waiting') return false;
+      throw legacyError || error;
+    }
   }
 }
 
@@ -1197,7 +1277,16 @@ function collectionsForFriendship() {
 
 export async function respondToFriendRequest(connection: FriendConnection, status: Extract<FriendStatus, 'accepted' | 'declined'>, token = getSessionToken()): Promise<void> {
   const viewerId = getTokenUserId(token);
-  if (!token || !viewerId || ![connection.requesterId, connection.addresseeId].includes(viewerId)) throw new Error('친구 요청 권한을 확인해주세요.');
+  if (!token || !viewerId || viewerId !== connection.addresseeId || connection.status !== 'pending') throw new Error('대기 중인 친구 요청의 수신자만 응답할 수 있습니다.');
+  if (status === 'accepted') {
+    const [requesterProfile, addresseeProfile] = await Promise.all([
+      getDocument<PublicProfile>('publicProfiles', connection.requesterId, token).catch(() => null),
+      getDocument<PublicProfile>('publicProfiles', connection.addresseeId, token).catch(() => null),
+    ]);
+    if (!canPhotoMatch(requesterProfile?.profilePhotos) || !canPhotoMatch(addresseeProfile?.profilePhotos)) {
+      throw new Error('양쪽 회원 모두 공개 프로필 사진을 3장 이상 등록해야 친구 연결을 수락할 수 있습니다.');
+    }
+  }
   await mergeDocument(connection.sourceCollection || friendConnectionCollection, connection.id, { status, updatedAt: new Date() }, token);
 }
 
@@ -1429,6 +1518,7 @@ function privateProfileData(user: PortalUser): Record<string, unknown> {
     name: user.name,
     email: user.email,
     image: user.image,
+    profilePhotos: normalizeProfilePhotos(user.profilePhotos),
     usdtBalance: Number(user.usdtBalance || 0),
     usdBalance: Number(user.usdBalance || 0),
     isSubscribed: Boolean(user.isSubscribed),
@@ -1456,6 +1546,7 @@ function publicProfileData(user: PortalUser & { gender: Gender; country: string 
   return {
     name: user.name,
     image: user.image,
+    profilePhotos: normalizeProfilePhotos(user.profilePhotos),
     gender: user.gender,
     country: user.country.trim(),
     isPublic: true,
@@ -1505,6 +1596,7 @@ export async function completeProfileOnboarding(
 
   const completedUser: PortalUser & { gender: Gender; country: string } = {
     ...user,
+    profilePhotos: normalizeProfilePhotos(user.profilePhotos ?? savedProfile?.profilePhotos),
     defaultAiWritingPrompt: user.defaultAiWritingPrompt ?? savedProfile?.defaultAiWritingPrompt,
     gender: savedGender || gender,
     country: savedCountry || selectedCountry,
@@ -1577,6 +1669,7 @@ export async function signInWithGoogleCredential(credential: string): Promise<Po
     name: savedProfile?.name || result.displayName || result.email?.split('@')[0] || '교민 회원',
     email: savedProfile?.email || result.email || '',
     image: savedProfile?.image || result.photoUrl || 'https://www.gravatar.com/avatar/?d=mp',
+    profilePhotos: normalizeProfilePhotos(savedProfile?.profilePhotos),
     usdtBalance: Number(savedProfile?.usdtBalance || 0),
     usdBalance: Number(savedProfile?.usdBalance || 0),
     isSubscribed: Boolean(savedProfile?.isSubscribed),
@@ -1603,12 +1696,17 @@ export async function signInWithGoogleCredential(credential: string): Promise<Po
 }
 
 export async function saveProfile(user: PortalUser, token = getSessionToken()): Promise<void> {
-  const savedProfile = await getDocument<Partial<PortalUser>>('profiles', user.id, token);
+  const [profileDocument, publicDocument] = await Promise.all([
+    getRawDocument('profiles', user.id, token),
+    getRawDocument('publicProfiles', user.id, token),
+  ]);
+  const savedProfile = profileDocument ? decodeDocument<Partial<PortalUser>>(profileDocument) : null;
   const savedGender = savedProfile?.gender;
   const savedCountry = savedProfile?.country;
   const savedAge = Number(savedProfile?.age || 0);
   const persistedUser: PortalUser = {
     ...user,
+    profilePhotos: normalizeProfilePhotos(user.profilePhotos ?? savedProfile?.profilePhotos),
     defaultAiWritingPrompt: user.defaultAiWritingPrompt ?? savedProfile?.defaultAiWritingPrompt,
     usdtBalance: Number(savedProfile?.usdtBalance ?? user.usdtBalance ?? 0),
     usdBalance: Number(savedProfile?.usdBalance ?? user.usdBalance ?? 0),
@@ -1622,8 +1720,36 @@ export async function saveProfile(user: PortalUser, token = getSessionToken()): 
     transferPinSalt: user.transferPinSalt,
   };
   if (!hasCompletedProfile(persistedUser)) throw new Error('먼저 성별·나이·국가 설정을 완료해주세요.');
-  await upsertDocument('profiles', user.id, privateProfileData(persistedUser), token);
-  await replaceDocument('publicProfiles', user.id, publicProfileData(persistedUser), token);
+  const response = await authenticatedFetch(`${firestoreBase}:commit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      writes: [
+        {
+          update: {
+            name: firestoreDocumentName('profiles', user.id),
+            fields: { ...(profileDocument?.fields || {}), ...encodeFields(privateProfileData(persistedUser)) },
+          },
+          currentDocument: profileDocument?.updateTime
+            ? { updateTime: profileDocument.updateTime }
+            : { exists: false },
+        },
+        {
+          update: {
+            name: firestoreDocumentName('publicProfiles', user.id),
+            fields: encodeFields(publicProfileData(persistedUser)),
+          },
+          currentDocument: publicDocument?.updateTime
+            ? { updateTime: publicDocument.updateTime }
+            : { exists: false },
+        },
+      ],
+    }),
+  }, token);
+  if (!response.ok) {
+    const error = await response.text().catch(() => '');
+    throw new Error(error || '프로필을 함께 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+  }
   storeSessionUser(persistedUser);
 }
 

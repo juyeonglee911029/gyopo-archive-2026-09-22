@@ -76,6 +76,25 @@ test('Tetris video-only calls explain that each camera requires an explicit star
   assert.match(call, /videoOnly \? '카메라 시작' : '카메라·마이크 시작'/);
 });
 
+test('legacy Tetris camera URLs resolve to a validated game room', () => {
+  const game = read('src/app/games/page.tsx');
+  const call = read('src/app/webrtc/page.tsx');
+  assert.match(game, /gameRoom=\$\{encodeURIComponent\(matchId\)\}/);
+  assert.match(call, /const gameRoom = params\.get\('gameRoom'\) \|\| '';/);
+  assert.match(call, /gameRoom \? 'tetris' : ''/);
+  assert.match(call, /nextGameType === 'tetris' \? gameRoom : ''/);
+});
+
+test('WebRTC exposes a desktop sidebar control through the consent-aware start handler', () => {
+  const call = read('src/app/webrtc/page.tsx');
+  const sidebarControl = section(call, '<section aria-label="영상 통화 시작"', '<section aria-label="화상 채팅"');
+
+  assert.match(sidebarControl, /hidden sm:block/);
+  assert.match(sidebarControl, /onClick=\{active \? \(\) => void endMatch\(\) : startMatchFromUi\}/);
+  assert.match(sidebarControl, /LIVE CHAT 시작/);
+  assert.match(section(call, 'const startMatchFromUi = () => {', 'const startMatchEffect'), /setShowRandomConsent\(true\)/);
+});
+
 test('Badball mirrors its board frames and preserves the game canvas aspect ratio', () => {
   const css = read('src/components/games/brickbreaker.module.css');
 

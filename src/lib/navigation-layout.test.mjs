@@ -23,10 +23,20 @@ test('mobile navigation puts Search in the center and replaces Regions with Dire
   const directory = navigation.indexOf("href: '/directory', label: '업소록'");
   const search = navigation.indexOf("href: '/search', label: '검색'");
   const community = navigation.indexOf("label: '커뮤니티'");
-  const account = navigation.indexOf("label: 'MY'");
+  const friends = navigation.indexOf("href: '/users', label: '친구'");
 
-  assert.ok(home < directory && directory < search && search < community && community < account);
+  assert.ok(home < directory && directory < search && search < community && community < friends);
   assert.doesNotMatch(navigation, /href: '\/regions', label: '지역'/);
+});
+
+test('friend matching is visible in the sidebar and opens the existing member flow', () => {
+  const sidebar = read('src/components/layout/GlobalSidebar.tsx');
+  const members = read('src/app/users/page.tsx');
+
+  assert.match(sidebar, /id: 'friends', href: '\/users', label: '친구 매칭'/);
+  assert.match(members, /<h1[^>]*>친구 매칭<\/h1>/);
+  assert.match(members, /sendFriendRequest/);
+  assert.match(members, /respondToFriendRequest/);
 });
 
 test('desktop live lounge reaches the viewport bottom at a narrower width', () => {

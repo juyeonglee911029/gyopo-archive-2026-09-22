@@ -6,6 +6,7 @@ const sourceRoot = new URL('../', import.meta.url);
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier.startsWith('@/')) return nextResolve(new URL(`${specifier.slice(2)}.ts`, sourceRoot).href, context);
+    if (specifier.startsWith('.') && !/\.[a-z]+$/i.test(specifier)) return nextResolve(new URL(`${specifier}.ts`, context.parentURL).href, context);
     return nextResolve(specifier, context);
   },
 });
