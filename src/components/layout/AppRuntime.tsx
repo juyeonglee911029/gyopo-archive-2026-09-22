@@ -358,7 +358,7 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
       }));
       const nextUser = { ...user, name, country, image, profilePhotos, defaultAiWritingPrompt: normalizeAiWritingPrompt(profileForm.defaultAiWritingPrompt) || DEFAULT_AI_WRITING_PROMPT };
       setProfileForm((current) => ({ ...current, image, profilePhotos }));
-      if (profilePhotos.length > 0) await verifyProfileGalleryPhotos(profilePhotos, token);
+      await verifyProfileGalleryPhotos(profilePhotos, token);
       await saveProfile(nextUser, token);
       setUser(nextUser);
       const photosToDelete = [...new Set([...pendingProfilePhotoDeletes, ...oldPhotos.filter((photo) => !profilePhotos.includes(photo))])];

@@ -1,6 +1,6 @@
 import { authenticateRequest, clientAddress, consumeRateLimit, rateLimitResponse, unauthorizedResponse } from '@/lib/apiSecurity';
 import { adminDocumentName, runFirestoreTransaction, serviceAccountAccessToken, type AdminFirestoreValue } from '@/lib/firebaseAdmin';
-import { MAX_PROFILE_PHOTOS, normalizeProfilePhotos, parseProfileGalleryUrl } from '@/lib/profilePhotos';
+import { galleryDeletionClaimId, MAX_PROFILE_PHOTOS, normalizeProfilePhotos, parseProfileGalleryUrl } from '@/lib/profilePhotos';
 
 export const runtime = 'edge';
 
@@ -66,9 +66,13 @@ export async function POST(request: Request) {
       }));
     }
 
+    const claims = await Promise.all(objects.map((object) => galleryDeletionClaimId(object!.objectName)));
     const verifiedCount = await runFirestoreTransaction(
-      [{ collection: 'verifiedProfilePhotos', id: user.uid }],
+      [{ collection: 'verifiedProfilePhotos', id: user.uid }, ...claims.map((id) => ({ collection: 'galleryDeletionClaims', id }))],
       ({ projectId, get }) => {
+        if (claims.some((id) => get({ collection: 'galleryDeletionClaims', id }))) {
+          throw new InvalidGalleryError('Gallery object was removed.');
+        }
         const existing = get({ collection: 'verifiedProfilePhotos', id: user.uid });
         return {
           writes: [{

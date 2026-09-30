@@ -5,6 +5,7 @@ import { getSessionToken, uploadStorageFile } from '@/lib/firebase';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_IMAGES = 8;
+const imageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/heic', 'image/heif', 'image/bmp']);
 
 export function useImageAttachments(userId: string, collection: 'posts' | 'jobs', initialImages: string[] = []) {
   const [images, setImages] = useState(initialImages);
@@ -23,7 +24,7 @@ export function useImageAttachments(userId: string, collection: 'posts' | 'jobs'
   const addFiles = (files: FileList | File[]) => {
     const selected = Array.from(files);
     const remaining = Math.max(0, MAX_IMAGES - images.length);
-    const accepted = selected.filter((file) => file.type.startsWith('image/') && file.size <= MAX_FILE_SIZE).slice(0, remaining);
+    const accepted = selected.filter((file) => imageTypes.has(file.type) && file.size > 0 && file.size <= MAX_FILE_SIZE).slice(0, remaining);
     const previews = accepted.map((file) => {
       const url = URL.createObjectURL(file);
       pendingFiles.current.set(url, file);
@@ -69,7 +70,7 @@ export function useImageAttachments(userId: string, collection: 'posts' | 'jobs'
   const uploadImages = async () => Promise.all(images.map((url) => {
     const file = pendingFiles.current.get(url);
     return file
-      ? uploadStorageFile(file, `${collection}/${userId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`, getSessionToken())
+      ? uploadStorageFile(file, `${collection}/${userId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 180) || 'image'}`, getSessionToken())
       : url;
   }));
 
