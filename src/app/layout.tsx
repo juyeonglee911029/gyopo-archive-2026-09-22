@@ -42,6 +42,11 @@ export default function RootLayout({
     <html lang="ko">
       <head>
         {/* Copied aa09 served CSS, in its original cascade order. */}
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="GYOPO" />
         <link rel="stylesheet" href="/styles/release-aa09/3m0y9asyu_o2b.css" />
         <link rel="stylesheet" href="/styles/release-aa09/0obc4wf2u8iey.css" />
         <link rel="stylesheet" href="/styles/release-aa09/3p_9c1a7v-yp3.css" />

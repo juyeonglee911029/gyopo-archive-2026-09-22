@@ -125,6 +125,11 @@ export default function AppRuntime({ children }: { children: React.ReactNode }) 
   }, [darkMode]);
 
   useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     let refreshing = false;
     let refreshPending = false;
