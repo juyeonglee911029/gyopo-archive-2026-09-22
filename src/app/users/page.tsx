@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { MapPin, PackageCheck, ShieldCheck, UserPlus, Users as UsersIcon, Video, X } from 'lucide-react';
 import { getDocument, getSessionToken, listEscrowOrdersForMember, listFriendConnections, listOnlineUsers, respondToFriendRequest, sendFriendRequest, type EscrowOrder, type FriendConnection, type OnlineUser, type PublicProfile } from '@/lib/firebase';
+import FriendDiscoveryDeck from '@/components/friends/FriendDiscoveryDeck';
 import { useGlobalStore } from '@/store/useGlobalStore';
 
 type SelectedMember = Partial<PublicProfile> & Pick<OnlineUser, 'id' | 'name' | 'image'>;
@@ -72,18 +73,43 @@ export default function UsersPage() {
 
   const relationshipFor = (memberId: string) => friendships.find((item) => item.requesterId === memberId || item.addresseeId === memberId);
   const isFriend = (memberId: string) => relationshipFor(memberId)?.status === 'accepted';
+  const matchingCandidates = onlineUsers.filter((online) => {
+    if (online.id === user?.id) return false;
+    const relationship = relationshipFor(online.id);
+    return !relationship || relationship.status === 'declined' || (relationship.status === 'pending' && relationship.addresseeId === user?.id);
+  });
 
-  const requestFriend = async (memberId: string) => {
+  const requestFriend = async (memberId: string): Promise<{ matched: boolean; ok: boolean }> => {
+    if (!user) return { matched: false, ok: false };
     setFriendBusy(memberId);
     setFriendError('');
     try {
-      await sendFriendRequest(memberId);
-      const rows = user ? await listFriendConnections(user.id).catch(() => []) : [];
+      const matched = await sendFriendRequest(memberId);
+      const rows = await listFriendConnections(user.id).catch(() => []);
       setFriendships(rows);
+      return { matched, ok: true };
     } catch (error) {
       setFriendError(error instanceof Error && error.message.includes('PERMISSION_DENIED')
         ? '친구 요청 권한을 확인하지 못했습니다. 잠시 후 다시 시도해주세요.'
         : '친구 요청을 보내지 못했습니다. 다시 시도해주세요.');
+      return { matched: false, ok: false };
+    } finally {
+      setFriendBusy('');
+    }
+  };
+
+  const passFriend = async (memberId: string) => {
+    const connection = relationshipFor(memberId);
+    if (!user || connection?.status !== 'pending' || connection.addresseeId !== user.id) return true;
+    setFriendBusy(connection.id);
+    setFriendError('');
+    try {
+      await respondToFriendRequest(connection, 'declined');
+      setFriendships((rows) => rows.map((row) => row.id === connection.id ? { ...row, status: 'declined' } : row));
+      return true;
+    } catch {
+      setFriendError('요청을 정리하지 못했습니다. 잠시 후 다시 시도해주세요.');
+      return false;
     } finally {
       setFriendBusy('');
     }
@@ -134,9 +160,9 @@ export default function UsersPage() {
       <div className="category-shell mx-auto max-w-6xl">
         <header className="category-header">
           <div className="category-heading">
-            <div className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-indigo-500">Open directory</div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">실시간 회원</h1>
-            <p className="mt-3 text-sm text-slate-500">로그인이나 결제 없이 현재 접속 중인 회원을 공개합니다.</p>
+            <div className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-indigo-500">GYOPO · FRIEND MATCHING</div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">친구 매칭</h1>
+            <p className="mt-3 text-sm text-slate-500">온라인 회원을 둘러보고, 서로 좋아요를 보내면 친구로 연결됩니다.</p>
           </div>
           <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-white px-5 py-3 shadow-sm">
             <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
@@ -145,10 +171,12 @@ export default function UsersPage() {
           </div>
         </header>
 
+        <FriendDiscoveryDeck viewerId={user?.id} candidates={matchingCandidates} busyId={friendBusy} error={friendError} onLike={requestFriend} onPass={passFriend} onProfile={showMember} />
+
         {user && <section className="mb-8 rounded-[2rem] border border-indigo-100 bg-white p-5 shadow-sm"><div className="flex items-center justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">My network</div><h2 className="mt-1 text-xl font-black text-slate-950">친구 목록</h2><p className="mt-1 text-xs text-slate-500">친구를 선택해 바로 영상 통화를 시작하세요.</p></div><span className="shrink-0 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700">{friendships.filter((item) => item.status === 'accepted').length}명 친구</span></div><div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{friendships.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">아직 친구가 없습니다. 아래 회원 목록에서 친구 추가를 눌러보세요.</div> : friendships.map((connection) => { const memberId = connection.requesterId === user.id ? connection.addresseeId : connection.requesterId; const online = onlineUsers.find((item) => item.id === memberId); const profile = friendProfiles[memberId]; const name = online?.name || profile?.name || '친구 회원'; const image = online?.image || profile?.image; const incoming = connection.addresseeId === user.id && connection.status === 'pending'; return <div key={connection.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3"><div className="relative shrink-0">{image ? <img src={image} alt="" className="h-11 w-11 rounded-2xl object-cover" /> : <div className="grid h-11 w-11 place-items-center rounded-2xl bg-indigo-100 text-sm font-black text-indigo-700">{name.slice(0, 1)}</div>}{online && <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-black text-slate-900">{name}</div><div className="truncate text-[11px] text-slate-400">{online?.country || profile?.country || (online ? '온라인' : '오프라인')}</div></div>{connection.status === 'accepted' ? <Link href={`/webrtc?friend=${encodeURIComponent(memberId)}`} className="shrink-0 rounded-xl bg-indigo-600 px-2.5 py-2 text-[11px] font-black text-white">영상통화</Link> : incoming ? <button type="button" disabled={friendBusy === connection.id} onClick={() => void acceptFriend(connection)} className="shrink-0 rounded-xl bg-emerald-500 px-2.5 py-2 text-[11px] font-black text-slate-950 disabled:opacity-50">수락</button> : <span className="shrink-0 text-[10px] font-bold text-slate-400">대기 중</span>}</div>; })}</div></section>}
 
-        {friendError && <p role="alert" className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{friendError}</p>}
-
+        <details className="mt-8 rounded-[1.5rem] border border-white/10 bg-white/[.025]">
+          <summary className="cursor-pointer px-5 py-4 text-sm font-black text-slate-200">온라인 회원 전체 목록 <span className="ml-1 text-xs text-slate-500">{onlineUsers.length}명</span></summary>
         {onlineUsers.length === 0 ? (
           <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-20 text-center shadow-sm">
             <UsersIcon className="mx-auto mb-4 text-slate-300" size={38} />
@@ -176,6 +204,7 @@ export default function UsersPage() {
             ))}
           </div>
         )}
+        </details>
       </div>
 
       {selectedMember && (
