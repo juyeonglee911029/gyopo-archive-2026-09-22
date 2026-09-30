@@ -5,6 +5,7 @@ import test from 'node:test';
 import { SourceTextModule, createContext } from 'node:vm';
 
 const source = stripTypeScriptTypes(readFileSync(new URL('./src/lib/firebase.ts', import.meta.url), 'utf8'));
+const friendMatchingSource = stripTypeScriptTypes(readFileSync(new URL('./src/lib/friendMatching.ts', import.meta.url), 'utf8'));
 const key = 'gyopo-auth-session';
 const jwt = (id, version, valid = true) => 'fixture.' + Buffer.from(JSON.stringify({ sub: id, exp: Math.floor(Date.now() / 1000) + (valid ? 3600 : -60), version })).toString('base64url') + '.fixture';
 const session = (id = 'a', version = 'original', valid = false) => ({ idToken: jwt(id, version, valid), refreshToken: `refresh-${id}-${version}`, user: { id, email: `${id}@example.test`, name: `User ${id}`, isSubscribed: false } });
@@ -37,7 +38,10 @@ async function harness(initial = session(), fetchHandler) {
     fetch: fetchHandler ? (url, options = {}) => fetchHandler(String(url), options) : defaultFetch,
   });
   const sourceModule = new SourceTextModule(source, { context });
-  await sourceModule.link(() => { throw new Error('Unexpected source import'); });
+  await sourceModule.link((specifier) => {
+    if (specifier === '@/lib/friendMatching') return new SourceTextModule(friendMatchingSource, { context });
+    throw new Error(`Unexpected source import: ${specifier}`);
+  });
   await sourceModule.evaluate();
   return { api: sourceModule.namespace, requests, events, storage,
     read: () => JSON.parse(storage.getItem(key) || 'null'),
