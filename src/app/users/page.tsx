@@ -136,14 +136,17 @@ export default function UsersPage() {
       <div className="category-shell mx-auto max-w-6xl">
         <header className="category-header">
           <div className="category-heading">
-            <div className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-indigo-500">Open directory</div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">실시간 회원</h1>
-            <p className="mt-3 text-sm text-slate-500">로그인이나 결제 없이 현재 접속 중인 회원을 공개합니다.</p>
+            <div className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-indigo-500">Friend matching</div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">친구 매칭</h1>
+            <p className="mt-3 text-sm text-slate-500">온라인 회원의 프로필을 확인하고 친구 요청을 보내세요. 친구 통화나 랜덤 화상채팅도 시작할 수 있습니다.</p>
           </div>
-          <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-white px-5 py-3 shadow-sm">
-            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
-            <b className="text-2xl text-slate-950">{onlineUsers.length}</b>
-            <span className="text-sm font-bold text-slate-500">online now</span>
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            <Link href="/webrtc" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"><Video size={16} aria-hidden="true" />랜덤 화상 매칭</Link>
+            <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-white px-5 py-3 shadow-sm">
+              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
+              <b className="text-2xl text-slate-950">{onlineUsers.length}</b>
+              <span className="text-sm font-bold text-slate-500">online now</span>
+            </div>
           </div>
         </header>
 
