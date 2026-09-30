@@ -404,11 +404,15 @@ export async function deleteProfileGalleryPhoto(photoUrl: string, userId: string
   if (!token || !userId) throw new Error('로그인 세션이 없어 공개 사진을 삭제할 수 없습니다.');
   const object = parseProfileGalleryUrl(photoUrl, userId, firebaseStorageBucket);
   if (!object) throw new Error('이전 공개 사진의 저장 경로를 확인하지 못했습니다.');
-  const response = await fetch(`https://firebasestorage.googleapis.com/v0/b/${firebaseStorageBucket}/o/${encodeURIComponent(object.objectName)}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
+  const response = await fetch('/api/profile-photos/delete', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ photoUrl }),
   });
-  if (!response.ok && response.status !== 404) throw new Error('프로필 사진 파일을 삭제하지 못했습니다.');
+  if (!response.ok) {
+    const result = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(result?.error || '프로필 사진 파일을 삭제하지 못했습니다.');
+  }
 }
 
 export async function recordLedgerTransaction(entry: Omit<LedgerTransaction, 'createdAt'> & { id: string; createdAt?: string }, token?: string): Promise<void> {

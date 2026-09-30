@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { canPhotoMatch, getVisibleMatchPhotos, normalizeProfilePhotos, parseProfileGalleryUrl } from './profilePhotos.ts';
+import { canPhotoMatch, galleryDeletionClaimId, getVisibleMatchPhotos, normalizeProfilePhotos, parseProfileGalleryUrl } from './profilePhotos.ts';
 
 const photos = (count) => Array.from({ length: count }, (_, index) => `https://photos.example/${index + 1}.jpg`);
 
@@ -42,4 +42,12 @@ test('accepts only tokenized gallery URLs owned by the profile user', () => {
   assert.equal(parseProfileGalleryUrl('https://images.example/photo.jpg', 'alice', bucket), null);
   assert.equal(parseProfileGalleryUrl(url.replace('&token=abcdef0123456789', ''), 'alice', bucket), null);
   assert.equal(parseProfileGalleryUrl(url.replace('.jpg?', '.png?'), 'alice', bucket), null);
+});
+
+test('deletion claims are stable per object and separate across owners', async () => {
+  const a = await galleryDeletionClaimId('profiles/alice/gallery/example.jpg');
+  const b = await galleryDeletionClaimId('profiles/bob/gallery/example.jpg');
+  assert.match(a, /^[0-9a-f]{64}$/);
+  assert.equal(a, await galleryDeletionClaimId('profiles/alice/gallery/example.jpg'));
+  assert.notEqual(a, b);
 });
