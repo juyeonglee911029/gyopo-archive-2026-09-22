@@ -18,6 +18,7 @@ export type LiveSourceItem = {
   address?: string;
   lat?: number;
   lng?: number;
+  entityType?: string;
   author?: string;
   country?: string;
 };
@@ -47,6 +48,8 @@ const jobTag = /^(?:구인|구직|채용|정규직|파트타임|계약직|인턴
 const jobNoise = /(?:취업\s*사기|유의\s*사항|주의\s*사항|채용\s*(?:동향|뉴스|가이드)|구인구직\s*(?:게시판|목록|안내)|필요하신가요|카지노|도박|코인|투자|고수익|수익\s*보장|다단계|총판|파트너\s*모집|회원\s*모집|체험단|교육생|수강생)/i;
 const communityNoise = /(?:한인광장\s*테스트|테스트\s*글|(?:한아시아\s*)?공지사항|커뮤니티\s*운영정책|개인정보(?:처리방침)?|이용약관|앱\s*설치|로그인|회원가입)/i;
 const communityPromotion = /(?:교육생\s*모집|수강생\s*모집|추가\s*모집|자격증\s*취득|\d+주\s*완성|체험단|선착순|특가|할인|판매|\bselling\b|구매대행|배송비\s*지원|공식제휴업체|오픈채팅|카카오톡\s*문의|상담\s*(?:예약|문의)|제품을\s*생산|원스톱\s*소싱|서비스를\s*이용|연락\s*주세요)/i;
+const directoryNonBusinessCategory = /^(?:organization|church|temple|buddhist_temple|consulate_organization|government|nonprofit|association|공공기관·단체|종교·단체)$/i;
+const directoryNonBusinessTitle = /(?:교회|성당|사찰|교당|총영사관|영사관|대사관|한인회|공관|church|temple|consulate|embassy|government\s+office)/i;
 
 export function normalizeSourceText(value: unknown) {
   return String(value || '')
@@ -129,6 +132,34 @@ export function isSubstantiveCommunityItem(item: SourceContentCandidate) {
   return body.length >= 70 || (body.length >= 40 && (/[?？]|(?:질문|정보|팁|공유|추천|경험|후기|주의|방법|왜|어떻게|ㅋㅋ|ㅎㅎ)/i.test(combined) || /(?:question|tip|free|정보|질문)/i.test(category)));
 }
 
+export function isGenuineDirectoryListing(item: SourceContentCandidate) {
+  const title = normalizeSourceTitle(item.title);
+  const entityType = normalizeSourceText(item.entityType).toLowerCase();
+  const category = normalizeSourceText(item.tag || item.category).toLowerCase();
+  const address = normalizeSourceText(item.address || item.location);
+  const description = normalizeSourceBody(item.description);
+  const phoneDigits = normalizeSourceText(item.phone).replace(/\D/g, '');
+  const latitude = item.lat;
+  const longitude = item.lng;
+  const hasCoordinates = typeof latitude === 'number' && Number.isFinite(latitude) && Math.abs(latitude) <= 90
+    && typeof longitude === 'number' && Number.isFinite(longitude) && Math.abs(longitude) <= 180;
+  const url = normalizeSourceUrl(item.url || item.sourceUrl);
+
+  if (title.length < 2 || navigationTitle.test(title) || directoryNonBusinessTitle.test(title)) return false;
+  if (entityType && entityType !== 'business') return false;
+  if (directoryNonBusinessCategory.test(category)) return false;
+  if (!entityType && (!category || /^(?:directory|업소|한인 업소)$/i.test(category))) return false;
+  if (!address && !hasCoordinates) return false;
+  if (address.length < 5 && !hasCoordinates) return false;
+  if (phoneDigits.length < 7 && description.length < 20) return false;
+  try {
+    if (new URL(url).protocol !== 'https:') return false;
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 export function sourceItemDedupKey(item: SourceContentCandidate, category: ContentCategory) {
   const url = normalizeSourceUrl(item.url || item.sourceUrl);
   if (url) return `${category}:url:${url}`;
@@ -156,6 +187,7 @@ export function curateSourceItems(items: SourceContentCandidate[], category: Con
     if (!normalized.title || !normalized.url) continue;
     if (category === 'jobs' && !isGenuineJobListing(normalized)) continue;
     if (category === 'community' && !isSubstantiveCommunityItem(normalized)) continue;
+    if (category === 'directory' && !isGenuineDirectoryListing(normalized)) continue;
     const urlKey = sourceItemDedupKey(normalized, category);
     const contentKey = `${category}:${normalized.title.toLocaleLowerCase()}:${normalizeSourceText(normalized.company || normalized.author).toLocaleLowerCase()}:${normalizeSourceText(normalized.location || normalized.country).toLocaleLowerCase()}`;
     if (seenUrls.has(urlKey) || seenContent.has(contentKey)) continue;

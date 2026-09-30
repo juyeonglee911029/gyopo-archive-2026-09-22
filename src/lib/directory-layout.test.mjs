@@ -20,6 +20,11 @@ test('directory detail retains and displays the complete body or description', (
   assert.match(infoPanel, /selectedDescription && <section[\s\S]*?업체 소개[\s\S]*?whitespace-pre-wrap break-words/);
 });
 
+test('directory category filter uses the canonical business categories', () => {
+  assert.match(page, /const categories = \['전체', \.\.\.DIRECTORY_CATEGORIES\];/);
+  assert.doesNotMatch(page, /directories\.map\(\(directory\) => directory\.category\)/);
+});
+
 test('directory links show verified Place hours and label user-submitted menus', () => {
   assert.match(places, /regularOpeningHours/);
   assert.match(places, /hoursSource: currentHours\?\.length \? 'current' : regularHours\?\.length \? 'regular'/);
