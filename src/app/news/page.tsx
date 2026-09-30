@@ -9,13 +9,14 @@ import { listDocuments } from '@/lib/firebase';
 import { isPublicArticle } from '@/lib/publicArticle';
 import { regionLabel } from '@/lib/regions';
 import { CONTENT_SOURCES, contentSourceMatchesRegion, sourceItemId } from '@/lib/contentSources';
+import { hasCacheableNews, readLastGoodNews, resolveNewsSnapshots, writeLastGoodNews, type NewsCacheItem, type NewsCacheSection, type NewsCacheSnapshot } from '@/lib/newsSnapshotCache';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { useEffectEvent } from '@/lib/useeffectevent';
 import CategoryPostWriter from '@/components/posts/CategoryPostWriter';
 
-type SnapshotItem = { title: string; url: string; description?: string; body?: string; publishedAt?: string; category?: string };
-type SnapshotSection = { category: string; label: string; url: string; items: SnapshotItem[] };
-type Snapshot = { id: string; sourceId: string; sourceName: string; region: string; url: string; title: string; description?: string; fetchedAt: string; verified?: boolean; items?: SnapshotItem[]; sections?: SnapshotSection[]; sourceSnapshot?: boolean };
+type SnapshotItem = NewsCacheItem;
+type SnapshotSection = NewsCacheSection;
+type Snapshot = NewsCacheSnapshot & { sourceSnapshot?: boolean; status?: string; warnings?: string[] };
 type NewsStory = { entry: SnapshotItem; category: string; categoryLabel: string; source: Snapshot };
 type StoredPost = Partial<Snapshot> & { type?: string; status?: unknown; deleted?: unknown; isPublic?: unknown; expiresAt?: unknown; body?: string; authorId?: string; author?: string; country?: string; createdAt?: string; image?: string; images?: string[] };
 type NativeNewsPost = { id: string; title: string; body: string; author: string; country: string; createdAt: string; image?: string };
@@ -43,6 +44,24 @@ function isNewsEntry(entry: SnapshotItem, source: Snapshot) {
   return true;
 }
 
+function hasNewsStories(source: Snapshot) {
+  const sourceCategory = CONTENT_SOURCES.find((item) => item.id === source.sourceId)?.categories[0];
+  return Boolean(source.sections?.some((section) => section.category === 'news' && section.items.some((entry) => isNewsEntry(entry, source)))
+    || source.items?.some((entry) => (entry.category || sourceCategory || 'news') === 'news' && isNewsEntry(entry, source));
+}
+
+function readBrowserNewsCache(region: string) {
+  try {
+    return readLastGoodNews(window.localStorage, region);
+  } catch {
+    return [];
+  }
+}
+
+function latestFetchedAt(snapshots: readonly Snapshot[]) {
+  return snapshots.map((snapshot) => snapshot.fetchedAt).filter((value) => !Number.isNaN(Date.parse(value))).sort((a, b) => Date.parse(b) - Date.parse(a))[0] || '';
+}
+
 async function loadStoredSources() {
   const results = await Promise.allSettled([
     listDocuments<Omit<Snapshot, 'id'>>('contentSnapshots'),
@@ -63,6 +82,8 @@ export default function NewsPage() {
   const [items, setItems] = useState<Snapshot[]>([]);
   const [nativeNews, setNativeNews] = useState<NativeNewsPost[]>([]);
   const [liveSources, setLiveSources] = useState<Snapshot[]>([]);
+  const [usingLastGoodCache, setUsingLastGoodCache] = useState(false);
+  const [lastGoodFetchedAt, setLastGoodFetchedAt] = useState('');
   const [isLoading, setLoading] = useState(true);
   const [loadedCountry, setLoadedCountry] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -72,30 +93,64 @@ export default function NewsPage() {
 
   const load = async () => {
     const request = ++loadRequest.current;
-    setLoading(true);
+    const sources = CONTENT_SOURCES.filter((source) => source.autoImport && source.categories.includes('news') && contentSourceMatchesRegion(source, selectedCountry));
+    const requests = [
+      ...sources.slice(0, 24).map((source) => ({ sourceId: source.id, url: `/api/content/preview?source=${encodeURIComponent(source.id)}` })),
+      { sourceId: `regional-${selectedCountry}`, url: `/api/content/preview?region=${encodeURIComponent(selectedCountry)}` },
+    ];
+    const requestIds = new Set(requests.map((item) => item.sourceId));
+    const cachedAtStart = readBrowserNewsCache(selectedCountry).filter((snapshot) => requestIds.has(snapshot.sourceId));
     setLoadError('');
+    if (cachedAtStart.length) {
+      setLiveSources(cachedAtStart);
+      setUsingLastGoodCache(true);
+      setLastGoodFetchedAt(latestFetchedAt(cachedAtStart));
+      setLoadedCountry(selectedCountry);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setUsingLastGoodCache(false);
+      setLastGoodFetchedAt('');
+    }
     try {
       const result = await withRouteTimeout((async () => {
-      const sources = CONTENT_SOURCES.filter((source) => source.autoImport && source.categories.includes('news') && contentSourceMatchesRegion(source, selectedCountry));
-      const urls = [...sources.slice(0, 24).map((source) => `/api/content/preview?source=${encodeURIComponent(source.id)}`), `/api/content/preview?region=${encodeURIComponent(selectedCountry)}`];
-      const [stored, live] = await Promise.all([loadStoredSources(), Promise.allSettled(urls.map(async (url) => {
-        const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-        if (!response.ok) throw new Error('News source unavailable');
-        const snapshot = await response.json() as Snapshot;
-        if (!snapshot || (!Array.isArray(snapshot.items) && !Array.isArray(snapshot.sections))) throw new Error('Invalid news source');
-        return snapshot;
-      }))]);
-      // Keep empty live responses so stale Firestore snapshots cannot reappear.
-      const next = live.flatMap((entry) => entry.status === 'fulfilled' ? [{ ...entry.value, id: entry.value.id || entry.value.sourceId }] : []);
-      return { stored, next, partial: stored.partial || live.some((entry) => entry.status === 'rejected') };
+        const [stored, live] = await Promise.all([loadStoredSources(), Promise.allSettled(requests.map(async ({ url, sourceId }) => {
+          const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+          if (!response.ok) throw new Error('News source unavailable');
+          const snapshot = await response.json() as Snapshot;
+          if (!snapshot || (!Array.isArray(snapshot.items) && !Array.isArray(snapshot.sections))) throw new Error('Invalid news source');
+          return { ...snapshot, id: snapshot.id || snapshot.sourceId || sourceId };
+        }))]);
+        const storedCache = stored.items.filter(hasNewsStories);
+        const resolved = resolveNewsSnapshots(live.map((entry, index) => ({
+          sourceId: requests[index].sourceId,
+          snapshot: entry.status === 'fulfilled' ? entry.value : undefined,
+        })), [...storedCache, ...cachedAtStart], hasNewsStories);
+        const next = resolved.snapshots as Snapshot[];
+        if (next.some(hasNewsStories)) {
+          try { writeLastGoodNews(window.localStorage, selectedCountry, next.filter(hasCacheableNews)); } catch { /* Cache is optional. */ }
+        }
+        const sourceUnavailable = live.some((entry) => entry.status === 'rejected' || (entry.status === 'fulfilled' && !hasNewsStories(entry.value)));
+        return { stored, next, partial: stored.partial || sourceUnavailable, cacheFallbacks: resolved.cacheFallbacks as Snapshot[] };
       })());
       if (request !== loadRequest.current) return;
-       setItems(result.stored.items);
-       setNativeNews(result.stored.nativeNews);
+      setItems(result.stored.items);
+      setNativeNews(result.stored.nativeNews);
       setLiveSources(result.next);
-      if (result.partial) setLoadError('일부 뉴스 출처를 불러오지 못했습니다. 확인된 기사만 표시합니다.');
+      setUsingLastGoodCache(result.cacheFallbacks.length > 0);
+      setLastGoodFetchedAt(latestFetchedAt(result.cacheFallbacks));
+      if (result.partial && !result.cacheFallbacks.length) setLoadError('뉴스 출처가 응답하지 않습니다. 마지막 정상 캐시가 없어 다시 시도해주세요.');
     } catch {
-      if (request === loadRequest.current) setLoadError('뉴스를 불러오지 못했습니다. 연결을 확인하고 다시 시도해주세요.');
+      if (request === loadRequest.current) {
+        const fallback = cachedAtStart.length ? cachedAtStart : readBrowserNewsCache(selectedCountry).filter((snapshot) => requestIds.has(snapshot.sourceId));
+        if (fallback.length) {
+          setLiveSources(fallback);
+          setUsingLastGoodCache(true);
+          setLastGoodFetchedAt(latestFetchedAt(fallback));
+        } else {
+          setLoadError('뉴스를 불러오지 못했습니다. 연결을 확인하고 다시 시도해주세요.');
+        }
+      }
     } finally {
       if (request === loadRequest.current) { setLoadedCountry(selectedCountry); setLoading(false); }
     }
@@ -146,6 +201,7 @@ export default function NewsPage() {
           <div className="divide-y divide-white/10">{nativeNews.filter((post) => selectedCountry === 'Global' || post.country === 'Global' || post.country === selectedCountry).map((post) => <Link key={post.id} href={`/community/${encodeURIComponent(post.id)}`} className="flex gap-3 p-4 transition hover:bg-white/[.05]">{post.image && <img src={post.image} alt="" className="h-16 w-20 shrink-0 rounded-lg object-cover" />}<span className="min-w-0"><span className="flex flex-wrap gap-2 text-[10px] font-bold text-slate-400"><span>{regionLabel(post.country)}</span><span>{post.author}</span><span>{formatStoryDate(post.createdAt)}</span></span><strong className="mt-1 block truncate text-sm text-white">{post.title}</strong><span className="mt-1 block line-clamp-2 text-xs leading-5 text-slate-400">{post.body}</span></span></Link>)}</div>
         </section>}
         <div className="mb-4 flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-teal-300">Latest stories</p><h2 className="mt-1 text-lg font-black text-white">최신 소식 <span className="text-slate-500">{stories.length}</span></h2></div><span className="text-xs text-slate-500">행을 클릭하면 원문을 확인합니다</span></div>
+        {usingLastGoodCache && <p role="status" className="mb-3 rounded-xl border border-amber-200/15 bg-amber-200/[.05] px-3 py-2 text-xs text-amber-100">뉴스 출처가 응답하지 않아 마지막 정상 수신 기사를 표시하고 있습니다{lastGoodFetchedAt ? ` · ${formatStoryDate(lastGoodFetchedAt)}` : ''}.</p>}
         {loading && <RouteSkeleton label="뉴스 출처와 최신 기사를 불러오는 중입니다." />}
         {!loading && loadError && <RouteErrorState message={loadError} onRetry={() => void load()} />}
         {!loading && !loadError && stories.length === 0 && <div className="ui-state route-state">선택한 지역의 뉴스가 없습니다.</div>}
