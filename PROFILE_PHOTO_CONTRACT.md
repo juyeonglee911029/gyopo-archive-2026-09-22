@@ -10,5 +10,7 @@ This contract is shared by the web client, Firestore rules, and future native cl
 - An established friend call remains available regardless of later photo changes; photo requirements do not revoke an existing relationship or call.
 - In a match view, a viewer with three or four photos sees up to the first three photos in the other member's ordered gallery. A viewer with five sees the full gallery. A viewer below three sees no match gallery. Public member profiles still show the full public gallery.
 - Derive eligibility from the array length; do not store a separate count. Native clients should implement the same constants: maximum 5, minimum 3, preview 3.
+- Gallery uploads must create new JPEG objects only. Storage rules deny client overwrite and deletion; a removed gallery URL must not be reusable for verification.
+- Call `/api/profile-photos/verify` even when saving an empty gallery. After the private and public profile lists have both been saved without a photo, `/api/profile-photos/delete` checks all three lists and records an irreversible deletion claim before a generation-conditional Storage deletion. A failed deletion may be retried.
 
 The web implementation centralizes normalization and display policy in `src/lib/profilePhotos.ts`. Firestore rules are the authoritative eligibility check; client checks are for immediate feedback only.

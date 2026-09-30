@@ -503,9 +503,12 @@ service cloud.firestore {
          && request.resource.data.reviewedBy == request.auth.token.email;
        allow delete: if false;
      }
-     match /verifiedProfilePhotos/{userId} {
-       allow read, write: if false;
-     }
+      match /verifiedProfilePhotos/{userId} {
+        allow read, write: if false;
+      }
+      match /galleryDeletionClaims/{claimId} {
+        allow read, write: if false;
+      }
      match /transferRequests/{requestId} {
        allow read: if request.auth != null && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid || isMaster());
        // No verified settlement service exists for this legacy flow.

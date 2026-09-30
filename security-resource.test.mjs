@@ -6,6 +6,7 @@ import test from 'node:test';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const rules = read('./firestore.rules');
+const storageRules = read('./storage.rules');
 const adminSource = stripTypeScriptTypes(read('./src/lib/firebaseAdmin.ts'));
 const { creditUsdBalance } = await import(`data:text/javascript;base64,${Buffer.from(adminSource).toString('base64')}`);
 const projectId = 'demo-security-resource';
@@ -56,6 +57,19 @@ function assertBalancedDelimiters(source) {
 
 test('rules source has balanced delimiters outside comments and strings', () => {
   assertBalancedDelimiters(rules);
+  assertBalancedDelimiters(storageRules);
+});
+
+test('gallery Storage rules deny client reads, overwrites and deletion', () => {
+  assert.equal(JSON.parse(read('./firebase.json')).storage.rules, 'storage.rules');
+  assert.match(storageRules, /bucket == 'gyopo-live-portal-506019\.firebasestorage\.app'/);
+  assert.match(storageRules, /request\.auth\.uid == userId/);
+  assert.match(storageRules, /match \/profiles\/\{userId\}\/gallery\/\{fileName\}/);
+  assert.match(storageRules, /match \/profiles\/\{userId\}\/\{fileName\}/);
+  assert.match(storageRules, /collection in \['posts', 'jobs'\]/);
+  assert.equal((storageRules.match(/allow read, update, delete: if false;/g) || []).length, 3);
+  assert.doesNotMatch(storageRules, /allow (?:read|update|delete): if (?!false)/);
+  assert.match(storageRules, /match \/\{allPaths=\*\*\} \{\s*allow read, write: if false;/);
 });
 
 test('source checker catches missing posts-update parenthesis', () => {
