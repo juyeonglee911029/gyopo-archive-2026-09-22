@@ -1,3 +1,5 @@
+import { friendLikeIntent } from '@/lib/friendMatching';
+
 const firebaseConfig = {
   apiKey: 'AIzaSyAne5XuEzN2sL3px0oY5Wxsgf3m0nHHIoY',
   authDomain: 'gyopo-live-portal-506019.firebaseapp.com',
@@ -1171,23 +1173,48 @@ export async function listFriendConnections(userId: string, token = getSessionTo
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
-export async function sendFriendRequest(addresseeId: string, token = getSessionToken()): Promise<void> {
+export async function sendFriendRequest(addresseeId: string, token = getSessionToken()): Promise<boolean> {
   const requesterId = getTokenUserId(token);
   if (!token || !requesterId || !addresseeId || requesterId === addresseeId) throw new Error('친구 요청 대상을 확인해주세요.');
   const id = friendshipId(requesterId, addresseeId);
-  const existing = await Promise.all(collectionsForFriendship().map((collection) => getDocument<FriendConnection>(collection, id, token).then((item) => item ? { ...item, sourceCollection: collection } : null).catch(() => null))).then((items) => items.find(Boolean) || null);
-  if (existing?.status === 'accepted' || existing?.status === 'pending') return;
+  const readExisting = async () => Promise.all(collectionsForFriendship().map((collection) => getDocument<FriendConnection>(collection, id, token).then((item) => item ? { ...item, sourceCollection: collection } : null).catch(() => null))).then((items) => items.find(Boolean) || null);
+  const settleExisting = async (connection: FriendConnection | null): Promise<'matched' | 'waiting' | 'create'> => {
+    const intent = friendLikeIntent(connection, requesterId);
+    if (intent === 'matched') {
+      if (connection?.status === 'pending') await respondToFriendRequest(connection, 'accepted', token);
+      return 'matched';
+    }
+    if (intent === 'waiting') return 'waiting';
+    return 'create';
+  };
+
+  const existing = await readExisting();
+  const existingIntent = await settleExisting(existing);
+  if (existingIntent === 'matched') return true;
+  if (existingIntent === 'waiting') return false;
   if (existing?.status === 'declined') {
     await deleteDocument(existing.sourceCollection || friendConnectionCollection, id, token);
   }
   const now = new Date();
   try {
     await createDocument(friendConnectionCollection, id, { requesterId, addresseeId, status: 'pending', createdAt: now, updatedAt: now }, token);
+    return false;
   } catch (error) {
-    await createDocument(legacyFriendConnectionCollection, id, { requesterId, addresseeId, status: 'pending', createdAt: now, updatedAt: now }, token).catch(async (legacyError) => {
-      const current = await getDocument<FriendConnection>(legacyFriendConnectionCollection, id, token).catch(() => null);
-      if (!current) throw legacyError || error;
-    });
+    const raced = await readExisting();
+    const racedIntent = await settleExisting(raced);
+    if (racedIntent === 'matched') return true;
+    if (racedIntent === 'waiting') return false;
+    if (raced?.status === 'declined') await deleteDocument(raced.sourceCollection || friendConnectionCollection, id, token);
+    try {
+      await createDocument(legacyFriendConnectionCollection, id, { requesterId, addresseeId, status: 'pending', createdAt: now, updatedAt: now }, token);
+      return false;
+    } catch (legacyError) {
+      const current = await readExisting();
+      const currentIntent = await settleExisting(current);
+      if (currentIntent === 'matched') return true;
+      if (currentIntent === 'waiting') return false;
+      throw legacyError || error;
+    }
   }
 }
 
