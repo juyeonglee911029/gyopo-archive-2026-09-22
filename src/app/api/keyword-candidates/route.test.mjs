@@ -39,7 +39,7 @@ globalThis.fetch = async (input, options) => {
   const url = String(input);
   if (url.startsWith('https://identitytoolkit.googleapis.com/v1/accounts:lookup?')) {
     const idToken = JSON.parse(options.body).idToken;
-    if (![adminToken, otherToken].includes(idToken)) return Response.json({ error: 'Invalid test token' }, { status: 400 });
+    if (![adminToken, otherToken].includes(idToken)) return Response.json({ error: { message: 'INVALID_ID_TOKEN' } }, { status: 400 });
     return Response.json({ users: [{ localId: 'fixture-user', email: idToken === adminToken ? 'juyeonglee911029@gmail.com' : 'other@example.test' }] });
   }
   if (url.startsWith('https://www.googleapis.com/webmasters/v3/sites/')) {

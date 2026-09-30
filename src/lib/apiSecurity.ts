@@ -21,6 +21,15 @@ export class ApiAuthError extends Error {
   }
 }
 
+export class AuthServiceUnavailableError extends Error {
+  readonly status = 503;
+
+  constructor() {
+    super('로그인 확인 서비스가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해주세요.');
+    this.name = 'AuthServiceUnavailableError';
+  }
+}
+
 export function clientAddress(request: Request): string {
   return request.headers.get('cf-connecting-ip')
     || request.headers.get('x-real-ip')
@@ -56,15 +65,25 @@ export async function authenticateRequest(request: Request): Promise<VerifiedUse
   if (cached && cached.expiresAt > Date.now()) return cached.user;
   if (cached) verifiedTokenCache.delete(token);
 
-  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(FIREBASE_API_KEY)}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ idToken: token }),
-    signal: AbortSignal.timeout(4_000),
-  }).catch(() => null);
-  if (!response?.ok) return null;
+  let response: Response;
+  try {
+    response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(FIREBASE_API_KEY)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: token }),
+      signal: AbortSignal.timeout(4_000),
+    });
+  } catch {
+    throw new AuthServiceUnavailableError();
+  }
+  if (!response.ok) {
+    const failure = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+    const code = failure?.error?.message?.split(/[ :]/, 1)[0];
+    if (response.status === 401 || ['INVALID_ID_TOKEN', 'USER_DISABLED', 'USER_NOT_FOUND'].includes(code || '')) return null;
+    throw new AuthServiceUnavailableError();
+  }
 
-  const payload = await response.json().catch(() => null) as { users?: Array<{ localId?: string; email?: string }> } | null;
+  const payload = await response.json().catch(() => { throw new AuthServiceUnavailableError(); }) as { users?: Array<{ localId?: string; email?: string }> };
   const record = payload?.users?.[0];
   if (!record?.localId || !/^[A-Za-z0-9_-]{1,128}$/.test(record.localId)) return null;
 
@@ -106,6 +125,12 @@ export async function readProfileAiWritingPrompt(user: VerifiedUser): Promise<st
 }
 
 export function unauthorizedResponse(error: unknown) {
+  if (error instanceof AuthServiceUnavailableError) {
+    return Response.json(
+      { error: error.message },
+      { status: error.status, headers: { 'cache-control': 'no-store, private', 'retry-after': '5' } },
+    );
+  }
   const message = error instanceof ApiAuthError ? error.message : '로그인 세션을 확인하지 못했습니다.';
   return Response.json({ error: message }, { status: 401 });
 }

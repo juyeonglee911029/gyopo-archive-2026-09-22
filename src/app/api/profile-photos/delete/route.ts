@@ -17,7 +17,12 @@ function referencesObject(document: AdminFirestoreDocument | null, objectName: s
 }
 
 export async function POST(request: Request) {
-  const user = await authenticateRequest(request).catch(() => null);
+  let user: Awaited<ReturnType<typeof authenticateRequest>>;
+  try {
+    user = await authenticateRequest(request);
+  } catch (error) {
+    return unauthorizedResponse(error);
+  }
   if (!user) return unauthorizedResponse(new Error('로그인 세션이 필요합니다.'));
   const rate = consumeRateLimit(`profile-gallery-delete:${user.uid}:${clientAddress(request)}`, 20, 60_000);
   if (!rate.allowed) return rateLimitResponse(rate.retryAfterMs);
