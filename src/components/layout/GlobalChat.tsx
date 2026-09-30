@@ -123,7 +123,7 @@ export default function GlobalChat({ desktopOpen, onDesktopOpenChange }: GlobalC
       text: input.trim(),
       imageData: imageData || undefined,
       createdAt: new Date().toISOString(),
-       expiresAt: new Date(Date.now() + 60 * 1000),
+      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
     };
     try {
       const id = crypto.randomUUID();
@@ -142,7 +142,7 @@ export default function GlobalChat({ desktopOpen, onDesktopOpenChange }: GlobalC
          {desktopOpen ? <>
            <div className="global-lounge-header flex items-start justify-between gap-3 border-b border-white/8 p-4">
              <div className="global-lounge-heading"><div className="flex items-center gap-2 font-black text-white"><MessageCircle size={17} className="text-teal-300" /> {language === 'ko' ? '실시간 라운지' : 'Live Lounge'}</div><p className="mt-1 text-[11px] text-slate-300/75">{language === 'ko' ? '지역에 관계없이 연결된 교민들' : 'Connect with the global Korean community'}</p></div>
-              <button ref={desktopToggleRef} type="button" onClick={() => onDesktopOpenChange(false)} aria-expanded={desktopOpen} aria-controls="global-lounge" aria-label={language === 'ko' ? '라운지 최소화' : 'Minimize lounge'} title={language === 'ko' ? '라운지 최소화' : 'Minimize lounge'} className="grid h-8 w-8 shrink-0 place-items-center border border-white/15 bg-white/[.04] text-teal-100 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-200"><Minus size={16} /></button>
+              <button ref={desktopToggleRef} type="button" onClick={() => onDesktopOpenChange(false)} aria-expanded={desktopOpen} aria-controls="global-lounge" aria-label={language === 'ko' ? '라운지 최소화' : 'Minimize lounge'} title={language === 'ko' ? '라운지 최소화' : 'Minimize lounge'} className="grid h-8 w-8 shrink-0 place-items-center border-0 bg-transparent text-teal-100 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-200"><Minus size={16} /></button>
            </div>
 
            <div className="global-lounge-messages flex-1 space-y-2 overflow-y-auto p-3">
@@ -167,15 +167,15 @@ export default function GlobalChat({ desktopOpen, onDesktopOpenChange }: GlobalC
                  <div className="relative flex gap-2">
                    <input type="text" value={input} onChange={(event) => setInput(event.target.value)} placeholder={language === 'ko' ? '메시지를 입력하세요...' : 'Write a message...'} className="min-w-0 flex-1 border border-white/10 bg-white/5 py-2 pl-3 pr-3 text-sm text-white outline-none transition-all placeholder:text-slate-300/70 focus:border-teal-300/50 focus:ring-2 focus:ring-teal-300/20" />
                    <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
-                   <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="사진 첨부" title="사진 첨부" className="grid h-9 w-9 shrink-0 place-items-center border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"><ImagePlus size={16} /></button>
-                   <button type="submit" aria-label="메시지 보내기" className="flex h-9 w-9 shrink-0 items-center justify-center bg-teal-300 text-slate-950 transition-colors hover:bg-teal-200"><Send size={14} /></button>
+                    <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="사진 첨부" title="사진 첨부" className="grid h-9 w-9 shrink-0 place-items-center border-0 bg-transparent text-slate-200 transition-colors hover:bg-white/10 hover:text-teal-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-200"><ImagePlus size={16} /></button>
+                    <button type="submit" aria-label="메시지 보내기" title="메시지 보내기" className="grid h-9 w-9 shrink-0 place-items-center border-0 bg-transparent text-teal-300 transition-colors hover:bg-white/10 hover:text-teal-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-200"><Send size={14} /></button>
                  </div>
                </form>
              ) : (
                <div className="border border-white/15 bg-white/[.08] p-3 text-center text-sm font-medium text-slate-200/75">{language === 'ko' ? '로그인 후 채팅에 참여하세요.' : 'Log in to join the chat.'}</div>
              )}
            </div>
-         </> : <button ref={desktopToggleRef} type="button" onClick={() => onDesktopOpenChange(true)} aria-expanded={desktopOpen} aria-controls="global-lounge" aria-label={language === 'ko' ? '라운지 복원' : 'Restore lounge'} title={language === 'ko' ? '라운지 복원' : 'Restore lounge'} className="grid h-11 w-11 place-items-center border border-teal-200/25 bg-[#0a1120]/20 text-teal-100 hover:bg-[#0a1120]/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-200"><Plus size={18} /></button>}
+          </> : <button ref={desktopToggleRef} type="button" onClick={() => onDesktopOpenChange(true)} aria-expanded={desktopOpen} aria-controls="global-lounge" aria-label={language === 'ko' ? '라운지 복원' : 'Restore lounge'} title={language === 'ko' ? '라운지 복원' : 'Restore lounge'} className="grid h-11 w-11 place-items-center border-0 bg-transparent text-teal-100 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-200"><Plus size={18} /></button>}
        </aside>
         <div className="global-mobile-lounge fixed bottom-3 left-3 right-3 z-40 lg:hidden">
           {mobileOpen && <div id="global-mobile-lounge-panel" role="region" aria-label={language === 'ko' ? '실시간 라운지' : 'Live Lounge'} className="global-mobile-lounge-panel mb-2 overflow-hidden border border-white/10 bg-white/10 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#10182b]/48">
@@ -188,7 +188,7 @@ export default function GlobalChat({ desktopOpen, onDesktopOpenChange }: GlobalC
               {messages.slice(-8).map((message) => <div key={message.id} className={`global-chat-message-bubble p-2 text-xs ${message.authorId === user?.id ? 'global-chat-own' : 'global-chat-other'}`} title={message.country || 'Global'}><div className="global-chat-line"><span className="global-chat-author">{message.user || '교민'}:</span>{message.text && <span className="global-chat-text">{message.text}</span>}<time className="global-chat-time" dateTime={message.createdAt}>{formatTime(message.createdAt)}</time></div>{message.imageData && <img src={message.imageData} alt="채팅 첨부 이미지" loading="lazy" className="mt-2 max-h-40 w-full object-contain" />}</div>)}
              <div ref={mobileEndRef} />
          </div>
-         {user ? <form onSubmit={handleSend} className="flex gap-2 border-t border-slate-200 p-2 dark:border-white/10"><input value={input} onChange={(event) => setInput(event.target.value)} placeholder="라운지에 메시지..." className="min-w-0 flex-1 border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none dark:border-white/10 dark:bg-black/20" /><button type="button" onClick={() => fileInputRef.current?.click()} aria-label="사진 첨부" className="grid h-8 w-8 shrink-0 place-items-center bg-slate-800 text-white"><ImagePlus size={14} /></button><button className="bg-blue-600 px-3 text-xs font-black text-white">전송</button></form> : <p className="border-t border-slate-200 p-3 text-center text-xs text-slate-500 dark:border-white/10">로그인 후 채팅에 참여하세요.</p>}
+          {user ? <form onSubmit={handleSend} className="flex gap-2 border-t border-slate-200 p-2 dark:border-white/10"><input value={input} onChange={(event) => setInput(event.target.value)} placeholder="라운지에 메시지..." className="min-w-0 flex-1 border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none dark:border-white/10 dark:bg-black/20" /><button type="button" onClick={() => fileInputRef.current?.click()} aria-label="사진 첨부" title="사진 첨부" className="grid h-8 w-8 shrink-0 place-items-center border-0 bg-transparent text-slate-200 transition-colors hover:bg-white/10 hover:text-teal-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-200"><ImagePlus size={14} /></button><button type="submit" aria-label="메시지 보내기" title="메시지 보내기" className="grid h-8 w-8 shrink-0 place-items-center border-0 bg-transparent text-teal-300 transition-colors hover:bg-white/10 hover:text-teal-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-200"><Send size={14} /></button></form> : <p className="border-t border-slate-200 p-3 text-center text-xs text-slate-500 dark:border-white/10">로그인 후 채팅에 참여하세요.</p>}
         </div>}
      </div>
     </>

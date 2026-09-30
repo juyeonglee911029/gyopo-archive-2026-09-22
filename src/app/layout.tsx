@@ -50,6 +50,49 @@ export default function RootLayout({
           .global-header-wrap {
             background: #070e1a !important;
           }
+        }
+        @media (max-width: 639px) {
+          /* Keep video actions visible without stacking them under the chat overlay. */
+          html:has(.webrtc-page),
+          body:has(.webrtc-page) {
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+          }
+
+          .webrtc-page {
+            height: auto !important;
+            min-height: calc(100svh - 112px) !important;
+            overflow: visible !important;
+            padding-bottom: 5.5rem !important;
+          }
+
+          .webrtc-shell {
+            height: auto !important;
+            min-height: 0 !important;
+          }
+
+          .webrtc-grid {
+            height: auto !important;
+            overflow: visible !important;
+          }
+
+          .webrtc-grid > div:first-child {
+            position: relative !important;
+          }
+
+          .webrtc-grid .webrtc-mobile-controls {
+            position: absolute !important;
+            inset: auto 0.75rem 0.75rem !important;
+          }
+
+          .webrtc-grid > aside {
+            position: relative !important;
+            inset: auto !important;
+            max-height: none !important;
+            margin-top: 0.75rem !important;
+            overflow: visible !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
         }`}</style>
       </head>
       <body className="font-sans min-h-screen">

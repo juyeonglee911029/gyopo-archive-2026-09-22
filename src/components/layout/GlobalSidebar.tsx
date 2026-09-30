@@ -21,6 +21,7 @@ const navigationGroups = [
     { id: 'events', href: '/regions', label: '행사', english: 'Events', icon: CalendarDays },
   ] },
   { title: 'DISCOVER', links: [
+    { id: 'friends', href: '/users', label: '친구 매칭', english: 'Friend matching', icon: UserRoundCheck },
     { id: 'music', href: '/music', label: '음악', english: 'Music', icon: Music2 },
     { id: 'watch', href: '/watch', label: '영상', english: 'Watch', icon: Film },
     { id: 'games', href: '/games', label: '테트리스', english: 'Tetris', icon: Gamepad2 },

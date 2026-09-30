@@ -1676,7 +1676,7 @@ export default function GamesPage() {
   // An invitation already has both IDs; only admitted room phases may request media.
   const videoRoomActive = Boolean(matchId && opponent && ['betting', 'holding', 'countdown', 'playing'].includes(matchPhase));
   const videoRoomUrl = videoRoomActive && matchId && opponent
-     ? `/webrtc?friend=${encodeURIComponent(opponent.id)}&auto=1&compact=1&callKind=game&videoOnly=1&gameRoom=${encodeURIComponent(matchId)}`
+      ? `/webrtc?friend=${encodeURIComponent(opponent.id)}&auto=1&compact=1&callKind=game&videoOnly=1&gameType=tetris&gameRoom=${encodeURIComponent(matchId)}&gameRoomId=${encodeURIComponent(matchId)}`
     : '';
 
   if (true) {
