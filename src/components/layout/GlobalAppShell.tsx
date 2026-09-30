@@ -59,6 +59,10 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
     return () => window.removeEventListener('gyopo-menu-open', openMenu);
   }, [mode]);
 
+  useEffect(() => {
+    if (mode !== 'public') setDesktopLoungeOpen(false);
+  }, [mode]);
+
   if (mode === 'admin') return <div className="global-admin-shell">
     <nav className="global-admin-nav" aria-label="관리자 메뉴">
       {[
