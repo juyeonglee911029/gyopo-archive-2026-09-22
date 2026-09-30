@@ -8,7 +8,7 @@ import { withRouteTimeout } from '@/lib/routeExperience';
 import { listDocuments } from '@/lib/firebase';
 import { isPublicArticle } from '@/lib/publicArticle';
 import { regionLabel } from '@/lib/regions';
-import { CONTENT_SOURCES, sourceItemId } from '@/lib/contentSources';
+import { CONTENT_SOURCES, contentSourceMatchesRegion, sourceItemId } from '@/lib/contentSources';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { useEffectEvent } from '@/lib/useeffectevent';
 import CategoryPostWriter from '@/components/posts/CategoryPostWriter';
@@ -76,7 +76,7 @@ export default function NewsPage() {
     setLoadError('');
     try {
       const result = await withRouteTimeout((async () => {
-      const sources = CONTENT_SOURCES.filter((source) => source.autoImport && source.categories.includes('news') && (selectedCountry === 'Global' || source.region === selectedCountry || source.region === 'Global'));
+      const sources = CONTENT_SOURCES.filter((source) => source.autoImport && source.categories.includes('news') && contentSourceMatchesRegion(source, selectedCountry));
       const urls = [...sources.slice(0, 24).map((source) => `/api/content/preview?source=${encodeURIComponent(source.id)}`), `/api/content/preview?region=${encodeURIComponent(selectedCountry)}`];
       const [stored, live] = await Promise.all([loadStoredSources(), Promise.allSettled(urls.map(async (url) => {
         const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
