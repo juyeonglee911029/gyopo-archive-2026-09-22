@@ -24,18 +24,20 @@ import {
   saveProfile,
   upsertDocument,
   type GenderPreference,
-  type TetrisQueueProfile,
+  type WebrtcQueueProfile,
 } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
 import { allowClientAction, getVideoAlias, inspectSafetyText, RANDOM_VIDEO_MIN_AGE } from '@/lib/safety';
 import { callMediaConstraints, isVideoOnlyCall, createMirroredCamera, mergeRemoteTrack, playCallMedia } from '@/lib/callMedia';
 import { createCandidateQueue, createRtcSignaling, startSerialPoll, updateCallMediaLease, CALL_MEDIA_LEASE_MS, RTC_INITIAL_TIMEOUT, RTC_DISCONNECT_GRACE, RTC_RESTART_TIMEOUT, type RtcDescription } from '@/lib/rtcSignaling';
 import { rtcConfiguration, rtcFailureMessage } from '@/lib/rtcConfiguration';
+import { canPhotoMatch, getVisibleMatchPhotos } from '@/lib/profilePhotos';
 
 type QueueEntry = OnlineUser & {
   status?: 'waiting' | 'matched';
   callId?: string;
-  opponent?: TetrisQueueProfile;
+  opponent?: WebrtcQueueProfile;
+  profilePhotos?: string[];
 };
 
 type CallDocument = {
@@ -122,6 +124,8 @@ export default function WebRTCPage() {
   const [ageMax, setAgeMax] = useState(60);
   const [targetUserId, setTargetUserId] = useState('');
   const [callKind, setCallKind] = useState<'random' | 'friend' | 'game'>('random');
+  const [gameType, setGameType] = useState<'tetris' | 'brickBreaker' | ''>('');
+  const [gameRoomId, setGameRoomId] = useState('');
   const [compactMode, setCompactMode] = useState(false);
   const [autoStart, setAutoStart] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
@@ -182,20 +186,27 @@ export default function WebRTCPage() {
   const mountedRef = useRef(true);
   const blockedUserIdsRef = useRef<string[]>([]);
   const stopPollRef = useRef<(() => void) | null>(null);
-  const queueProfileRef = useRef<TetrisQueueProfile | null>(null);
+  const queueProfileRef = useRef<WebrtcQueueProfile | null>(null);
   const queueNeedsResetRef = useRef(false);
   const queueWorkRef = useRef<Promise<unknown>>(Promise.resolve());
-  const callIdentityRef = useRef({ id: '', kind: 'random', targetUserId: '' });
+  const callIdentityRef = useRef({ id: '', kind: 'random', targetUserId: '', gameType: '' as 'tetris' | 'brickBreaker' | '', gameRoomId: '' });
   const targetedCall = Boolean(targetUserId) || callKind !== 'random';
   const matchGenderPreference = targetedCall ? 'any' : genderPreference;
 
   const signalEnded = (callId?: string) => {
-    const identity = callIdentityRef.current;
-    const terminalId = identity.id ? `webrtc-end-${identity.kind}-${identity.id}` : '';
-    // The shared admission marker also covers hangup before the queue is matched.
-    for (const id of new Set([callId, terminalId].filter((value): value is string => Boolean(value)))) {
+      const identity = callIdentityRef.current;
+      const terminalId = identity.id ? `webrtc-end-${identity.kind}-${identity.id}` : '';
+      // The shared admission marker also covers hangup before the queue is matched.
+      for (const id of new Set([callId, terminalId].filter((value): value is string => Boolean(value)))) {
       const markerIdentity = id === terminalId && userRef.current && identity.targetUserId
-        ? { callerId: userRef.current.id, calleeId: identity.targetUserId } : {};
+        ? {
+            callerId: userRef.current.id,
+            calleeId: identity.targetUserId,
+            queueKind: identity.kind,
+            targetUserId: identity.targetUserId,
+            ...(identity.kind === 'game' ? { gameType: identity.gameType, gameRoomId: identity.gameRoomId } : {}),
+          }
+        : {};
       void getFreshSessionToken().then((token) => {
         if (token) return mergeDocument('webrtcCalls', id, { ...markerIdentity, status: 'ended', endedAt: new Date() }, token);
       }).catch(() => undefined);
@@ -238,13 +249,21 @@ export default function WebRTCPage() {
     videoOnlyRef.current = isVideoOnlyCall(window.location.search);
     setVideoOnly(videoOnlyRef.current);
     setTargetUserId(params.get('friend') || '');
-    setCallKind(params.get('gameRoom') || params.get('callKind') === 'game' ? 'game' : params.get('friend') ? 'friend' : 'random');
+    const kind = params.get('gameRoom') || params.get('callKind') === 'game' ? 'game' : params.get('friend') ? 'friend' : 'random';
+    const requestedGameType = params.get('gameType');
+    const nextGameType = requestedGameType === 'tetris' || requestedGameType === 'brickBreaker' ? requestedGameType : '';
+    const nextGameRoomId = params.get('gameRoomId') || '';
+    setCallKind(kind);
+    setGameType(nextGameType);
+    setGameRoomId(nextGameRoomId);
     setCompactMode(params.get('compact') === '1');
     setAutoStart(params.get('auto') === '1');
     callIdentityRef.current = {
       id: params.get('gameRoom') || params.get('callId') || '',
-      kind: params.get('gameRoom') || params.get('callKind') === 'game' ? 'game' : params.get('friend') ? 'friend' : 'random',
+      kind,
       targetUserId: params.get('friend') || '',
+      gameType: nextGameType,
+      gameRoomId: nextGameRoomId,
     };
   }, []);
 
@@ -590,6 +609,10 @@ export default function WebRTCPage() {
       window.alert('로그인이 필요합니다.');
       return;
     }
+    if (callKind === 'game' && (!targetUserId || !gameType || !gameRoomId)) {
+      setPermissionError('실제 대전방의 상대와 게임방 정보를 확인한 뒤 영상 통화를 시작해주세요.');
+      return;
+    }
     let token = await getFreshSessionToken();
     if (!token) {
       window.alert('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
@@ -598,6 +621,11 @@ export default function WebRTCPage() {
     if (typeof user.age !== "number" || user.age < RANDOM_VIDEO_MIN_AGE) {
       setPermissionError('영상채팅은 만 18세 이상 인증 회원만 이용할 수 있습니다.');
       setStatus('18세 이상 이용 가능');
+      return;
+    }
+    if (callKind === 'random' && !canPhotoMatch(user.profilePhotos)) {
+      setPermissionError('랜덤 매칭을 시작하려면 공개 프로필 사진을 3장 이상 등록해주세요.');
+      setStatus('공개 사진 3장 필요');
       return;
     }
     if (callKind === 'random' && !adultConsent && !consentOverride) {
@@ -704,7 +732,10 @@ export default function WebRTCPage() {
     setStatus(targetedCall ? '수락한 상대에게 연결하는 중' : '다른 인증 회원을 찾는 중');
     setIsMatching(true);
     queueNeedsResetRef.current = false;
-    queueProfileRef.current = { id: user.id, name: videoAlias, image: user.image, country: user.country || 'Global', age: user.age, gender: user.gender || '', genderPreference: matchGenderPreference, ageMin, ageMax, isSubscribed: Boolean(user.isSubscribed), targetUserId: targetUserId || undefined, queueKind: callKind };
+    const gameQueueDetails = callKind === 'game' && (gameType === 'tetris' || gameType === 'brickBreaker')
+      ? { gameType, gameRoomId }
+      : {};
+    queueProfileRef.current = { id: user.id, name: videoAlias, image: user.image, profilePhotos: user.profilePhotos, country: user.country || 'Global', age: user.age, gender: user.gender || '', genderPreference: matchGenderPreference, ageMin, ageMax, isSubscribed: Boolean(user.isSubscribed), targetUserId: targetUserId || undefined, queueKind: callKind, ...gameQueueDetails };
     const queued = await queueWrite(() => cancelled() ? Promise.resolve() : mergeDocument('webrtcQueue', user.id, {
       userId: user.id,
       name: videoAlias,
@@ -714,10 +745,11 @@ export default function WebRTCPage() {
        gender: user.gender || '',
          genderPreference: matchGenderPreference,
         ageMin,
-        ageMax,
-        targetUserId: targetUserId || undefined,
-       queueKind: callKind,
-       isSubscribed: Boolean(user.isSubscribed),
+         ageMax,
+         targetUserId: targetUserId || undefined,
+         queueKind: callKind,
+         ...gameQueueDetails,
+         isSubscribed: Boolean(user.isSubscribed),
        status: 'waiting',
       lastSeenAt: new Date(),
     }, token)).then(() => true).catch((error) => {
@@ -1032,16 +1064,17 @@ export default function WebRTCPage() {
           }
           const ownQueue = await getDocument<QueueEntry>('webrtcQueue', user.id, token);
           if (stale()) return;
-           const makePeer = (profile: TetrisQueueProfile): QueueEntry => ({
+          const makePeer = (profile: WebrtcQueueProfile): QueueEntry => ({
             id: profile.id,
             userId: profile.id,
             name: profile.name,
-             image: profile.image,
-              country: profile.country,
-              age: profile.age,
-              gender: profile.gender === 'male' || profile.gender === 'female' ? profile.gender : undefined,
-             lastSeenAt: new Date().toISOString(),
-           });
+            image: profile.image,
+            profilePhotos: profile.profilePhotos,
+            country: profile.country,
+            age: profile.age,
+            gender: profile.gender === 'male' || profile.gender === 'female' ? profile.gender : undefined,
+            lastSeenAt: new Date().toISOString(),
+          });
           let nextCall: ActiveCall | null = null;
            if (ownQueue?.status === 'matched' && ownQueue.callId && ownQueue.opponent) {
             const matchedPeer = makePeer(ownQueue.opponent);
@@ -1417,6 +1450,7 @@ export default function WebRTCPage() {
   }, [hasRemoteScreen, compactMode]);
 
   const sharedScreenVisible = isSharingScreen || remoteSharingScreen || hasRemoteScreen;
+  const visiblePeerPhotos = getVisibleMatchPhotos(user?.profilePhotos, peer?.profilePhotos);
   const screenShareDisabled = !isConnected || videoOnly || screenShareBusy || (!isSharingScreen && Boolean(mediaOwnerId));
   const canToggleTogetherListen = !videoOnly && (isSharingScreen
     ? screenAudioTrackRef.current?.readyState === 'live'
@@ -1434,6 +1468,7 @@ export default function WebRTCPage() {
             </div>
             <span className="flex shrink-0 items-center gap-1.5"><span className={`px-2 py-1 text-[10px] font-black ${isConnected ? 'bg-emerald-300/15 text-emerald-200' : 'bg-amber-300/15 text-amber-200'}`}>{hasEnded ? 'ENDED' : permissionError ? 'CHECK' : isConnected ? 'CONNECTED' : active || isStarting ? 'CONNECTING' : 'READY'}</span>{isConnected && <span className="font-mono text-[11px] font-black text-cyan-100">{formatCallDuration(callElapsed)}</span>}</span>
           </div>
+          {visiblePeerPhotos.length > 0 && <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-white/10 bg-white/[.03] px-3 py-2" aria-label="상대 공개 프로필 사진"><span className="shrink-0 text-[9px] font-bold text-slate-400">상대 사진</span>{visiblePeerPhotos.map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`상대 공개 사진 ${index + 1}`} loading="lazy" className="h-9 w-9 shrink-0 rounded-md object-cover" />)}</div>}
 
           <div className={`compact-call-stage relative ${sharedScreenVisible ? 'has-shared-screen' : ''}`}>
             {sharedScreenVisible && <div className="compact-call-shared-screen">
@@ -1533,8 +1568,9 @@ export default function WebRTCPage() {
               </div>
           </div>
 
-           <aside className="space-y-5">
-             <section aria-label="화상 채팅" className="border border-cyan-300/20 bg-[#111a2d] p-4">
+            <aside className="space-y-5">
+              {visiblePeerPhotos.length > 0 && <section className="border border-cyan-300/20 bg-[#111a2d] p-4"><div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-black">상대 공개 사진</h2><span className="text-[10px] font-bold text-cyan-200">{visiblePeerPhotos.length}장 표시</span></div><div className="grid grid-cols-3 gap-2">{visiblePeerPhotos.map((photo, index) => <img key={`${photo}-${index}`} src={photo} alt={`상대 공개 사진 ${index + 1}`} loading="lazy" className="aspect-square w-full object-cover" />)}</div></section>}
+              <section aria-label="화상 채팅" className="border border-cyan-300/20 bg-[#111a2d] p-4">
                <div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-black">화상 채팅</h2><span className="truncate text-[10px] font-bold text-cyan-200">{status}</span></div>
                <div className="max-h-60 space-y-2 overflow-y-auto">{chatMessages.length === 0 ? <p className="py-5 text-center text-sm text-slate-500">상대와 연결되면 메시지를 보낼 수 있습니다.</p> : chatMessages.map((message) => <div key={`side-${message.id}`} className="border border-white/10 bg-white/[0.05] p-3 text-xs"><div className="mb-1 text-[10px] font-bold text-cyan-300">{message.user}</div><div className="break-words text-slate-200">{message.text}</div></div>)}</div>
                {permissionError && !hasEnded && <div role="alert" className="mt-3 border border-amber-300/20 bg-amber-500/10 p-3 text-xs font-bold text-amber-100">{permissionError}{!active && <button type="button" onClick={startMatchFromUi} disabled={isStarting} className="mt-2 block border border-amber-200/30 px-3 py-2 disabled:opacity-50">권한 확인 후 다시 시도</button>}</div>}
