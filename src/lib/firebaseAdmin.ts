@@ -196,6 +196,31 @@ export async function getAdminDocument(collection: string, id: string): Promise<
   return getDocument(collection, id);
 }
 
+export async function getAdminDocuments(collection: string, ids: string[]): Promise<Array<{ id: string; data: Record<string, unknown> }>> {
+  if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(collection)
+    || ids.length > 500
+    || ids.some((id) => !id || id.length > 128 || id.includes('/'))) {
+    throw new Error('Firebase 문서 조회 조건이 올바르지 않습니다.');
+  }
+  const uniqueIds = [...new Set(ids)];
+  const documents: Array<{ id: string; data: Record<string, unknown> }> = [];
+  for (let offset = 0; offset < uniqueIds.length; offset += 100) {
+    const batchIds = uniqueIds.slice(offset, offset + 100);
+    const response = await adminRequest((projectId) => `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:batchGet`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(8_000),
+      body: JSON.stringify({ documents: batchIds.map((id) => documentName(projectId, collection, id)) }),
+    });
+    if (!response.ok) throw new Error(`Firebase 문서 묶음 조회 실패: ${response.status}`);
+    const rows = await response.json() as Array<{ found?: AdminFirestoreDocument }>;
+    documents.push(...rows.flatMap(({ found }) => found?.name ? [{
+      id: decodeURIComponent(found.name.split('/').pop() || ''),
+      data: Object.fromEntries(Object.entries(found.fields || {}).map(([key, value]) => [key, decodeFirestoreValue(value)])),
+    }] : []));
+  }
+  return documents;
+}
+
 export async function listAdminJsonDocuments(collection: string): Promise<Array<{ id: string; data: Record<string, unknown>; updatedAt?: string }>> {
   if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(collection)) throw new Error('Firestore 컬렉션 이름이 올바르지 않습니다.');
   const documents: Array<{ id: string; data: Record<string, unknown>; updatedAt?: string }> = [];
@@ -250,6 +275,36 @@ export async function listAdminDocuments(collection: string): Promise<Array<{ id
     pageToken = payload.nextPageToken || '';
   } while (pageToken);
   return documents;
+}
+
+export async function queryAdminDocuments(
+  collection: string,
+  field: string,
+  value: unknown,
+  limit = 100,
+): Promise<Array<{ id: string; data: Record<string, unknown> }>> {
+  if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(collection)
+    || !/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(field)
+    || !Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+    throw new Error('Firestore 조회 조건이 올바르지 않습니다.');
+  }
+  const response = await adminRequest((projectId) => `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(8_000),
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: collection }],
+        where: { fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: firestoreValue(value) } },
+        limit,
+      },
+    }),
+  });
+  if (!response.ok) throw new Error(`Firebase 문서 검색 실패: ${response.status}`);
+  const rows = await response.json() as Array<{ document?: AdminFirestoreDocument }>;
+  return rows.flatMap(({ document }) => document?.name ? [{
+    id: decodeURIComponent(document.name.split('/').pop() || ''),
+    data: Object.fromEntries(Object.entries(document.fields || {}).map(([key, item]) => [key, decodeFirestoreValue(item)])),
+  }] : []);
 }
 
 export async function upsertAdminJsonDocument(collection: string, id: string, data: Record<string, unknown>): Promise<void> {
