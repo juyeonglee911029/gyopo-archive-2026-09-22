@@ -112,3 +112,9 @@ export function sourceItemId(sourceId: string, category: string, url: string) {
 export function sourcesForRegion(region: string) {
   return CONTENT_SOURCES.filter((source) => source.region === 'Global' || source.region === region);
 }
+
+export function contentSourceMatchesRegion(source: Pick<ContentSource, 'region' | 'regions'>, region: string) {
+  return region === 'Global'
+    || source.region === region
+    || (source.region === 'Global' && (!source.regions?.length || source.regions.includes(region)));
+}
