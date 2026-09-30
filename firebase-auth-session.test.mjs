@@ -6,7 +6,6 @@ import { SourceTextModule, createContext } from 'node:vm';
 
 const source = stripTypeScriptTypes(readFileSync(new URL('./src/lib/firebase.ts', import.meta.url), 'utf8'));
 const profilePhotosSource = stripTypeScriptTypes(readFileSync(new URL('./src/lib/profilePhotos.ts', import.meta.url), 'utf8'));
-const friendMatchingSource = stripTypeScriptTypes(readFileSync(new URL('./src/lib/friendMatching.ts', import.meta.url), 'utf8'));
 const key = 'gyopo-auth-session';
 const jwt = (id, version, valid = true) => 'fixture.' + Buffer.from(JSON.stringify({ sub: id, exp: Math.floor(Date.now() / 1000) + (valid ? 3600 : -60), version })).toString('base64url') + '.fixture';
 const session = (id = 'a', version = 'original', valid = false) => ({ idToken: jwt(id, version, valid), refreshToken: `refresh-${id}-${version}`, user: { id, email: `${id}@example.test`, name: `User ${id}`, isSubscribed: false } });
@@ -41,7 +40,6 @@ async function harness(initial = session(), fetchHandler) {
   const sourceModule = new SourceTextModule(source, { context });
   await sourceModule.link((specifier) => {
     if (specifier === './profilePhotos') return new SourceTextModule(profilePhotosSource, { context });
-    if (specifier === '@/lib/friendMatching') return new SourceTextModule(friendMatchingSource, { context });
     throw new Error(`Unexpected source import: ${specifier}`);
   });
   await sourceModule.evaluate();

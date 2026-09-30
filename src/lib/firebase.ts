@@ -1,5 +1,4 @@
 import { canPhotoMatch, getVisibleMatchPhotos, normalizeProfilePhotos, parseProfileGalleryUrl } from './profilePhotos';
-import { friendLikeIntent } from '@/lib/friendMatching';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAne5XuEzN2sL3px0oY5Wxsgf3m0nHHIoY',
@@ -1208,10 +1207,6 @@ export type FriendConnection = {
 const friendConnectionCollection = 'friendships';
 const legacyFriendConnectionCollection = 'webrtcCalls';
 
-function friendshipId(first: string, second: string) {
-  return `friend-${[first, second].sort().join('-')}`;
-}
-
 export async function listFriendConnections(userId: string, token = getSessionToken()): Promise<FriendConnection[]> {
   const viewerId = getTokenUserId(token);
   if (!token || (viewerId && viewerId !== userId)) return [];
@@ -1220,78 +1215,40 @@ export async function listFriendConnections(userId: string, token = getSessionTo
     queryDocumentsWhere<Omit<FriendConnection, 'id'>>(collection, [{ field: 'requesterId', op: 'EQUAL', value: userId }], token).then((items) => items.map((item) => ({ ...item, sourceCollection: collection }))).catch(() => []),
     queryDocumentsWhere<Omit<FriendConnection, 'id'>>(collection, [{ field: 'addresseeId', op: 'EQUAL', value: userId }], token).then((items) => items.map((item) => ({ ...item, sourceCollection: collection }))).catch(() => []),
   ]));
-  return [...new Map(rows.flat().map((item) => [item.id, item])).values()]
+  return [...new Map(rows.flat().reverse().map((item) => [item.id, item])).values()]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
-export async function sendFriendRequest(addresseeId: string, token = getSessionToken()): Promise<boolean> {
-  const requesterId = getTokenUserId(token);
-  if (!token || !requesterId || !addresseeId || requesterId === addresseeId) throw new Error('친구 요청 대상을 확인해주세요.');
-  const id = friendshipId(requesterId, addresseeId);
-  const readExisting = async () => Promise.all(collectionsForFriendship().map((collection) => getDocument<FriendConnection>(collection, id, token).then((item) => item ? { ...item, sourceCollection: collection } : null).catch(() => null))).then((items) => items.find(Boolean) || null);
-  const settleExisting = async (connection: FriendConnection | null): Promise<'matched' | 'waiting' | 'create'> => {
-    const intent = friendLikeIntent(connection, requesterId);
-    if (intent === 'matched') {
-      if (connection?.status === 'pending') await respondToFriendRequest(connection, 'accepted', token);
-      return 'matched';
-    }
-    if (intent === 'waiting') return 'waiting';
-    return 'create';
-  };
-
-  const existing = await readExisting();
-  const existingIntent = await settleExisting(existing);
-  if (existingIntent === 'matched') return true;
-  if (existingIntent === 'waiting') return false;
-  const [requesterProfile, addresseeProfile] = await Promise.all([
-    getDocument<PublicProfile>('publicProfiles', requesterId, token).catch(() => null),
-    getDocument<PublicProfile>('publicProfiles', addresseeId, token).catch(() => null),
-  ]);
-  if (!canPhotoMatch(requesterProfile?.profilePhotos)) throw new Error('친구 매칭을 시작하려면 프로필 사진을 3장 이상 공개해주세요.');
-  if (!canPhotoMatch(addresseeProfile?.profilePhotos)) throw new Error('상대 회원이 아직 프로필 사진을 3장 이상 공개하지 않아 매칭할 수 없습니다.');
-  if (existing?.status === 'declined') {
-    await deleteDocument(existing.sourceCollection || friendConnectionCollection, id, token);
+export async function sendFriendRequest(addresseeId: string, token?: string, action: 'like' | 'accept' = 'like'): Promise<boolean> {
+  const authToken = token || await getFreshSessionToken();
+  const requesterId = getTokenUserId(authToken);
+  if (!authToken || !requesterId || requesterId !== getSessionUserId() || !addresseeId || requesterId === addresseeId) {
+    throw new Error('친구 요청 대상을 확인하거나 다시 로그인해주세요.');
   }
-  const now = new Date();
-  try {
-    await createDocument(friendConnectionCollection, id, { requesterId, addresseeId, status: 'pending', createdAt: now, updatedAt: now }, token);
-    return false;
-  } catch (error) {
-    const raced = await readExisting();
-    const racedIntent = await settleExisting(raced);
-    if (racedIntent === 'matched') return true;
-    if (racedIntent === 'waiting') return false;
-    if (raced?.status === 'declined') await deleteDocument(raced.sourceCollection || friendConnectionCollection, id, token);
-    try {
-      await createDocument(legacyFriendConnectionCollection, id, { requesterId, addresseeId, status: 'pending', createdAt: now, updatedAt: now }, token);
-      return false;
-    } catch (legacyError) {
-      const current = await readExisting();
-      const currentIntent = await settleExisting(current);
-      if (currentIntent === 'matched') return true;
-      if (currentIntent === 'waiting') return false;
-      throw legacyError || error;
-    }
+  const response = await authenticatedFetch('/api/matching/like', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetUserId: addresseeId, ...(action === 'accept' ? { action } : {}) }),
+  }, authToken);
+  const result = await response.json().catch(() => null) as { matched?: boolean; error?: string } | null;
+  if (getSessionUserId() !== requesterId) throw new Error('로그인 계정이 변경되었습니다. 다시 시도해주세요.');
+  if (!response.ok) {
+    if (result?.error === 'Daily free like limit reached.') throw new Error('오늘의 무료 좋아요 30회를 모두 사용했습니다. UTC 자정 이후 다시 시도해주세요.');
+    if (response.status === 409) throw new Error('이 회원과는 현재 매칭할 수 없습니다. 차단, 거절 또는 프로필 상태를 확인해주세요.');
+    if (response.status === 401) throw new Error('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
+    throw new Error('친구 좋아요를 처리하지 못했습니다. 잠시 후 다시 시도해주세요.');
   }
-}
-
-function collectionsForFriendship() {
-  return [friendConnectionCollection, legacyFriendConnectionCollection] as const;
+  if (typeof result?.matched !== 'boolean' || (action === 'accept' && !result.matched)) throw new Error('매칭 응답을 확인하지 못했습니다.');
+  return result.matched;
 }
 
 export async function respondToFriendRequest(connection: FriendConnection, status: Extract<FriendStatus, 'accepted' | 'declined'>, token = getSessionToken()): Promise<void> {
   const viewerId = getTokenUserId(token);
   if (!token || !viewerId || viewerId !== connection.addresseeId || connection.status !== 'pending') throw new Error('대기 중인 친구 요청의 수신자만 응답할 수 있습니다.');
-  if (status === 'accepted') {
-    const [requesterProfile, addresseeProfile] = await Promise.all([
-      getDocument<PublicProfile>('publicProfiles', connection.requesterId, token).catch(() => null),
-      getDocument<PublicProfile>('publicProfiles', connection.addresseeId, token).catch(() => null),
-    ]);
-    if (!canPhotoMatch(requesterProfile?.profilePhotos) || !canPhotoMatch(addresseeProfile?.profilePhotos)) {
-      throw new Error('양쪽 회원 모두 공개 프로필 사진을 3장 이상 등록해야 친구 연결을 수락할 수 있습니다.');
-    }
-  }
-  await mergeDocument(connection.sourceCollection || friendConnectionCollection, connection.id, { status, updatedAt: new Date() }, token);
+  if (status === 'accepted') { await sendFriendRequest(connection.requesterId, token, 'accept'); return; }
+  const response = await authenticatedFetch('/api/matching/like', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetUserId: connection.requesterId, action: 'decline' }),
+  }, token);
+  if (getSessionUserId() !== viewerId) throw new Error('로그인 계정이 변경되었습니다. 다시 시도해주세요.');
+  if (!response.ok) throw new Error(response.status === 401 ? '로그인 세션이 만료되었습니다. 다시 로그인해주세요.' : '친구 요청을 거절하지 못했습니다. 다시 시도해주세요.');
 }
 
 export type FriendCallRequest = {

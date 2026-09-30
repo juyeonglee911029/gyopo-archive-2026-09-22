@@ -27,10 +27,9 @@ assert.match(rules, /match \/walletVault\/\{userId\}[\s\S]*request\.auth\.uid ==
 assert.match(rules, /function hasSafeProfilePhotos[\s\S]*data\.profilePhotos\.size\(\) <= 5/);
 assert.match(rules, /function hasSafeProfilePhotos[\s\S]*verifiedProfilePhotos/);
 assert.match(rules, /function verifiedGalleryHasMinimum[\s\S]*publicPhotos\.size\(\) >= 3[\s\S]*function hasMatchablePublicPhotos[\s\S]*hasVerifiedPublicGallery/);
-assert.match(rules, /match \/friendships\/\{friendshipId\}[\s\S]*hasMatchablePublicPhotos/);
-assert.match(rules, /match \/friendships\/\{friendshipId\}[\s\S]*resource\.data\.status == 'pending'[\s\S]*resource\.data\.addresseeId == request\.auth\.uid/);
-assert.match(rules, /function canCreateLegacyFriendConnection[\s\S]*canonicalFriendshipId[\s\S]*hasMatchablePublicPhotos/);
-assert.match(rules, /function canUpdateLegacyFriendConnection[\s\S]*resource\.data\.addresseeId == request\.auth\.uid/);
+assert.match(rules, /match \/friendships\/\{friendshipId\} \{[\s\S]*?allow create, update, delete: if false;/);
+assert.match(rules, /match \/matchingLikeDaily\/\{dailyId\} \{[\s\S]*?allow read, write: if false;/);
+assert.doesNotMatch(rules, /canCreateLegacyFriendConnection|canUpdateLegacyFriendConnection|canDeleteLegacyFriendConnection/);
 assert.match(rules, /match \/webrtcQueue\/\{userId\}[\s\S]*canSetMatchedQueueEntry/);
 assert.match(rules, /function canSetMatchedQueueEntry[\s\S]*existsAfter[\s\S]*hasReciprocalWebrtcQueue/);
 assert.match(rules, /function hasMatchedWebrtcQueuePair[\s\S]*hasReciprocalWebrtcQueue/);
