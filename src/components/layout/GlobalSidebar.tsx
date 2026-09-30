@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { BriefcaseBusiness, CalendarDays, ChevronDown, Film, Gamepad2, Globe, Home, MessageCircle, Music2, Newspaper, ShoppingBag, Store, UserRoundCheck, Video } from 'lucide-react';
+import { BriefcaseBusiness, CalendarDays, ChevronDown, Film, Gamepad2, Globe, Heart, Home, MessageCircle, Music2, Newspaper, ShoppingBag, Smartphone, Store, UserRoundCheck, Video } from 'lucide-react';
 import { COUNTRY_ROUTES, cityHref, countryHref, countryForRegion, getCityRoute, getCountryRoute, getPublicServiceRoute, getRegionalCategory } from '@/lib/regionRoutes';
 import { REGIONS } from '@/lib/regions';
 import { PUBLIC_CATEGORIES } from '@/lib/publicCategories';
@@ -22,10 +22,12 @@ const navigationGroups = [
     { id: 'events', href: '/regions', label: '행사', english: 'Events', icon: CalendarDays },
   ] },
   { title: 'DISCOVER', links: [
+    { id: 'apps', href: '/apps', label: '앱 모음', english: 'Apps', icon: Smartphone },
     { id: 'music', href: '/music', label: '음악', english: 'Music', icon: Music2 },
     { id: 'watch', href: '/watch', label: '영상', english: 'Watch', icon: Film },
     { id: 'games', href: '/games', label: '테트리스', english: 'Tetris', icon: Gamepad2 },
     { id: 'webrtc', href: '/webrtc', label: '영상 통화', english: 'Video chat', icon: Video },
+    { id: 'dating', href: '/dating', label: '교민 데이트', english: 'Dating', icon: Heart },
     { id: 'theater', href: '/theater', label: '라이브 룸', english: 'Live rooms', icon: Film },
   ] },
 ] as const;
