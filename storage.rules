@@ -14,17 +14,17 @@ service firebase.storage {
     }
 
     match /profiles/{userId}/gallery/{fileName} {
-      allow create: if isOwner(userId) && isUuidJpeg(fileName)
+      allow create: if resource == null && isOwner(userId) && isUuidJpeg(fileName)
         && request.resource.contentType == 'image/jpeg' && isSmallImage();
       allow read, update, delete: if false;
     }
     match /profiles/{userId}/{fileName} {
-      allow create: if isOwner(userId) && isUuidJpeg(fileName)
+      allow create: if resource == null && isOwner(userId) && isUuidJpeg(fileName)
         && request.resource.contentType == 'image/jpeg' && isSmallImage();
       allow read, update, delete: if false;
     }
     match /{collection}/{userId}/{fileName} {
-      allow create: if collection in ['posts', 'jobs'] && isOwner(userId)
+      allow create: if resource == null && collection in ['posts', 'jobs'] && isOwner(userId)
         && fileName.matches('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-[A-Za-z0-9._-]{1,180}$')
         && isSmallImage();
       allow read, update, delete: if false;

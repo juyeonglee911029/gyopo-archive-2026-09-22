@@ -67,6 +67,7 @@ test('gallery Storage rules deny client reads, overwrites and deletion', () => {
   assert.match(storageRules, /match \/profiles\/\{userId\}\/gallery\/\{fileName\}/);
   assert.match(storageRules, /match \/profiles\/\{userId\}\/\{fileName\}/);
   assert.match(storageRules, /collection in \['posts', 'jobs'\]/);
+  assert.equal((storageRules.match(/allow create: if resource == null/g) || []).length, 3);
   assert.equal((storageRules.match(/allow read, update, delete: if false;/g) || []).length, 3);
   assert.doesNotMatch(storageRules, /allow (?:read|update|delete): if (?!false)/);
   assert.match(storageRules, /match \/\{allPaths=\*\*\} \{\s*allow read, write: if false;/);
