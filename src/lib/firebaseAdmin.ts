@@ -111,6 +111,25 @@ export function mergeAdminFields(document: AdminFirestoreDocument, fields: Recor
   return { ...(document.fields || {}), ...fields };
 }
 
+export function parseBatchGet(body: string, requestedNames: string[]): Array<{ found?: AdminFirestoreDocument; missing?: string }> {
+  let entries: unknown;
+  try {
+    entries = JSON.parse(body);
+  } catch {
+    entries = body.trim().split(/\r?\n/).map((line) => JSON.parse(line));
+  }
+  if (!Array.isArray(entries)) entries = [entries];
+  const names = new Set(requestedNames);
+  const seen = new Set<string>();
+  for (const entry of entries as Array<{ found?: AdminFirestoreDocument; missing?: string }>) {
+    const name = entry?.found?.name || entry?.missing;
+    if (typeof name !== 'string' || !names.has(name) || seen.has(name)) throw new Error('Firebase 거래 응답의 문서 목록이 올바르지 않습니다.');
+    seen.add(name);
+  }
+  if (seen.size !== names.size) throw new Error('Firebase 거래 응답에 누락된 문서가 있습니다.');
+  return entries as Array<{ found?: AdminFirestoreDocument; missing?: string }>;
+}
+
 export async function runFirestoreTransaction<T>(
   documents: TransactionDocument[],
   plan: (context: { projectId: string; get: (document: TransactionDocument) => AdminFirestoreDocument | null }) => { writes: FirestoreWrite[]; result: T },
@@ -131,8 +150,8 @@ export async function runFirestoreTransaction<T>(
       headers: { authorization: `Bearer ${auth.token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ documents: names, transaction: beginBody.transaction }),
     });
-    const batchBody = await batch.json().catch(() => null) as Array<{ found?: AdminFirestoreDocument; missing?: { name?: string } }> | { error?: { message?: string } } | null;
-    if (!batch.ok || !Array.isArray(batchBody)) throw new Error((batchBody && 'error' in batchBody ? batchBody.error?.message : '') || 'Firebase 거래 문서를 읽지 못했습니다.');
+    if (!batch.ok) throw new Error('Firebase 거래 문서를 읽지 못했습니다.');
+    const batchBody = parseBatchGet(await batch.text(), names);
     const found = new Map(batchBody.filter((entry) => entry.found?.name).map((entry) => [entry.found!.name!, entry.found!]));
     const get = (document: TransactionDocument) => found.get(transactionDocumentName(auth.projectId, document)) || null;
     const prepared = plan({ projectId: auth.projectId, get });
