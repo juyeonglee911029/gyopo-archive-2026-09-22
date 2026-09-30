@@ -145,6 +145,7 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(lounge, /onDesktopOpenChange\(false\)/);
   assert.match(lounge, /onDesktopOpenChange\(true\)/);
   assert.match(lounge, /else onDesktopOpenChange\(true\)/);
+  assert.match(lounge, /expiresAt: new Date\(Date\.now\(\) \+ 12 \* 60 \* 60 \* 1000\)/);
   assert.match(lounge, /desktopToggleRef\.current\?\.focus\(\)/);
   assert.match(lounge, /<Minus size=\{16\} \/>/);
   assert.match(lounge, /<Plus size=\{18\} \/>/);

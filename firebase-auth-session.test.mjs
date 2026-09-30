@@ -5,6 +5,8 @@ import test from 'node:test';
 import { SourceTextModule, createContext } from 'node:vm';
 
 const source = stripTypeScriptTypes(readFileSync(new URL('./src/lib/firebase.ts', import.meta.url), 'utf8'));
+const profilePhotosSource = stripTypeScriptTypes(readFileSync(new URL('./src/lib/profilePhotos.ts', import.meta.url), 'utf8'));
+const friendMatchingSource = stripTypeScriptTypes(readFileSync(new URL('./src/lib/friendMatching.ts', import.meta.url), 'utf8'));
 const key = 'gyopo-auth-session';
 const jwt = (id, version, valid = true) => 'fixture.' + Buffer.from(JSON.stringify({ sub: id, exp: Math.floor(Date.now() / 1000) + (valid ? 3600 : -60), version })).toString('base64url') + '.fixture';
 const session = (id = 'a', version = 'original', valid = false) => ({ idToken: jwt(id, version, valid), refreshToken: `refresh-${id}-${version}`, user: { id, email: `${id}@example.test`, name: `User ${id}`, isSubscribed: false } });
@@ -37,7 +39,11 @@ async function harness(initial = session(), fetchHandler) {
     fetch: fetchHandler ? (url, options = {}) => fetchHandler(String(url), options) : defaultFetch,
   });
   const sourceModule = new SourceTextModule(source, { context });
-  await sourceModule.link(() => { throw new Error('Unexpected source import'); });
+  await sourceModule.link((specifier) => {
+    if (specifier === './profilePhotos') return new SourceTextModule(profilePhotosSource, { context });
+    if (specifier === '@/lib/friendMatching') return new SourceTextModule(friendMatchingSource, { context });
+    throw new Error(`Unexpected source import: ${specifier}`);
+  });
   await sourceModule.evaluate();
   return { api: sourceModule.namespace, requests, events, storage,
     read: () => JSON.parse(storage.getItem(key) || 'null'),
@@ -301,6 +307,7 @@ test('Google sign-in keeps a saved AI writing preference when it rewrites the pr
   let profileWrite;
   const profileDocument = {
     name: 'projects/test/databases/(default)/documents/profiles/a',
+    updateTime: '2026-01-01T00:00:00.000000Z',
     fields: {
       name: { stringValue: 'Saved Name' },
       email: { stringValue: 'a@example.test' },
@@ -360,8 +367,14 @@ test('saveProfile keeps a saved AI writing preference when the user object is st
       isSubscribed: { booleanValue: false },
     },
   };
+  const publicProfileDocument = {
+    name: 'projects/test/databases/(default)/documents/publicProfiles/a',
+    updateTime: '2026-01-01T00:00:00.000000Z',
+    fields: { name: { stringValue: 'Saved Name' }, image: { stringValue: '' }, gender: { stringValue: 'female' }, country: { stringValue: 'US' }, age: { integerValue: '34' }, isSubscribed: { booleanValue: false }, isPublic: { booleanValue: true } },
+  };
   const h = await harness(session(), async (url, options) => {
     if (url.endsWith('/documents/profiles/a') && !options.method) return Response.json(profileDocument);
+    if (url.endsWith('/documents/publicProfiles/a') && !options.method) return Response.json(publicProfileDocument);
     if (url.includes('/documents/profiles?documentId=a') && options.method === 'POST') return new Response('Already exists', { status: 409 });
     if (url.endsWith('/documents:commit') && options.method === 'POST') {
       const write = JSON.parse(options.body).writes[0];
