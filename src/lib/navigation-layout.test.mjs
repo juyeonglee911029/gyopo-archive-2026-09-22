@@ -23,9 +23,9 @@ test('mobile navigation puts Search in the center and replaces Regions with Dire
   const directory = navigation.indexOf("href: '/directory', label: '업소록'");
   const search = navigation.indexOf("href: '/search', label: '검색'");
   const community = navigation.indexOf("label: '커뮤니티'");
-  const account = navigation.indexOf("label: 'MY'");
+  const friends = navigation.indexOf("href: '/users', label: '친구'");
 
-  assert.ok(home < directory && directory < search && search < community && community < account);
+  assert.ok(home < directory && directory < search && search < community && community < friends);
   assert.doesNotMatch(navigation, /href: '\/regions', label: '지역'/);
 });
 

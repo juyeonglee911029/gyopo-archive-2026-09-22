@@ -24,6 +24,7 @@ const navigationGroups = [
     { id: 'music', href: '/music', label: '음악', english: 'Music', icon: Music2 },
     { id: 'watch', href: '/watch', label: '영상', english: 'Watch', icon: Film },
     { id: 'games', href: '/games', label: '테트리스', english: 'Tetris', icon: Gamepad2 },
+    { id: 'friends', href: '/users', label: '친구 찾기', english: 'Find friends', icon: UserRoundCheck },
     { id: 'webrtc', href: '/webrtc', label: '영상 통화', english: 'Video chat', icon: Video },
     { id: 'theater', href: '/theater', label: '라이브 룸', english: 'Live rooms', icon: Film },
   ] },

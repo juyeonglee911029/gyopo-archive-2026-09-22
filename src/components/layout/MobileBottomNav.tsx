@@ -8,7 +8,6 @@ import { getNavigationHref, isNavigationActive } from './GlobalSidebar';
 
 export default function MobileBottomNav() {
   const pathname = usePathname();
-  const user = useGlobalStore((state) => state.user);
   const selectedCountry = useGlobalStore((state) => state.selectedCountry);
   const language = useGlobalStore((state) => state.language);
   const links = [
@@ -16,7 +15,7 @@ export default function MobileBottomNav() {
     { href: '/directory', label: '업소록', english: 'Directory', icon: Store },
     { href: '/search', label: '검색', english: 'Search', icon: Search },
     { href: getNavigationHref('/community', 'community', pathname, selectedCountry), label: '커뮤니티', english: 'Community', icon: MessageCircle },
-    { href: user ? '/users' : '/login', label: 'MY', english: 'My', icon: UserRound },
+    { href: '/users', label: '친구', english: 'Friends', icon: UserRound },
   ];
 
   return <nav className="global-bottom-nav mobile-bottom-nav" aria-label="모바일 주요 메뉴">
