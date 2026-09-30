@@ -117,6 +117,7 @@ export default function GlobalSidebar({ onNavigate }: { onNavigate?: () => void 
   const user = useGlobalStore((state) => state.user);
   const selectedCountry = useGlobalStore((state) => state.selectedCountry);
   const language = useGlobalStore((state) => state.language);
+  const unreadFriendCount = useGlobalStore((state) => state.unreadFriendCount);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const { country } = getSidebarLocation(pathname, selectedCountry);
   const renderedNavigationIds = new Set<string>();
@@ -151,6 +152,6 @@ export default function GlobalSidebar({ onNavigate }: { onNavigate?: () => void 
       }
       const anchor = window.matchMedia('(min-width: 769px)').matches ? { left: rect.left, top: rect.top, bottom: rect.bottom } : undefined;
       window.dispatchEvent(new CustomEvent('gyopo-friends-open', { detail: { anchor } }));
-    }}><UserRoundCheck size={18} aria-hidden="true" /><span>{language === 'ko' ? '친구·통화' : 'Friends & calls'}</span></button>
+    }} aria-label={`${language === 'ko' ? '친구·통화' : 'Friends & calls'}${unreadFriendCount ? `, ${unreadFriendCount} ${language === 'ko' ? '읽지 않은 대화' : 'unread chats'}` : ''}`}><UserRoundCheck size={18} aria-hidden="true" /><span>{language === 'ko' ? '친구·통화' : 'Friends & calls'}</span>{unreadFriendCount > 0 && <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 py-1 text-[10px] font-black leading-none text-white">{unreadFriendCount > 99 ? '99+' : unreadFriendCount}</span>}</button>
   </div>;
 }

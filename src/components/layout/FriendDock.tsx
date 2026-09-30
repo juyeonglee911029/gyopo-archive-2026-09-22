@@ -3,7 +3,8 @@
 import { type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Check, FileText, MessageCircle, Paperclip, PhoneCall, Send, UserPlus, UserRoundCheck, Video, X } from 'lucide-react';
-import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFreshSessionToken, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, listOnlineUsers, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
+import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFriendReadMarker, getFreshSessionToken, getLatestFriendMessage, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, listOnlineUsers, markFriendMessagesRead, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
+import { isUnreadFriendMessage } from '@/lib/friendReadState';
 import { useGlobalStore } from '@/store/useGlobalStore';
 
 type FriendMember = Partial<PublicProfile> & { id: string; friendshipId: string };
@@ -36,9 +37,11 @@ function formatFriendMessageTime(value: string) {
 export default function FriendDock() {
   const user = useGlobalStore((state) => state.user);
   const language = useGlobalStore((state) => state.language);
+  const setUnreadFriendCount = useGlobalStore((state) => state.setUnreadFriendCount);
   const isKorean = language === 'ko';
   const [open, setOpen] = useState(false);
   const [friends, setFriends] = useState<FriendMember[]>([]);
+  const [unreadFriendIds, setUnreadFriendIds] = useState<Set<string>>(new Set());
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [onlineFriendIds, setOnlineFriendIds] = useState<Set<string> | null>(null);
   const [selectedId, setSelectedId] = useState('');
@@ -64,10 +67,15 @@ export default function FriendDock() {
   const callFrameRef = useRef<HTMLIFrameElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const latestMessageIdRef = useRef('');
+  const friendsRef = useRef<FriendMember[]>([]);
+  const unreadFriendIdsRef = useRef(new Set<string>());
+  const friendReadAtRef = useRef(new Map<string, number>());
+  const friendDockWasOpenedRef = useRef(false);
   const callOperationRef = useRef(0);
   const callBusyRef = useRef(false);
   const closingRef = useRef(false);
   const friendOwnerIdRef = useRef('');
+  friendsRef.current = friends;
 
   const closeVideoCall = () => {
     if (!videoCall || closingRef.current) return;
@@ -106,7 +114,12 @@ export default function FriendDock() {
   useEffect(() => {
     const show = (event: Event) => {
       const detail = (event as CustomEvent<{ friendId?: string; anchor?: DockAnchor }>).detail;
+      friendDockWasOpenedRef.current = true;
       if (detail?.friendId) setSelectedId(detail.friendId);
+      else {
+        const unreadFriend = friendsRef.current.find((friend) => unreadFriendIdsRef.current.has(friend.friendshipId));
+        if (unreadFriend) setSelectedId(unreadFriend.id);
+      }
       if (detail?.anchor && window.matchMedia('(min-width: 769px)').matches) {
         dockAnchorRef.current = detail.anchor;
         const panel = document.getElementById('friend-dock')?.getBoundingClientRect();
@@ -127,6 +140,10 @@ export default function FriendDock() {
     window.addEventListener('gyopo-friends-open', show);
     return () => window.removeEventListener('gyopo-friends-open', show);
   }, []);
+
+  useEffect(() => {
+    if (open) friendDockWasOpenedRef.current = true;
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -182,7 +199,12 @@ export default function FriendDock() {
   useEffect(() => {
     if (!user) {
       friendOwnerIdRef.current = '';
+      friendDockWasOpenedRef.current = false;
+      unreadFriendIdsRef.current = new Set();
+      friendReadAtRef.current.clear();
       setFriends([]);
+      setUnreadFriendIds(new Set());
+      setUnreadFriendCount(0);
       setSelectedId('');
       setVideoCall(null);
       setPendingCall(null);
@@ -192,11 +214,15 @@ export default function FriendDock() {
     }
     if (friendOwnerIdRef.current !== user.id) {
       friendOwnerIdRef.current = user.id;
+      friendDockWasOpenedRef.current = false;
+      unreadFriendIdsRef.current = new Set();
+      friendReadAtRef.current.clear();
       setFriends([]);
+      setUnreadFriendIds(new Set());
+      setUnreadFriendCount(0);
       setSelectedId('');
       setOnlineFriendIds(null);
     }
-    if (!open) return;
     let active = true;
     let loading = false;
     setFriendsLoading(true);
@@ -211,18 +237,50 @@ export default function FriendDock() {
         }
         const [connections, onlineUsers] = await Promise.all([
           listFriendConnections(user.id, token).catch(() => []),
-          listOnlineUsers().catch(() => null),
+          open ? listOnlineUsers().catch(() => null) : Promise.resolve(null),
         ]);
         const accepted = connections.filter((item) => item.status === 'accepted');
+        const readStates = await Promise.all(accepted.map(async (connection) => {
+          try {
+            const [latest, marker] = await Promise.all([
+              getLatestFriendMessage<FriendMessage>(user.id, connection.id),
+              getFriendReadMarker(user.id, connection.id, token),
+            ]);
+            let lastReadAt = marker?.lastReadAt || '';
+            if (!marker) {
+              const baseline = latest?.createdAt || new Date().toISOString();
+              await markFriendMessagesRead(user.id, connection.id, baseline, token);
+              lastReadAt = baseline;
+            }
+            return { friendshipId: connection.id, latest, lastReadAt, failed: false };
+          } catch {
+            return { friendshipId: connection.id, latest: null, lastReadAt: '', failed: true };
+          }
+        }));
+        const failedIds = new Set(readStates.filter((state) => state.failed).map((state) => state.friendshipId));
+        const nextUnread = new Set([...unreadFriendIdsRef.current].filter((id) => failedIds.has(id)));
+        const nextReadAt = new Map<string, number>();
+        for (const state of readStates) {
+          if (state.failed) continue;
+          const readTime = Date.parse(state.lastReadAt);
+          if (Number.isFinite(readTime)) nextReadAt.set(state.friendshipId, readTime);
+          if (isUnreadFriendMessage(state.latest, user.id, state.lastReadAt)) nextUnread.add(state.friendshipId);
+        }
         const rows = await Promise.all(accepted.map(async (connection) => {
           const id = connection.requesterId === user.id ? connection.addresseeId : connection.requesterId;
+          const existing = friendsRef.current.find((friend) => friend.friendshipId === connection.id && friend.id === id);
+          if (existing) return existing;
           const profile = await getDocument<PublicProfile>('publicProfiles', id, token).catch(() => null);
           return { id, friendshipId: connection.id, ...(profile || {}) } as FriendMember;
         }));
         if (!active) return;
         setFriends(rows);
+        friendReadAtRef.current = nextReadAt;
+        unreadFriendIdsRef.current = nextUnread;
+        setUnreadFriendIds(nextUnread);
+        setUnreadFriendCount(nextUnread.size);
         if (onlineUsers !== null) setOnlineFriendIds(new Set(onlineUsers.map((online) => online.id)));
-        setSelectedId((current) => rows.some((friend) => friend.id === current) ? current : rows[0]?.id || '');
+        setSelectedId((current) => rows.some((friend) => friend.id === current) ? current : (rows.find((friend) => nextUnread.has(friend.friendshipId)) || rows[0])?.id || '');
       } catch (loadError) {
         if (active) setMessageError(loadError instanceof Error ? loadError.message : '친구 목록을 불러오지 못했습니다.');
       } finally {
@@ -231,12 +289,12 @@ export default function FriendDock() {
       }
     };
     void load();
-    const timer = window.setInterval(load, 5_000);
+    const timer = window.setInterval(load, open ? 5_000 : 15_000);
     return () => {
       active = false;
       window.clearInterval(timer);
     };
-  }, [open, user?.id]);
+  }, [open, setUnreadFriendCount, user?.id]);
 
   useEffect(() => {
     if (!user || !pendingCall) return;
@@ -356,7 +414,7 @@ export default function FriendDock() {
   }, [selected?.friendshipId, user?.id]);
 
   useEffect(() => {
-    if (!user || !selected) return;
+    if (!user || !selected || (!open && !friendDockWasOpenedRef.current)) return;
     let active = true;
     let loading = false;
     let timer: number | undefined;
@@ -380,6 +438,26 @@ export default function FriendDock() {
           }
           setMessages(sorted);
           setMessageReadError('');
+          if (open && latest) {
+            const messageTime = Date.parse(latest.createdAt);
+            const readTime = friendReadAtRef.current.get(selected.friendshipId) || 0;
+            if (Number.isFinite(messageTime) && messageTime > readTime) {
+              try {
+                const persistedReadAt = await markFriendMessagesRead(user.id, selected.friendshipId, latest.createdAt);
+                if (!active) return;
+                const persistedTime = Date.parse(persistedReadAt);
+                if (Number.isFinite(persistedTime)) friendReadAtRef.current.set(selected.friendshipId, persistedTime);
+              } catch {
+                return;
+              }
+            }
+            const nextUnread = new Set(unreadFriendIdsRef.current);
+            if (nextUnread.delete(selected.friendshipId)) {
+              unreadFriendIdsRef.current = nextUnread;
+              setUnreadFriendIds(nextUnread);
+              setUnreadFriendCount(nextUnread.size);
+            }
+          }
         }
       } catch (error) {
         if (active) setMessageReadError(error instanceof Error ? error.message : '메시지를 불러오지 못했습니다.');
@@ -401,7 +479,7 @@ export default function FriendDock() {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', updateVisibility);
     };
-  }, [open, selected?.friendshipId, user?.id]);
+  }, [open, selected?.friendshipId, setUnreadFriendCount, user?.id]);
 
   const sendMessage = async (event: FormEvent) => {
     event.preventDefault();
@@ -524,7 +602,7 @@ export default function FriendDock() {
                     <button type="button" aria-pressed={friend.id === selectedId} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '채팅 선택' : 'select chat'}`} onClick={() => setSelectedId(friend.id)} className="friend-row-select">
                       {friend.image ? <img src={friend.image} alt="" /> : <span className="friend-row-avatar">{friend.name?.slice(0, 1) || '?'}</span>}
                       <span className="friend-row-copy">
-                        <span className="friend-row-name">{friend.name || (isKorean ? '친구' : 'Friend')}</span>
+                         <span className="flex min-w-0 items-center gap-1.5"><span className="friend-row-name">{friend.name || (isKorean ? '친구' : 'Friend')}</span>{unreadFriendIds.has(friend.friendshipId) && <><span className="h-2 w-2 shrink-0 rounded-full bg-rose-400" aria-hidden="true" /><span className="sr-only">{isKorean ? '읽지 않은 메시지가 있습니다.' : 'Unread message'}</span></>}</span>
                         <span className={`friend-row-status ${onlineFriendIds === null ? 'is-unknown' : online ? 'is-online' : ''}`}>
                           <span aria-hidden="true" />
                           {statusLabel}
