@@ -11,7 +11,7 @@ export type SplitSitemap = typeof SPLIT_SITEMAPS[number];
 type SitemapEntry = { url: string; lastModified?: string; changeFrequency?: string; priority?: number };
 
 const CORE_ROUTES = [
-  '/', '/regions', '/jobs', '/housing', '/guides', '/directory', '/events', '/life', '/community', '/apps', '/apps/ai-search', '/apps/tetris', '/apps/random-chat', '/games', '/games/brick-breaker',
+  '/', '/regions', '/jobs', '/housing', '/guides', '/directory', '/events', '/life', '/community', '/korned', '/apps', '/apps/ai-search', '/apps/tetris', '/apps/random-chat', '/games', '/games/brick-breaker',
   '/music', '/theater', '/news', '/market', '/blog', '/help', '/ads', '/pricing', '/refund', '/privacy', '/terms',
 ];
 

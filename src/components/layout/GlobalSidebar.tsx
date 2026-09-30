@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { BriefcaseBusiness, CalendarDays, ChevronDown, Film, Gamepad2, Home, MessageCircle, Music2, Newspaper, ShoppingBag, Store, UserRoundCheck, Video } from 'lucide-react';
+import { BriefcaseBusiness, CalendarDays, ChevronDown, Film, Gamepad2, Globe, Home, MessageCircle, Music2, Newspaper, ShoppingBag, Store, UserRoundCheck, Video } from 'lucide-react';
 import { COUNTRY_ROUTES, cityHref, countryHref, countryForRegion, getCityRoute, getCountryRoute, getPublicServiceRoute, getRegionalCategory } from '@/lib/regionRoutes';
 import { REGIONS } from '@/lib/regions';
 import { PUBLIC_CATEGORIES } from '@/lib/publicCategories';
@@ -14,6 +14,7 @@ const navigationGroups = [
   { title: 'PRIMARY', links: [
     { id: 'home', href: '/', label: '홈', english: 'Home', icon: Home },
     { id: 'community', href: '/community', label: '커뮤니티', english: 'Community', icon: MessageCircle },
+    { id: 'korned', href: '/korned', label: '네덜란드 게시판', english: 'Korned boards', icon: Globe },
     { id: 'jobs', href: '/jobs', label: '구인구직', english: 'Jobs', icon: BriefcaseBusiness },
     { id: 'directory', href: '/directory', label: '업소록', english: 'Directory', icon: Store },
     { id: 'market', href: '/market', label: '장터', english: 'Market', icon: ShoppingBag },
