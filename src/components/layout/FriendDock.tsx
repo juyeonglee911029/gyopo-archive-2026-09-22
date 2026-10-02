@@ -1,6 +1,6 @@
 'use client';
 
-import { type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from 'react';
+import { type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Check, FileText, MessageCircle, Paperclip, PhoneCall, Send, UserPlus, UserRoundCheck, Video, X } from 'lucide-react';
 import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFreshSessionToken, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, listOnlineUsers, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
@@ -69,14 +69,19 @@ export default function FriendDock() {
   const closingRef = useRef(false);
   const friendOwnerIdRef = useRef('');
 
-  const closeVideoCall = () => {
+  const closeDock = useCallback(() => {
+    setOpen(false);
+    if (window.matchMedia('(max-width: 768px)').matches) window.dispatchEvent(new Event('gyopo-mobile-friends-closed'));
+  }, []);
+
+  const closeVideoCall = useCallback(() => {
     if (!videoCall || closingRef.current) return;
     closingRef.current = true;
     callOperationRef.current += 1;
     callFrameRef.current?.contentWindow?.postMessage({ type: 'gyopo-call-end', callKind: 'friend', callId: videoCall.id }, window.location.origin);
     setVideoClosing(true);
-    setOpen(false);
-  };
+    closeDock();
+  }, [closeDock, videoCall]);
 
   useEffect(() => {
     if (!videoCall) return;
@@ -88,7 +93,7 @@ export default function FriendDock() {
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [videoCall?.id]);
+  }, [closeVideoCall, videoCall?.id]);
 
   useEffect(() => {
     if (!videoClosing) return;
@@ -123,10 +128,16 @@ export default function FriendDock() {
         setDockPosition(null);
       }
       setOpen(true);
+      if (window.matchMedia('(max-width: 768px)').matches) window.dispatchEvent(new Event('gyopo-mobile-friends-opened'));
     };
+    const hide = () => closeDock();
     window.addEventListener('gyopo-friends-open', show);
-    return () => window.removeEventListener('gyopo-friends-open', show);
-  }, []);
+    window.addEventListener('gyopo-friends-close', hide);
+    return () => {
+      window.removeEventListener('gyopo-friends-open', show);
+      window.removeEventListener('gyopo-friends-close', hide);
+    };
+  }, [closeDock]);
 
   useEffect(() => {
     if (!open) return;
@@ -162,14 +173,15 @@ export default function FriendDock() {
   }, [open]);
 
   useEffect(() => {
+    if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') closeDock();
     };
     const closeOnOutsideClick = (event: PointerEvent) => {
       const target = event.target as Node;
       const panel = document.getElementById('friend-dock');
-       if (panel?.contains(target)) return;
-      setOpen(false);
+      if (panel?.contains(target)) return;
+      closeDock();
     };
     document.addEventListener('keydown', closeOnEscape);
     document.addEventListener('pointerdown', closeOnOutsideClick);
@@ -177,7 +189,7 @@ export default function FriendDock() {
       document.removeEventListener('keydown', closeOnEscape);
       document.removeEventListener('pointerdown', closeOnOutsideClick);
     };
-  }, []);
+  }, [closeDock, open]);
 
   useEffect(() => {
     if (!user) {
@@ -495,7 +507,7 @@ export default function FriendDock() {
               <div className="flex min-w-0 items-center gap-2 text-sm font-black"><UserRoundCheck size={17} className="shrink-0 text-cyan-300" /> <span className="truncate">{isKorean ? '친구 채팅·통화' : 'Friends Chat & Call'}</span></div>
               <div className="flex shrink-0 items-center gap-1">
                 <Link href="/users" onPointerDown={(event) => event.stopPropagation()} className="inline-flex items-center gap-1.5 border-0 px-2 py-1.5 text-[10px] font-black text-cyan-200 hover:bg-white/10"><UserPlus size={14} />{isKorean ? '친구 찾기' : 'Find friends'}</Link>
-                <button type="button" onClick={() => videoCall ? closeVideoCall() : setOpen(false)} aria-label={isKorean ? '친구 패널 닫기' : 'Close friends panel'} className="border-0 p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><X size={17} /></button>
+                <button type="button" onClick={() => videoCall ? closeVideoCall() : closeDock()} aria-label={isKorean ? '친구 패널 닫기' : 'Close friends panel'} className="border-0 p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><X size={17} /></button>
               </div>
             </header>
            {messageNotice && <p role="status" className="mx-3 mb-2 bg-emerald-300/10 px-3 py-2 text-[11px] font-bold text-emerald-100">{messageNotice}</p>}
@@ -508,7 +520,7 @@ export default function FriendDock() {
           {friendsLoading && friends.length === 0 ? (
             <div className="px-6 py-5 text-center text-xs font-bold text-slate-400">{isKorean ? '친구 목록을 불러오는 중입니다...' : 'Loading friends...'}</div>
           ) : friends.length === 0 ? (
-             <div className="p-8 text-center"><UserRoundCheck size={28} className="mx-auto text-slate-600" /><p className="mt-3 text-sm font-bold text-slate-300">{isKorean ? '수락된 친구가 없습니다.' : 'No accepted friends yet.'}</p><p className="mt-1 text-xs text-slate-500">{isKorean ? '회원 목록에서 친구를 찾아 요청을 보내세요.' : 'Find members and send a friend request.'}</p><Link href="/users" className="mt-4 inline-flex items-center gap-2 border border-cyan-200/25 bg-cyan-300/10 px-4 py-2.5 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/20"><UserPlus size={14} />{isKorean ? '회원 목록에서 친구 찾기' : 'Find members'}</Link></div>
+              <div className="p-8 text-center"><UserRoundCheck size={28} className="mx-auto text-slate-600" /><p className="mt-3 text-sm font-bold text-slate-300">{isKorean ? '아직 매칭된 친구가 없습니다.' : 'No matches yet.'}</p><p className="mt-1 text-xs text-slate-500">{isKorean ? '받은 좋아요는 매칭 카드에 먼저 표시됩니다. 서로 좋아요를 보내면 대화할 수 있어요.' : 'Incoming likes appear first in matching. Like each other to start chatting.'}</p><Link href="/users" className="mt-4 inline-flex items-center gap-2 border border-cyan-200/25 bg-cyan-300/10 px-4 py-2.5 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/20"><UserPlus size={14} />{isKorean ? '매칭 카드 보기' : 'Open matching'}</Link></div>
           ) : (
             <>
               <div className="border-y border-white/10 px-3 py-2 text-[10px] font-black text-slate-400">
