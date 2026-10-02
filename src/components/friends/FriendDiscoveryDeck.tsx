@@ -81,21 +81,32 @@ export default function FriendDiscoveryDeck({ viewerId, canLike, candidates, bus
     else if (distance < -110) void pass();
   };
 
-  return <section aria-label="친구 매칭" className="mb-8 overflow-hidden rounded-[2rem] border border-cyan-200/15 bg-[#07111f]/90 p-4 shadow-[0_24px_80px_rgba(0,0,0,.28)] sm:p-7">
-    <div className="mx-auto max-w-5xl">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+  return <section aria-label="친구 매칭" className="friend-discovery-deck mb-8 overflow-hidden rounded-[2rem] border border-cyan-200/15 bg-[#07111f]/90 p-4 shadow-[0_24px_80px_rgba(0,0,0,.28)] sm:p-7">
+    <div className="friend-discovery-inner mx-auto max-w-5xl">
+      <header className="friend-discovery-heading mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[.24em] text-cyan-200/70">GYOPO · PEOPLE NEAR YOU</p>
-          <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl">오늘의 발견</h2>
-          <p className="mt-2 max-w-xl text-xs leading-5 text-slate-400">온라인 회원의 프로필을 살펴보세요. 서로 좋아요를 보내면 친구로 연결됩니다.</p>
+          <p className="text-[10px] font-black uppercase tracking-[.24em] text-cyan-200/70">MEMBER MATCHING</p>
+          <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl">회원 프로필</h2>
         </div>
         <span className="rounded-full border border-white/10 bg-white/[.04] px-3 py-1.5 text-xs font-bold text-slate-300">{candidates.length}명 둘러보기</span>
       </header>
 
-      <div className="grid items-center gap-7" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 24rem), 1fr))' }}>
-        <div className="mx-auto w-full" style={{ maxWidth: '27rem' }}>
+      <nav className="friend-discovery-tier-switch mb-4 grid grid-cols-2 gap-2" aria-label="등급별 매칭 기능">
+        <Link href="#friend-discovery-profile" className="flex min-h-12 min-w-0 items-center justify-between gap-2 rounded-2xl border border-cyan-200/30 bg-cyan-200/[.1] px-3 py-2 text-left transition hover:bg-cyan-200/[.15] sm:px-4">
+          <span className="min-w-0"><span className="block text-[9px] font-black uppercase tracking-[.16em] text-cyan-100/70">FREE</span><strong className="mt-0.5 block truncate text-xs font-black text-white sm:text-sm">기본 매칭</strong></span>
+          <span className="shrink-0 text-[10px] font-black text-cyan-100 sm:text-xs">프로필 보기</span>
+        </Link>
+        <button type="button" disabled title="프리미엄 멤버십은 아직 준비 중입니다." className="flex min-h-12 min-w-0 items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[.035] px-3 py-2 text-left opacity-60 sm:px-4">
+          <span className="min-w-0"><span className="block text-[9px] font-black uppercase tracking-[.16em] text-slate-400">PREMIUM</span><strong className="mt-0.5 block truncate text-xs font-black text-slate-200 sm:text-sm">프리미엄</strong></span>
+          <span className="shrink-0 text-[10px] font-black text-slate-400 sm:text-xs">준비 중</span>
+        </button>
+      </nav>
+
+      <div className="friend-discovery-grid grid items-center gap-7">
+        <div id="friend-discovery-profile" className="friend-discovery-card mx-auto w-full" style={{ maxWidth: '22rem' }}>
           {member ? <>
             <article
+              id="friend-discovery-member"
               tabIndex={0}
               aria-label={`${member.name} 프로필 카드. 오른쪽으로 밀면 좋아요, 왼쪽으로 밀면 건너뜁니다.`}
               onKeyDown={(event) => {
@@ -106,8 +117,8 @@ export default function FriendDiscoveryDeck({ viewerId, canLike, candidates, bus
               onPointerMove={moveDrag}
               onPointerUp={endDrag}
               onPointerCancel={() => { dragStart.current = null; setIsDragging(false); setDragX(0); }}
-              style={{ transform: `translateX(${dragX}px) rotate(${dragX / 24}deg)`, touchAction: 'pan-y', transition: isDragging ? 'none' : 'transform 160ms ease-out', aspectRatio: '4 / 5', minHeight: 'min(25rem, 68dvh)', maxHeight: '68dvh' }}
-              className="relative isolate overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
+              style={{ transform: `translateX(${dragX}px) rotate(${dragX / 24}deg)`, touchAction: 'pan-y', transition: isDragging ? 'none' : 'transform 160ms ease-out', aspectRatio: '4 / 5', minHeight: 'min(21rem, 50dvh)', maxHeight: '50dvh' }}
+              className="friend-discovery-member relative isolate overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-900 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
             >
               {member.image && <img src={member.image} alt={`${member.name} 프로필`} draggable={false} className="absolute inset-0 h-full w-full select-none object-cover" />}
               <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,.5)_0%,transparent_35%,rgba(2,6,23,.08)_48%,rgba(2,6,23,.92)_100%)]" />
@@ -126,38 +137,25 @@ export default function FriendDiscoveryDeck({ viewerId, canLike, candidates, bus
               </div>
             </article>
 
-            <div className="mt-4 flex items-center justify-center gap-3 sm:gap-4">
-              <button type="button" onClick={() => void pass()} aria-label="건너뛰기" className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-rose-200/20 bg-rose-300/[.08] text-rose-200 transition hover:bg-rose-300/15 disabled:opacity-50" disabled={Boolean(busyId) || actionBusy}><X size={23} /></button>
-              <button type="button" onClick={() => onProfile(member)} className="min-h-12 flex-1 rounded-full border border-white/15 bg-white/[.06] px-4 text-xs font-black text-slate-200 transition hover:bg-white/10">프로필 자세히</button>
-              {viewerId ? <button type="button" onClick={() => void like()} aria-label="좋아요" disabled={!canLike || Boolean(busyId) || actionBusy} className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-cyan-200/35 bg-cyan-300 text-slate-950 shadow-[0_8px_28px_rgba(103,232,249,.2)] transition hover:scale-105 disabled:cursor-wait disabled:opacity-60"><Heart size={22} fill="currentColor" /></button> : <Link href="/login" aria-label="로그인하고 좋아요 보내기" className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-cyan-200/35 bg-cyan-300 text-slate-950"><Heart size={22} fill="currentColor" /></Link>}
+            <div className="friend-discovery-actions mt-4 flex items-center justify-center gap-3 sm:gap-4">
+              <button type="button" onClick={() => void pass()} aria-label="건너뛰기" className="inline-flex min-h-12 shrink-0 items-center justify-center gap-1.5 rounded-full border border-rose-200/20 bg-rose-300/[.08] px-3 text-[11px] font-black text-rose-100 transition hover:bg-rose-300/15 disabled:opacity-50 sm:px-4 sm:text-xs" disabled={Boolean(busyId) || actionBusy}><X size={17} /><span>건너뛰기</span></button>
+              <button type="button" onClick={() => onProfile(member)} className="min-h-12 flex-1 rounded-full border border-white/15 bg-white/[.06] px-3 text-[11px] font-black text-slate-200 transition hover:bg-white/10 sm:px-4 sm:text-xs">프로필 자세히</button>
+              {viewerId ? <button type="button" onClick={() => void like()} aria-label="좋아요" disabled={!canLike || Boolean(busyId) || actionBusy} className="inline-flex min-h-12 shrink-0 items-center justify-center gap-1.5 rounded-full border border-cyan-200/35 bg-cyan-300 px-3 text-[11px] font-black text-slate-950 shadow-[0_8px_28px_rgba(103,232,249,.2)] transition hover:scale-105 disabled:cursor-wait disabled:opacity-60 sm:px-4 sm:text-xs"><Heart size={17} fill="currentColor" /><span>좋아요</span></button> : <Link href="/login" aria-label="로그인하고 좋아요 보내기" className="inline-flex min-h-12 shrink-0 items-center justify-center gap-1.5 rounded-full border border-cyan-200/35 bg-cyan-300 px-3 text-[11px] font-black text-slate-950 sm:px-4 sm:text-xs"><Heart size={17} fill="currentColor" /><span>좋아요</span></Link>}
             </div>
-          </> : <div className="grid min-h-[25rem] place-items-center rounded-[1.75rem] border border-dashed border-white/15 bg-white/[.025] p-6 text-center sm:min-h-[30rem]">
+          </> : <div className="friend-discovery-empty grid min-h-[25rem] place-items-center rounded-[1.75rem] border border-dashed border-white/15 bg-white/[.025] p-6 text-center sm:min-h-[30rem]">
             <div>
               <div className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-cyan-200/15 bg-cyan-300/[.08] text-cyan-100"><Heart size={25} /></div>
               <h3 className="mt-5 text-xl font-black text-white">{candidates.length ? '모두 둘러봤어요' : '새 회원을 기다리고 있어요'}</h3>
-              <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-400">{candidates.length ? '온라인 회원을 다시 보고 싶으면 처음부터 둘러보세요.' : '새 회원이 접속하면 이곳에서 프로필을 만날 수 있습니다.'}</p>
+              <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-400">{candidates.length ? '프로필을 다시 보고 싶으면 처음부터 둘러보세요.' : '실제 공개 프로필만 표시됩니다. 새 회원이 접속하면 이곳에서 만날 수 있습니다.'}</p>
               {candidates.length > 0 && <button type="button" onClick={() => { setHandledIds([]); setNotice(''); }} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full border border-white/15 px-4 text-xs font-black text-slate-200 hover:bg-white/5"><RotateCcw size={14} />처음부터 보기</button>}
               {!viewerId && <Link href="/login" className="mt-3 block text-xs font-black text-cyan-200 underline">로그인하고 매칭 시작</Link>}
             </div>
           </div>}
           {error && <p role="alert" className="mt-3 rounded-xl border border-rose-200/15 bg-rose-200/[.06] px-3 py-2 text-center text-xs font-bold leading-5 text-rose-100">{error}</p>}
           {notice && <p role="status" className="mt-3 min-h-5 text-center text-xs font-bold text-cyan-100">{notice}</p>}
-          {!viewerId && member && <p className="mt-3 text-center text-xs text-slate-500">로그인하면 좋아요를 보내고 친구를 만날 수 있어요.</p>}
+          {!viewerId && member && <p className="friend-discovery-guest-note mt-3 text-center text-xs text-slate-500">로그인하면 좋아요를 보내고 친구를 만날 수 있어요.</p>}
         </div>
 
-        <aside className="rounded-[1.5rem] border border-white/10 bg-white/[.035] p-5 sm:p-6">
-          <p className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-200/70">HOW IT WORKS</p>
-          <h3 className="mt-2 text-lg font-black text-white">부담 없이, 서로 원할 때만</h3>
-          <div className="mt-5 space-y-4">
-            <div className="flex gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[.07] text-xs font-black text-slate-300">01</span><p className="pt-1 text-xs leading-5 text-slate-400">카드를 왼쪽으로 넘기거나 X를 눌러 건너뛰세요.</p></div>
-            <div className="flex gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-cyan-300/10 text-xs font-black text-cyan-100">02</span><p className="pt-1 text-xs leading-5 text-slate-400">마음에 들면 오른쪽으로 넘기거나 하트를 눌러 좋아요를 보내세요.</p></div>
-            <div className="flex gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-300/10 text-xs font-black text-emerald-100">03</span><p className="pt-1 text-xs leading-5 text-slate-400">상대도 좋아요를 보내면 자동으로 친구 매칭이 됩니다.</p></div>
-          </div>
-          <div className="mt-6 border-t border-white/10 pt-5">
-            <p className="text-xs font-black text-slate-200">실시간 회원 {candidates.length}명</p>
-            <p className="mt-1 text-[11px] leading-5 text-slate-500">친구 요청이나 좋아요는 매칭 상대에게만 전달됩니다. 프로필에서 공개하는 정보만 표시합니다.</p>
-          </div>
-        </aside>
       </div>
     </div>
 

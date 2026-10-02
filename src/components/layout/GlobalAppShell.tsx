@@ -43,6 +43,7 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
   const portalTarget = useSyncExternalStore(subscribeToDocument, () => document.body, () => null);
   const mode = getShellMode(pathname, compact);
   const isCompact = mode === 'compact';
+  const isMatchApp = pathname === '/users';
   const isCallRoute = pathname === '/webrtc' || pathname === '/apps/random-chat';
   const hasGlobalChat = mode === 'public' && pathname !== '/webrtc' && pathname !== '/apps/random-chat';
   const mediaRoute = pathname === '/music' || pathname === '/watch';
@@ -78,7 +79,7 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
     <main className="global-main global-admin-main min-w-0">{children}</main>
   </div>;
 
-  return <div className={`global-app-shell${isCompact ? ' is-compact' : ''}${mediaRoute ? ' is-media-route' : ''}${hasGlobalChat && desktopLoungeOpen ? ' has-lounge-open' : ''}`} data-shell-mode={mode} data-media-route={mediaRoute ? pathname.slice(1) : undefined}>
+  return <div className={`global-app-shell${isCompact ? ' is-compact' : ''}${isMatchApp ? ' is-match-app' : ''}${mediaRoute ? ' is-media-route' : ''}${hasGlobalChat && desktopLoungeOpen ? ' has-lounge-open' : ''}`} data-shell-mode={mode} data-media-route={mediaRoute ? pathname.slice(1) : undefined}>
     {isCallRoute && <Suspense fallback={null}><CompactCallMode onChange={setCompact} /></Suspense>}
     {musicOwner === 'top' && <SiteBackgroundVideo />}
     {!isCompact && <AdSenseScript />}
