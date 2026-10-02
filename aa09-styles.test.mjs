@@ -117,7 +117,7 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
 
   const dock = read('src/components/layout/FriendDock.tsx');
   assert.match(dock, /Link href="\/users"[\s\S]*?친구 찾기/);
-  assert.match(dock, /회원 목록에서 친구 찾기/);
+  assert.match(dock, /매칭 카드 보기/);
   assert.match(dock, /new ResizeObserver\(updatePosition\)/);
   assert.match(dock, /anchor\.top - rect\.height - 8/);
   assert.match(dock, /left: 16,/);
