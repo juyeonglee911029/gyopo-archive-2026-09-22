@@ -1,4 +1,5 @@
 import { canPhotoMatch, getVisibleMatchPhotos, normalizeProfilePhotos, parseProfileGalleryUrl } from './profilePhotos';
+import { sortOnlineUsersByLogin } from './friendMatching';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAne5XuEzN2sL3px0oY5Wxsgf3m0nHHIoY',
@@ -76,6 +77,7 @@ export type OnlineUser = {
   age?: number;
   country?: string;
   lastSeenAt: string;
+  lastLoginAt?: string;
 };
 
 export type PublicProfile = {
@@ -1359,6 +1361,22 @@ function getTokenUserId(token?: string): string | undefined {
   }
 }
 
+function tokenAuthenticatedAt(token?: string): Date | null {
+  if (!token) return null;
+  try {
+    const encoded = token.split('.')[1];
+    if (!encoded) return null;
+    const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
+    const payload = JSON.parse(atob(normalized + padding)) as { auth_time?: unknown };
+    if (typeof payload.auth_time !== 'number' || !Number.isFinite(payload.auth_time)) return null;
+    const authenticatedAt = new Date(payload.auth_time * 1_000);
+    return Number.isNaN(authenticatedAt.getTime()) ? null : authenticatedAt;
+  } catch {
+    return null;
+  }
+}
+
 function tokenExpiresAt(token?: string): number | null {
   if (!token) return null;
   try {
@@ -1782,9 +1800,11 @@ export async function recordVisit(user?: PortalUser | null): Promise<void> {
   const visitMarker = `gyopo-visited-${day}`;
   try {
     const publicUser = hasCompletedProfile(user) ? user : null;
+    const token = publicUser ? getSessionToken() : undefined;
     await replaceDocument(publicUser ? 'publicPresence' : 'presence', publicUser?.id || visitorKey, {
       lastSeenAt: now,
-      updatedAt: now,
+      // Keep login ordering stable while lastSeenAt continues to refresh online presence.
+      updatedAt: publicUser ? tokenAuthenticatedAt(token) || now : now,
       ...(publicUser
         ? {
             userId: publicUser.id,
@@ -1795,7 +1815,7 @@ export async function recordVisit(user?: PortalUser | null): Promise<void> {
             country: publicUser.country,
           }
         : {}),
-    }, user ? getSessionToken() : undefined);
+    }, token);
     if (window.localStorage.getItem(visitMarker)) return;
     await createDocument('visits', `${visitorKey}-${day}`, { visitorKey, day, month, createdAt: now });
     const current = await getDocument<SiteStats>('stats', 'summary');
@@ -1822,11 +1842,15 @@ export async function getOnlineCount(): Promise<number> {
 }
 
 export async function listOnlineUsers(): Promise<OnlineUser[]> {
-  const presence = await queryDocumentsWhere<Omit<OnlineUser, 'id'>>('publicPresence', [{ field: 'lastSeenAt', op: 'GREATER_THAN', value: new Date(Date.now() - 90_000) }]);
-  return presence
+  const presence = await queryDocumentsWhere<Omit<OnlineUser, 'id' | 'lastLoginAt'> & { updatedAt?: string }>('publicPresence', [{ field: 'lastSeenAt', op: 'GREATER_THAN', value: new Date(Date.now() - 90_000) }]);
+  return sortOnlineUsersByLogin(presence
     .filter((item) => item.userId)
-    .map((item) => ({ ...item, id: item.userId as string, userId: item.userId as string }))
-    .sort((a, b) => new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime());
+    .map(({ updatedAt, ...item }) => ({
+      ...item,
+      id: item.userId as string,
+      userId: item.userId as string,
+      lastLoginAt: updatedAt || item.lastSeenAt,
+    })));
 }
 
 export async function deleteDocument(collection: string, id: string, token?: string): Promise<void> {

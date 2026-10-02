@@ -6,6 +6,7 @@ import { SourceTextModule, createContext } from 'node:vm';
 
 const source = stripTypeScriptTypes(readFileSync(new URL('./src/lib/firebase.ts', import.meta.url), 'utf8'));
 const profilePhotosSource = stripTypeScriptTypes(readFileSync(new URL('./src/lib/profilePhotos.ts', import.meta.url), 'utf8'));
+const friendMatchingSource = stripTypeScriptTypes(readFileSync(new URL('./src/lib/friendMatching.ts', import.meta.url), 'utf8'));
 const key = 'gyopo-auth-session';
 const jwt = (id, version, valid = true) => 'fixture.' + Buffer.from(JSON.stringify({ sub: id, exp: Math.floor(Date.now() / 1000) + (valid ? 3600 : -60), version })).toString('base64url') + '.fixture';
 const session = (id = 'a', version = 'original', valid = false) => ({ idToken: jwt(id, version, valid), refreshToken: `refresh-${id}-${version}`, user: { id, email: `${id}@example.test`, name: `User ${id}`, isSubscribed: false } });
@@ -40,6 +41,7 @@ async function harness(initial = session(), fetchHandler) {
   const sourceModule = new SourceTextModule(source, { context });
   await sourceModule.link((specifier) => {
     if (specifier === './profilePhotos') return new SourceTextModule(profilePhotosSource, { context });
+    if (specifier === './friendMatching') return new SourceTextModule(friendMatchingSource, { context });
     throw new Error(`Unexpected source import: ${specifier}`);
   });
   await sourceModule.evaluate();
@@ -346,6 +348,52 @@ test('Google sign-in does not rewrite a profile when its read fails', async () =
   const user = await h.api.signInWithGoogleCredential('google-credential');
   assert.equal(user.id, 'a');
   assert.equal(profileWrites, 0);
+});
+
+test('public presence keeps the authenticated login time separate from its live heartbeat', async () => {
+  const authTime = Math.floor((Date.now() - 60_000) / 1_000);
+  const idToken = `fixture.${Buffer.from(JSON.stringify({ sub: 'a', auth_time: authTime })).toString('base64url')}.fixture`;
+  let presenceWrite;
+  const h = await harness({ ...session('a', 'login-time', true), idToken }, async (url, options) => {
+    if (url.endsWith('/documents:commit')) {
+      presenceWrite = JSON.parse(options.body).writes[0].update.fields;
+      return new Response('{}', { status: 200 });
+    }
+    throw new Error(`Unexpected presence request: ${url}`);
+  });
+  h.storage.setItem('gyopo-visitor-id', 'visitor');
+  h.storage.setItem(`gyopo-visited-${new Date().toISOString().slice(0, 10)}`, '1');
+
+  await h.api.recordVisit({ ...h.read().user, gender: 'female', country: 'US', age: 34 });
+
+  assert.equal(presenceWrite.updatedAt.timestampValue, new Date(authTime * 1_000).toISOString());
+  assert.ok(Date.parse(presenceWrite.lastSeenAt.timestampValue) > Date.parse(presenceWrite.updatedAt.timestampValue));
+});
+
+test('online members are ranked by stored authenticated login time, not heartbeat recency', async () => {
+  const presence = (id, loginAt, lastSeenAt) => ({
+    document: {
+      name: `projects/test/databases/(default)/documents/publicPresence/${id}`,
+      fields: {
+        userId: { stringValue: id },
+        name: { stringValue: id },
+        image: { stringValue: '' },
+        lastSeenAt: { timestampValue: lastSeenAt },
+        updatedAt: { timestampValue: loginAt },
+      },
+    },
+  });
+  const h = await harness(session('a', 'valid', true), async (url) => {
+    assert.match(url, /\/documents:runQuery$/);
+    return Response.json([
+      presence('active-but-older-login', '2026-10-01T12:00:00.000Z', '2026-10-02T12:00:00.000Z'),
+      presence('newer-login', '2026-10-02T11:00:00.000Z', '2026-10-02T11:10:00.000Z'),
+    ]);
+  });
+
+  const online = await h.api.listOnlineUsers();
+  assert.deepEqual(Array.from(online, (user) => user.id), ['newer-login', 'active-but-older-login']);
+  assert.equal(online[0].lastLoginAt, '2026-10-02T11:00:00.000Z');
 });
 
 test('saveProfile keeps a saved AI writing preference when the user object is stale', async () => {

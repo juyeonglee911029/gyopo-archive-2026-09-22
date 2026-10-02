@@ -4,6 +4,21 @@ type FriendConnectionLike = {
   status: string;
 };
 
+type OnlineMemberLike = {
+  lastLoginAt?: string;
+  lastSeenAt?: string;
+};
+
+export function sortOnlineUsersByLogin<T extends OnlineMemberLike>(users: readonly T[]): T[] {
+  const timestamp = (value?: string) => {
+    const parsed = value ? Date.parse(value) : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const loginTime = (user: OnlineMemberLike) => timestamp(user.lastLoginAt) || timestamp(user.lastSeenAt);
+
+  return [...users].sort((a, b) => loginTime(b) - loginTime(a) || timestamp(b.lastSeenAt) - timestamp(a.lastSeenAt));
+}
+
 export function addMissingIncomingLikeCandidates<T extends { id: string }>(
   candidates: readonly T[],
   incomingCandidates: readonly T[],
