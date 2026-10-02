@@ -37,6 +37,7 @@ test('friend matching is visible in the sidebar and opens the existing member fl
   assert.match(sidebar, /id: 'friends', href: '\/users', label: '친구 매칭'/);
   assert.match(members, /<h1[^>]*>친구 매칭<\/h1>/);
   assert.doesNotMatch(members, /friendMatchingDemo|demo-member-|159개 검수용/);
+  assert.doesNotMatch(members, /랜덤 화상 매칭|online now|users-mobile-online/);
   assert.doesNotMatch(discovery, /demoMode|onEnterDemo|159개 검수용/);
   assert.match(members, /sendFriendRequest/);
   assert.match(members, /respondToFriendRequest/);
