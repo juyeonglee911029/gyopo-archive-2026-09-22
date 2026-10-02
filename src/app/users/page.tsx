@@ -1,17 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Heart, MapPin, MessageCircle, PackageCheck, Send, ShieldCheck, Sparkles, UserPlus, Users as UsersIcon, Video, X } from 'lucide-react';
+import { ArrowLeft, Heart, MapPin, MessageCircle, PackageCheck, ShieldCheck, UserPlus, Users as UsersIcon, Video, X } from 'lucide-react';
 import { getDocument, getSessionToken, listEscrowOrdersForMember, listFriendConnections, listOnlineUsers, respondToFriendRequest, sendFriendRequest, type EscrowOrder, type FriendConnection, type OnlineUser, type PublicProfile } from '@/lib/firebase';
 import { canPhotoMatch, normalizeProfilePhotos } from '@/lib/profilePhotos';
 import { addMissingIncomingLikeCandidates, prioritizeIncomingLikes } from '@/lib/friendMatching';
-import { FRIEND_MATCHING_DEMO_COUNT, friendMatchingDemoProfiles } from '@/lib/friendMatchingDemo';
 import FriendDiscoveryDeck from '@/components/friends/FriendDiscoveryDeck';
 import { useGlobalStore } from '@/store/useGlobalStore';
 
 type SelectedMember = Partial<PublicProfile> & Pick<OnlineUser, 'id' | 'name' | 'image'>;
-type DemoChatMessage = { id: string; own: boolean; text: string };
 
 const STATUS_LABELS: Record<string, string> = {
   PAYMENT_HELD: '결제 보관 완료',
@@ -24,13 +22,6 @@ export default function UsersPage() {
   const user = useGlobalStore((state) => state.user);
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [mobileTab, setMobileTab] = useState<'matching' | 'chat'>('matching');
-  const [demoMode, setDemoMode] = useState(false);
-  const [demoChatMember, setDemoChatMember] = useState<OnlineUser>(friendMatchingDemoProfiles[0]!);
-  const [demoChatDraft, setDemoChatDraft] = useState('');
-  const [demoChatMessages, setDemoChatMessages] = useState<DemoChatMessage[]>([
-    { id: 'demo-initial-1', own: false, text: '안녕하세요! 이 대화는 검수용 데모입니다.' },
-    { id: 'demo-initial-2', own: true, text: '메시지는 실제로 전송되거나 저장되지 않아요.' },
-  ]);
   const [selectedMember, setSelectedMember] = useState<SelectedMember | null>(null);
   const [sharedOrders, setSharedOrders] = useState<EscrowOrder[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -40,10 +31,6 @@ export default function UsersPage() {
   const [friendBusy, setFriendBusy] = useState('');
   const [friendError, setFriendError] = useState('');
   const selectionRequest = useRef(0);
-
-  useEffect(() => {
-    setDemoMode(new URLSearchParams(window.location.search).get('demo') === '1');
-  }, []);
 
   useEffect(() => {
     const showChatTab = () => setMobileTab('chat');
@@ -142,31 +129,13 @@ export default function UsersPage() {
     }];
   });
   const allMatchingCandidates = addMissingIncomingLikeCandidates(onlineMatchingCandidates, offlineIncomingCandidates);
-  const matchingCandidates = demoMode
-    ? friendMatchingDemoProfiles
-    : prioritizeIncomingLikes(allMatchingCandidates, friendships, user?.id);
+  const matchingCandidates = prioritizeIncomingLikes(allMatchingCandidates, friendships, user?.id);
   const incomingLikeIds = user
     ? friendships.filter((connection) => connection.status === 'pending' && connection.addresseeId === user.id).map((connection) => connection.requesterId)
     : [];
 
-  const changeDemoMode = (enabled: boolean) => {
-    const url = new URL(window.location.href);
-    if (enabled) url.searchParams.set('demo', '1');
-    else url.searchParams.delete('demo');
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
-    setDemoMode(enabled);
-    setMobileTab('matching');
-    setDemoChatMember(friendMatchingDemoProfiles[0]!);
-    window.dispatchEvent(new Event('gyopo-friends-close'));
-  };
-
   const openFriendChat = (memberId?: string) => {
     setMobileTab('chat');
-    if (demoMode) {
-      const profile = friendMatchingDemoProfiles.find((member) => member.id === memberId);
-      if (profile) setDemoChatMember(profile);
-      return;
-    }
     if (!user) return;
     window.dispatchEvent(new CustomEvent('gyopo-friends-open', { detail: memberId ? { friendId: memberId } : {} }));
   };
@@ -178,15 +147,7 @@ export default function UsersPage() {
 
   const showChatTab = () => {
     setMobileTab('chat');
-    if (!demoMode && user) window.dispatchEvent(new CustomEvent('gyopo-friends-open'));
-  };
-
-  const handleDemoMessage = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const text = demoChatDraft.trim();
-    if (!text) return;
-    setDemoChatMessages((messages) => [...messages, { id: `demo-${Date.now()}`, own: true, text }]);
-    setDemoChatDraft('');
+    if (user) window.dispatchEvent(new CustomEvent('gyopo-friends-open'));
   };
 
   const requestFriend = async (memberId: string): Promise<{ matched: boolean; ok: boolean }> => {
@@ -237,12 +198,6 @@ export default function UsersPage() {
   };
 
   const showMember = async (online: OnlineUser) => {
-    if (demoMode) {
-      setSelectedMember(online);
-      setSharedOrders([]);
-      setProfileLoading(false);
-      return;
-    }
     const requestId = ++selectionRequest.current;
     setSelectedMember({
       id: online.id,
@@ -272,42 +227,36 @@ export default function UsersPage() {
     setProfileLoading(false);
   };
 
-  const likeCandidate = async (memberId: string) => {
-    if (!demoMode) return requestFriend(memberId);
-    await new Promise((resolve) => window.setTimeout(resolve, 220));
-    return { matched: true, ok: true };
-  };
-
-  const passCandidate = async (memberId: string) => demoMode ? true : passFriend(memberId);
+  const likeCandidate = (memberId: string) => requestFriend(memberId);
+  const passCandidate = (memberId: string) => passFriend(memberId);
 
   return (
-    <div className="category-page users-page min-h-[calc(100vh-64px)] bg-transparent px-4 py-8 md:py-12" data-mobile-tab={mobileTab} data-demo-mode={demoMode ? 'true' : 'false'}>
+    <div className="category-page users-page min-h-[calc(100vh-64px)] bg-transparent px-4 py-8 md:py-12" data-mobile-tab={mobileTab}>
       <div className="users-mobile-bar">
         <Link href="/" className="users-mobile-action" aria-label="홈으로 돌아가기"><ArrowLeft size={19} aria-hidden="true" /></Link>
-        <div className="users-mobile-copy"><span>{demoMode ? 'DEMO PREVIEW' : 'MATCHING'}</span><strong>{demoMode ? '검수용 매칭' : '친구 매칭'}</strong></div>
-        <span className="users-mobile-online" aria-label={demoMode ? `검수용 데모 프로필 ${FRIEND_MATCHING_DEMO_COUNT}개` : `온라인 회원 ${onlineUsers.length}명`}><i />{demoMode ? `${FRIEND_MATCHING_DEMO_COUNT} DEMO` : onlineUsers.length}</span>
+        <div className="users-mobile-copy"><span>MATCHING</span><strong>친구 매칭</strong></div>
+        <span className="users-mobile-online" aria-label={`온라인 회원 ${onlineUsers.length}명`}><i />{onlineUsers.length}</span>
         <Link href="/webrtc" className="users-mobile-action" aria-label="랜덤 화상 매칭"><Video size={18} aria-hidden="true" /></Link>
       </div>
       <div className="category-shell mx-auto max-w-6xl">
-        {demoMode && <aside className="users-demo-banner" role="status"><div><strong><Sparkles size={15} aria-hidden="true" /> 검수용 데모 모드</strong><p>가상 프로필입니다. 실제 회원·친구 요청·메시지로 저장되지 않습니다.</p></div><button type="button" onClick={() => changeDemoMode(false)}>실회원 화면</button></aside>}
         <header className="category-header">
           <div className="category-heading">
-            <div className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-indigo-500">{demoMode ? 'DEMO REVIEW MODE' : 'MEMBER MATCHING'}</div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">{demoMode ? '검수용 친구 매칭' : '친구 매칭'}</h1>
-            <p className="mt-3 text-sm text-slate-500">{demoMode ? '159개의 가상 프로필로 카드·매칭 알림·채팅 화면을 확인하세요.' : '관심이 맞는 회원과 서로 동의하면 연결됩니다.'}</p>
+            <div className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-indigo-500">MEMBER MATCHING</div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">친구 매칭</h1>
+            <p className="mt-3 text-sm text-slate-500">관심이 맞는 회원과 서로 동의하면 연결됩니다.</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             <Link href="/webrtc" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"><Video size={16} aria-hidden="true" />랜덤 화상 매칭</Link>
             <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-white px-5 py-3 shadow-sm">
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
-              <b className="text-2xl text-slate-950">{demoMode ? FRIEND_MATCHING_DEMO_COUNT : onlineUsers.length}</b>
-              <span className="text-sm font-bold text-slate-500">{demoMode ? '샘플 프로필' : 'online now'}</span>
+              <b className="text-2xl text-slate-950">{onlineUsers.length}</b>
+              <span className="text-sm font-bold text-slate-500">online now</span>
             </div>
           </div>
         </header>
 
-        {user && !demoMode && !canPhotoMatch(user.profilePhotos) && <p className="users-profile-photo-note mb-6 border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-800">친구 매칭과 랜덤 화상 매칭을 이용하려면 공개 프로필 사진을 3장 이상 등록해주세요. <button type="button" className="underline" onClick={() => window.dispatchEvent(new Event('gyopo-profile-edit'))}>사진 올리기</button></p>}
-        <FriendDiscoveryDeck key={demoMode ? 'demo' : 'live'} viewerId={demoMode ? 'demo-viewer' : user?.id} canLike={demoMode || canPhotoMatch(user?.profilePhotos)} candidates={matchingCandidates} incomingLikeIds={incomingLikeIds} demoMode={demoMode} busyId={friendBusy} error={friendError} onLike={likeCandidate} onPass={passCandidate} onProfile={showMember} onOpenChat={openFriendChat} onEnterDemo={() => changeDemoMode(true)} />
+        {user && !canPhotoMatch(user.profilePhotos) && <p className="users-profile-photo-note mb-6 border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-800">친구 매칭과 랜덤 화상 매칭을 이용하려면 공개 프로필 사진을 3장 이상 등록해주세요. <button type="button" className="underline" onClick={() => window.dispatchEvent(new Event('gyopo-profile-edit'))}>사진 올리기</button></p>}
+        <FriendDiscoveryDeck viewerId={user?.id} canLike={canPhotoMatch(user?.profilePhotos)} candidates={matchingCandidates} incomingLikeIds={incomingLikeIds} busyId={friendBusy} error={friendError} onLike={likeCandidate} onPass={passCandidate} onProfile={showMember} onOpenChat={openFriendChat} />
 
         {user && <section className="mb-8 rounded-[2rem] border border-indigo-100 bg-white p-5 shadow-sm"><div className="flex items-center justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">My network</div><h2 className="mt-1 text-xl font-black text-slate-950">친구 목록</h2><p className="mt-1 text-xs text-slate-500">친구를 선택해 바로 영상 통화를 시작하세요.</p></div><span className="shrink-0 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700">{friendships.filter((item) => item.status === 'accepted').length}명 친구</span></div><div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{friendships.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">아직 친구가 없습니다. 아래 회원 목록에서 친구 추가를 눌러보세요.</div> : friendships.map((connection) => { const memberId = connection.requesterId === user.id ? connection.addresseeId : connection.requesterId; const online = onlineUsers.find((item) => item.id === memberId); const profile = friendProfiles[memberId]; const name = online?.name || profile?.name || '친구 회원'; const image = online?.image || profile?.image; const incoming = connection.addresseeId === user.id && connection.status === 'pending'; return <div key={connection.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3"><div className="relative shrink-0">{image ? <img src={image} alt="" className="h-11 w-11 rounded-2xl object-cover" /> : <div className="grid h-11 w-11 place-items-center rounded-2xl bg-indigo-100 text-sm font-black text-indigo-700">{name.slice(0, 1)}</div>}{online && <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-black text-slate-900">{name}</div><div className="truncate text-[11px] text-slate-400">{online?.country || profile?.country || (online ? '온라인' : '오프라인')}</div></div>{connection.status === 'accepted' ? <Link href={`/webrtc?friend=${encodeURIComponent(memberId)}`} className="shrink-0 rounded-xl bg-indigo-600 px-2.5 py-2 text-[11px] font-black text-white">영상통화</Link> : incoming ? <button type="button" disabled={friendBusy === connection.id} onClick={() => void acceptFriend(connection)} className="shrink-0 rounded-xl bg-emerald-500 px-2.5 py-2 text-[11px] font-black text-slate-950 disabled:opacity-50">수락</button> : <span className="shrink-0 text-[10px] font-bold text-slate-400">대기 중</span>}</div>; })}</div></section>}
 
@@ -343,14 +292,7 @@ export default function UsersPage() {
         </details>
       </div>
 
-      {demoMode && mobileTab === 'chat' && <div className="users-demo-chat-layer" role="tabpanel" aria-label="검수용 데모 채팅"><section className="users-demo-chat-window">
-        <header className="users-demo-chat-header"><button type="button" onClick={showMatchingTab} aria-label="매칭으로 돌아가기"><ArrowLeft size={18} /></button><div><span>DEMO CHAT · NOT SAVED</span><h2>{demoChatMember.name}</h2></div><span className="users-demo-chat-badge">샘플 대화</span></header>
-        <div className="users-demo-chat-thread" aria-live="polite">{demoChatMessages.map((message) => <p key={message.id} className={`users-demo-chat-bubble${message.own ? ' is-own' : ''}`}>{message.text}</p>)}</div>
-        <p className="users-demo-chat-note">데모 메시지는 현재 화면에서만 유지됩니다.</p>
-        <form className="users-demo-chat-composer" onSubmit={handleDemoMessage}><input value={demoChatDraft} onChange={(event) => setDemoChatDraft(event.target.value)} placeholder="검수용 메시지 입력..." aria-label="검수용 데모 메시지" /><button type="submit" aria-label="데모 메시지 추가" disabled={!demoChatDraft.trim()}><Send size={17} /></button></form>
-      </section></div>}
-
-      {!demoMode && mobileTab === 'chat' && !user && <section className="users-chat-guest" role="tabpanel" aria-label="친구 채팅 로그인"><div><MessageCircle size={34} className="mx-auto text-cyan-200" /><h2>친구 채팅은 로그인 후 이용할 수 있어요.</h2><p>로그인 후 서로 좋아요를 보내 매칭되면 여기서 대화를 나눌 수 있습니다.</p><Link href="/login">로그인하기</Link><button type="button" onClick={showMatchingTab}>매칭 계속하기</button></div></section>}
+      {mobileTab === 'chat' && !user && <section className="users-chat-guest" role="tabpanel" aria-label="친구 채팅 로그인"><div><MessageCircle size={34} className="mx-auto text-cyan-200" /><h2>친구 채팅은 로그인 후 이용할 수 있어요.</h2><p>로그인 후 서로 좋아요를 보내 매칭되면 여기서 대화를 나눌 수 있습니다.</p><Link href="/login">로그인하기</Link><button type="button" onClick={showMatchingTab}>매칭 계속하기</button></div></section>}
 
       {selectedMember && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/75 p-4" onMouseDown={(event) => event.target === event.currentTarget && closeMember()}>
