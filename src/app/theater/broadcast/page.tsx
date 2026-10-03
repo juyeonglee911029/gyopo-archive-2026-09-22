@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -98,6 +98,8 @@ const waitForIce = (peer: RTCPeerConnection) =>
   });
 export default function LiveBroadcastPage() {
   const user = useGlobalStore((state) => state.user) as PortalUser | null;
+  const isKorean = useGlobalStore((state) => state.language === "ko");
+  const t = (korean: string, english: string) => isKorean ? korean : english;
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
@@ -112,6 +114,7 @@ export default function LiveBroadcastPage() {
   );
   const roomRef = useRef("live-room-01");
   const sessionRef = useRef<string | null>(null);
+  const broadcastReplyDraftRef = useRef({ userId: user?.id || "", value: "" });
   const [roomId, setRoomId] = useState("live-room-01");
   const [roomTitle, setRoomTitle] = useState("ROOM 1");
   const [filters, setFilters] = useState(DEFAULT_VIDEO_EFFECTS);
@@ -123,9 +126,11 @@ export default function LiveBroadcastPage() {
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
-  const [message, setMessage] = useState(
-    "카메라를 켜고 방송 설정을 확인하세요.",
-  );
+  const [message, setMessage] = useState({
+    ko: "카메라를 켜고 방송 설정을 확인하세요.",
+    en: "Turn on your camera and review your broadcast settings.",
+  });
+  const setStudioMessage = useCallback((ko: string, en: string) => setMessage({ ko, en }), []);
   const [quality, setQuality] = useState("1080p");
   const [micOn, setMicOn] = useState(true);
   const [screenSharing, setScreenSharing] = useState(false);
@@ -170,12 +175,12 @@ export default function LiveBroadcastPage() {
     resetViewers = false,
   ) => {
     if (!user) {
-      setMessage("방송하려면 먼저 로그인해주세요.");
+      setStudioMessage("방송하려면 먼저 로그인해주세요.", "Log in before broadcasting.");
       return false;
     }
     const token = getSessionToken();
     if (!token) {
-      setMessage("로그인 세션이 만료되었습니다. 다시 로그인해주세요.");
+      setStudioMessage("로그인 세션이 만료되었습니다. 다시 로그인해주세요.", "Your login session expired. Please log in again.");
       return false;
     }
     const offline = status === "offline";
@@ -202,9 +207,7 @@ export default function LiveBroadcastPage() {
       if (resetViewers) setStartedAt(time);
       return true;
     } catch {
-      setMessage(
-        "라이브 서버에 연결하지 못했습니다. Firebase 로그인과 방송 권한을 확인해주세요.",
-      );
+      setStudioMessage("라이브 서버에 연결하지 못했습니다. Firebase 로그인과 방송 권한을 확인해주세요.", "Could not connect to the live server. Check your login and broadcasting access.");
       return false;
     }
   };
@@ -218,11 +221,9 @@ export default function LiveBroadcastPage() {
         title,
       });
       setRoomTitle(title);
-      setMessage("방 제목을 저장했습니다.");
+      setStudioMessage("방 제목을 저장했습니다.", "Room title saved.");
     } catch {
-      setMessage(
-        "제목을 저장하지 못했습니다. 현재 방송자 권한을 확인하고 다시 시도해주세요.",
-      );
+      setStudioMessage("제목을 저장하지 못했습니다. 현재 방송자 권한을 확인하고 다시 시도해주세요.", "Could not save the title. Check that you are the current host and try again.");
     }
   };
   useEffect(() => {
@@ -265,14 +266,12 @@ export default function LiveBroadcastPage() {
       : 0;
     if (Number.isFinite(updatedAt) && Date.now() - updatedAt > 20000)
       return true;
-    setMessage(
-      "이 방은 현재 다른 방송자가 방송 중입니다. 방송이 끝난 뒤 다시 입장해주세요.",
-    );
+    setStudioMessage("이 방은 현재 다른 방송자가 방송 중입니다. 방송이 끝난 뒤 다시 입장해주세요.", "Another host is live in this room. Try again after the broadcast ends.");
     return false;
   };
   const startCamera = async () => {
     if (!navigator.mediaDevices?.getUserMedia)
-      return setMessage("이 브라우저는 카메라를 지원하지 않습니다.");
+      return setStudioMessage("이 브라우저는 카메라를 지원하지 않습니다.", "This browser does not support camera access.");
     const version = ++mediaVersionRef.current;
     let acquired: MediaStream | null = null;
     try {
@@ -330,9 +329,7 @@ export default function LiveBroadcastPage() {
       stream.getVideoTracks().forEach((track) => {
         track.onended = () => {
           setCameraReady(false);
-          setMessage(
-            "카메라가 꺼졌습니다. 카메라 다시 켜기를 눌러 재연결하세요.",
-          );
+          setStudioMessage("카메라가 꺼졌습니다. 카메라 다시 켜기를 눌러 재연결하세요.", "Camera disconnected. Select Reconnect camera to try again.");
         };
       });
       cameraStreamRef.current = stream;
@@ -350,18 +347,15 @@ export default function LiveBroadcastPage() {
       const audioTrack = stream.getAudioTracks()[0];
       if (videoTrack) await replacePeerTrack(videoTrack);
       if (audioTrack) await replacePeerTrack(audioTrack);
-      setMessage(
-        live
-          ? "카메라가 다시 연결되었습니다. 현재 LIVE 송출에 반영됩니다."
-          : "카메라 준비 완료 · 방송 시작을 누르면 LIVE로 표시됩니다.",
+      setStudioMessage(
+        live ? "카메라가 다시 연결되었습니다. 현재 LIVE 송출에 반영됩니다." : "카메라 준비 완료 · 방송 시작을 누르면 LIVE로 표시됩니다.",
+        live ? "Camera reconnected and applied to the live broadcast." : "Camera ready. Select Start broadcast to go live.",
       );
     } catch {
       acquired?.getTracks().forEach((track) => track.stop());
       if (version !== mediaVersionRef.current) return;
       setCameraReady(false);
-      setMessage(
-        "카메라 권한 또는 Canvas 영상 송출을 사용할 수 없습니다. 지원 브라우저에서 다시 시도해주세요.",
-      );
+      setStudioMessage("카메라 권한 또는 Canvas 영상 송출을 사용할 수 없습니다. 지원 브라우저에서 다시 시도해주세요.", "Camera access or canvas video output is unavailable. Try again in a supported browser.");
     }
   };
   useEffect(() => {
@@ -373,13 +367,13 @@ export default function LiveBroadcastPage() {
     const file = event.target.files?.[0];
     if (!file) return;
     if (file.size > 2000000)
-      return setMessage("썸네일은 2MB 이하의 이미지로 올려주세요.");
+      return setStudioMessage("썸네일은 2MB 이하의 이미지로 올려주세요.", "Choose a thumbnail image smaller than 2 MB.");
     const reader = new FileReader();
     reader.onload = () => {
       const result = typeof reader.result === "string" ? reader.result : null;
       if (!result) return;
       setUploadedThumbnail(result);
-      setMessage("업로드한 썸네일을 방송방에 적용했습니다.");
+      setStudioMessage("업로드한 썸네일을 방송방에 적용했습니다.", "Uploaded thumbnail applied to the room.");
       if (live) void publishRoom("live", result);
     };
     reader.readAsDataURL(file);
@@ -390,7 +384,7 @@ export default function LiveBroadcastPage() {
       track.enabled = nextValue;
     });
     setMicOn(nextValue);
-    setMessage(nextValue ? "마이크가 켜졌습니다." : "마이크가 꺼졌습니다.");
+    setStudioMessage(nextValue ? "마이크가 켜졌습니다." : "마이크가 꺼졌습니다.", nextValue ? "Microphone on." : "Microphone off.");
   };
   const stopScreenShare = async () => {
     const screen = screenStreamRef.current;
@@ -417,7 +411,7 @@ export default function LiveBroadcastPage() {
   const toggleScreenShare = async () => {
     if (screenSharing) return stopScreenShare();
     if (!navigator.mediaDevices?.getDisplayMedia)
-      return setMessage("이 브라우저는 화면 공유를 지원하지 않습니다.");
+      return setStudioMessage("이 브라우저는 화면 공유를 지원하지 않습니다.", "This browser does not support screen sharing.");
     if (!streamRef.current) await startCamera();
     if (!streamRef.current) return;
     const version = ++mediaVersionRef.current;
@@ -443,10 +437,10 @@ export default function LiveBroadcastPage() {
       };
       if (videoRef.current) videoRef.current.srcObject = streamRef.current;
       setScreenSharing(true);
-      setMessage("화면을 공유하는 중입니다.");
+      setStudioMessage("화면을 공유하는 중입니다.", "Screen sharing is on.");
     } catch {
       acquired?.getTracks().forEach((track) => track.stop());
-      setMessage("화면 공유가 취소되었거나 권한이 없습니다.");
+      setStudioMessage("화면 공유가 취소되었거나 권한이 없습니다.", "Screen sharing was cancelled or permission was denied.");
     }
   };
   const startBroadcast = async () => {
@@ -454,7 +448,7 @@ export default function LiveBroadcastPage() {
       return;
     startingRef.current = true;
     try {
-      if (!user) return setMessage("방송하려면 먼저 로그인해주세요.");
+      if (!user) return setStudioMessage("방송하려면 먼저 로그인해주세요.", "Log in before broadcasting.");
       if (!(await checkRoomAvailability())) return;
       if (!streamRef.current) await startCamera();
       if (!streamRef.current) return;
@@ -476,9 +470,7 @@ export default function LiveBroadcastPage() {
         return;
       }
       setLive(true);
-      setMessage(
-        "LIVE 방송 중 · 시청자에게 카메라와 썸네일을 송출하고 있습니다.",
-      );
+      setStudioMessage("LIVE 방송 중 · 시청자에게 카메라와 썸네일을 송출하고 있습니다.", "LIVE: Your camera and thumbnail are being sent to viewers.");
     } finally {
       startingRef.current = false;
     }
@@ -556,8 +548,9 @@ export default function LiveBroadcastPage() {
       setStartedAt(null);
       setRoomTitle(defaultRoomTitle(roomRef.current));
       setUploadedThumbnail(null);
-      setMessage(
+      setStudioMessage(
         released ? "방송이 종료되고 방 제목·썸네일·채팅이 초기화되었습니다." : "송출은 중지됐지만 서버 초기화를 확인하지 못했습니다. 방 상태를 확인해주세요.",
+        released ? "Broadcast ended. Room title, thumbnail, and chat were reset." : "The stream stopped, but the server reset could not be confirmed. Check the room status.",
       );
     })();
     stopInFlightRef.current = promise;
@@ -598,9 +591,7 @@ export default function LiveBroadcastPage() {
         return;
       await stopBroadcast(false);
       if (active)
-        setMessage(
-          "Master가 방송방을 종료해 카메라·채팅·썸네일을 초기화했습니다.",
-        );
+        setStudioMessage("Master가 방송방을 종료해 카메라·채팅·썸네일을 초기화했습니다.", "Master ended the broadcast and reset the camera, chat, and thumbnail.");
     };
     void checkRoom();
     const timer = window.setInterval(() => void checkRoom(), 1500);
@@ -608,7 +599,7 @@ export default function LiveBroadcastPage() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [live, user?.id]);
+  }, [live, setStudioMessage, user?.id]);
   useEffect(() => {
     const loadChat = async () => {
       if (!sessionRef.current) {
@@ -671,10 +662,16 @@ export default function LiveBroadcastPage() {
   useEffect(() => {
     const preview = document.querySelector(".live-studio-preview .relative");
     if (!preview) return;
+    const userId = user?.id || "";
+    if (broadcastReplyDraftRef.current.userId !== userId) {
+      broadcastReplyDraftRef.current = { userId, value: "" };
+    }
     let composer = preview.querySelector<HTMLFormElement>(
       ".live-broadcast-chat-composer",
     );
     if (!live) {
+      const input = composer?.querySelector<HTMLInputElement>("input");
+      if (input) broadcastReplyDraftRef.current = { userId, value: input.value };
       composer?.remove();
       return;
     }
@@ -683,17 +680,22 @@ export default function LiveBroadcastPage() {
       composer.className = "live-broadcast-chat-composer";
       const input = document.createElement("input");
       input.className = "live-room-input";
-      input.placeholder = "시청자에게 답장하기";
-      input.setAttribute("aria-label", "시청자에게 답장하기");
+      input.value = broadcastReplyDraftRef.current.value;
+      input.placeholder = t("시청자에게 답장하기", "Reply to viewers");
+      input.setAttribute("aria-label", t("시청자에게 답장하기", "Reply to viewers"));
+      input.addEventListener("input", () => {
+        broadcastReplyDraftRef.current = { userId, value: input.value };
+      });
       const button = document.createElement("button");
       button.type = "submit";
       button.className = "live-room-send";
-      button.setAttribute("aria-label", "방송자 메시지 보내기");
+      button.setAttribute("aria-label", t("방송자 메시지 보내기", "Send broadcaster message"));
       button.innerHTML = '<span aria-hidden="true">↗</span>';
       composer.append(input, button);
       composer.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const text = input.value.trim();
+        const submittedDraft = input.value;
+        const text = submittedDraft.trim();
         const token = getSessionToken();
         if (!user || !token || !sessionRef.current || !text) return;
         try {
@@ -710,15 +712,31 @@ export default function LiveBroadcastPage() {
             },
             token,
           );
-          input.value = "";
+          const currentDraft = broadcastReplyDraftRef.current;
+          if (
+            currentDraft.userId !== userId ||
+            currentDraft.value !== submittedDraft
+          ) return;
+          const activeInput = document
+            .querySelector<HTMLFormElement>(
+              ".live-studio-preview .live-broadcast-chat-composer",
+            )
+            ?.querySelector<HTMLInputElement>("input");
+          if (activeInput && activeInput.value !== submittedDraft) return;
+          if (activeInput) activeInput.value = "";
+          broadcastReplyDraftRef.current = { userId, value: "" };
         } catch {
-          setMessage("채팅을 보내지 못했습니다. 잠시 후 다시 시도해주세요.");
+          setStudioMessage("채팅을 보내지 못했습니다. 잠시 후 다시 시도해주세요.", "Could not send the message. Please try again.");
         }
       });
       preview.appendChild(composer);
     }
-    return () => composer?.remove();
-  }, [live, user?.id]);
+    return () => {
+      const input = composer?.querySelector<HTMLInputElement>("input");
+      if (input) broadcastReplyDraftRef.current = { userId, value: input.value };
+      composer?.remove();
+    };
+  }, [isKorean, live, setStudioMessage, user?.id]);
   useEffect(() => {
     if (!live || !user || !streamRef.current) return;
     const token = getSessionToken();
@@ -857,7 +875,7 @@ export default function LiveBroadcastPage() {
       );
       setChatInput("");
     } catch {
-      setMessage("채팅을 보내지 못했습니다. 잠시 후 다시 시도해주세요.");
+      setStudioMessage("채팅을 보내지 못했습니다. 잠시 후 다시 시도해주세요.", "Could not send the message. Please try again.");
     }
   };
   const updateFilter = (key: Exclude<keyof VideoEffects, 'mirror'>, value: number) =>
@@ -872,21 +890,21 @@ export default function LiveBroadcastPage() {
               href="/theater"
               className="mb-3 inline-flex items-center gap-2 text-xs font-black text-rose-200 hover:text-white"
             >
-              <ArrowLeft size={14} /> LIVE ROOM으로 돌아가기
+              <ArrowLeft size={14} /> {t("LIVE ROOM으로 돌아가기", "Back to live rooms")}
             </Link>
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-rose-300">
               <Radio size={15} /> Broadcaster studio
             </div>
             <h1 className="mt-1 text-2xl font-black text-white">
-              LIVE ROOM · 방송 설정
+              {t("LIVE ROOM · 방송 설정", "LIVE ROOM · Broadcast studio")}
             </h1>
             <p className="mt-1 text-xs text-slate-500">
-              {roomId} · {live ? "현재 송출 중" : "방송 전 카메라 미리보기"}
+              {roomId} · {live ? t("현재 송출 중", "Broadcasting now") : t("방송 전 카메라 미리보기", "Camera preview")}
             </p>
           </div>
           <span className={`live-indicator ${live ? "is-live" : ""}`}>
             <span />
-            {live ? "LIVE" : cameraReady ? "CAMERA READY" : "READY"}
+            {live ? "LIVE" : cameraReady ? t("카메라 준비", "CAMERA READY") : t("준비 중", "READY")}
           </span>
         </header>
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -903,9 +921,9 @@ export default function LiveBroadcastPage() {
                 <div className="absolute inset-0 grid place-items-center text-center">
                   <div>
                     <Camera size={38} className="mx-auto text-rose-300" />
-                    <p className="mt-3 text-sm font-black">카메라 미리보기</p>
+                    <p className="mt-3 text-sm font-black">{t("카메라 미리보기", "Camera preview")}</p>
                     <p className="mt-1 text-xs text-slate-500">
-                      방송 전에 얼굴과 화면을 확인할 수 있습니다.
+                      {t("방송 전에 얼굴과 화면을 확인할 수 있습니다.", "Check your camera and screen before going live.")}
                     </p>
                   </div>
                 </div>
@@ -924,7 +942,7 @@ export default function LiveBroadcastPage() {
                 className="live-studio-button"
               >
                 <Camera size={15} />
-                카메라 다시 연결
+                {t("카메라 다시 연결", "Reconnect camera")}
               </button>}
               <button
                 type="button"
@@ -932,7 +950,7 @@ export default function LiveBroadcastPage() {
                 className="live-studio-button"
               >
                 <Mic size={15} />
-                {micOn ? "마이크 켜짐" : "마이크 꺼짐"}
+                {micOn ? t("마이크 켜짐", "Microphone on") : t("마이크 꺼짐", "Microphone off")}
               </button>
               <button
                 type="button"
@@ -940,7 +958,7 @@ export default function LiveBroadcastPage() {
                 className="live-studio-button"
               >
                 <MonitorUp size={15} />
-                {screenSharing ? "화면 공유 중" : "화면 공유"}
+                {screenSharing ? t("화면 공유 중", "Sharing screen") : t("화면 공유", "Share screen")}
               </button>
               <button
                 type="button"
@@ -948,7 +966,7 @@ export default function LiveBroadcastPage() {
                 className="live-studio-button"
               >
                 <ImagePlus size={15} />
-                썸네일 업로드
+                {t("썸네일 업로드", "Upload thumbnail")}
               </button>
               <input
                 ref={thumbnailInputRef}
@@ -964,7 +982,7 @@ export default function LiveBroadcastPage() {
                   className="live-studio-stop"
                 >
                   <CircleStop size={15} />
-                  방송 종료
+                  {t("방송 종료", "End broadcast")}
                 </button>
               ) : (
                 <button
@@ -973,12 +991,12 @@ export default function LiveBroadcastPage() {
                   className="live-studio-start"
                 >
                   <Radio size={15} />
-                  방송 시작
+                  {t("방송 시작", "Start broadcast")}
                 </button>
               )}
             </div>
             <p className="border-t border-white/10 px-3 py-2 text-xs text-slate-400">
-              {message}
+              {message[isKorean ? "ko" : "en"]}
             </p>
           </section>
           <aside className="live-studio-settings">
@@ -994,7 +1012,7 @@ export default function LiveBroadcastPage() {
                 className={`live-studio-tab ${studioTab === "chat" ? "is-active" : ""}`}
               >
                 <MessageCircle size={14} />
-                채팅 <span>{chatMessages.length}</span>
+                {t("채팅", "Chat")} <span>{chatMessages.length}</span>
               </button>
               <button
                 type="button"
@@ -1004,14 +1022,14 @@ export default function LiveBroadcastPage() {
                 className={`live-studio-tab ${studioTab === "settings" ? "is-active" : ""}`}
               >
                 <Settings2 size={14} />
-                방송 설정
+                {t("방송 설정", "Settings")}
               </button>
             </div>
             {studioTab === "chat" ? (
               <div className="live-studio-chat">
                 <div className="flex items-center justify-between text-xs font-black">
-                  <span>시청자와 실시간 대화</span>
-                  <span className="text-slate-500">방송자 화면</span>
+                  <span>{t("시청자와 실시간 대화", "Live chat with viewers")}</span>
+                  <span className="text-slate-500">{t("방송자 화면", "Host view")}</span>
                 </div>
                 <div className="live-studio-chat-list">
                   {chatMessages.length ? (
@@ -1023,7 +1041,7 @@ export default function LiveBroadcastPage() {
                     ))
                   ) : (
                     <p className="py-12 text-center text-xs text-slate-600">
-                      시청자 메시지가 여기에 표시됩니다.
+                      {t("시청자 메시지가 여기에 표시됩니다.", "Viewer messages will appear here.")}
                     </p>
                   )}
                 </div>
@@ -1035,11 +1053,12 @@ export default function LiveBroadcastPage() {
                     value={chatInput}
                     onChange={(event) => setChatInput(event.target.value)}
                     className="live-room-input"
-                    placeholder="시청자에게 답장하기"
+                    placeholder={t("시청자에게 답장하기", "Reply to viewers")}
+                    aria-label={t("시청자에게 답장하기", "Reply to viewers")}
                   />
                   <button
                     type="submit"
-                    aria-label="방송자 메시지 보내기"
+                    aria-label={t("방송자 메시지 보내기", "Send broadcaster message")}
                     className="live-room-send"
                   >
                     <Send size={14} />
@@ -1051,7 +1070,7 @@ export default function LiveBroadcastPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm font-black">
                     <Settings2 size={16} className="text-rose-300" />
-                    고급 방송 설정
+                    {t("고급 방송 설정", "Advanced broadcast settings")}
                   </div>
                   <button
                     type="button"
@@ -1062,7 +1081,7 @@ export default function LiveBroadcastPage() {
                   </button>
                 </div>
                 <label className="mt-4 block text-xs font-bold text-slate-400">
-                  방송 품질
+                  {t("방송 품질", "Stream quality")}
                   <select
                     value={quality}
                     onChange={(event) => setQuality(event.target.value)}
@@ -1075,11 +1094,11 @@ export default function LiveBroadcastPage() {
                 </label>
                 <div className="mt-5 space-y-4">
                   <div className="flex items-center gap-2 text-xs font-black text-amber-200">
-                    조도·색상
+                    {t("조도·색상", "Lighting & color")}
                   </div>
                   {VIDEO_EFFECT_CONTROLS.map(({ key, label, min, max }) => (
                     <label key={key} className="block text-xs text-slate-400">
-                      {label}
+                      {t(label, ({ "밝기": "Brightness", "대비": "Contrast", "채도": "Saturation", "색온도": "Color temperature" } as Record<string, string>)[label] || label)}
                       <input
                         type="range"
                         min={min}
@@ -1095,7 +1114,7 @@ export default function LiveBroadcastPage() {
                 </div>
                 <div className="mt-5 space-y-4">
                   <label className="block text-xs text-slate-400">
-                    좌우 반전 · 시청자에게도 적용
+                    {t("좌우 반전 · 시청자에게도 적용", "Mirror video for viewers")}
                     <input
                       type="checkbox"
                       checked={filters.mirror}
@@ -1106,11 +1125,11 @@ export default function LiveBroadcastPage() {
                 </div>
                 <div className="mt-5 grid grid-cols-2 gap-2 text-[11px] text-slate-500">
                   <div className="border border-white/10 p-3">
-                    모든 효과는 실제 송출 영상에 적용됩니다.
+                    {t("모든 효과는 실제 송출 영상에 적용됩니다.", "All effects are applied to the live video.")}
                   </div>
                   <div className="border border-white/10 p-3">
                     <Radio size={14} className="mb-1 text-rose-300" />
-                    {quality} 요청 · 최대 30fps · 기기 성능에 따라 달라집니다.
+                    {t(`${quality} 요청 · 최대 30fps · 기기 성능에 따라 달라집니다.`, `${quality} requested · up to 30 fps · depends on your device.`)}
                   </div>
                 </div>
               </div>
@@ -1118,7 +1137,7 @@ export default function LiveBroadcastPage() {
           </aside>
           <section className="xl:col-span-2 rounded-2xl border border-rose-300/15 bg-white/[.03] p-4">
             <label className="block text-xs font-bold text-slate-300">
-              방 제목
+              {t("방 제목", "Room title")}
               <input
                 value={roomTitle}
                 onChange={(event) =>
@@ -1127,10 +1146,10 @@ export default function LiveBroadcastPage() {
                 className="live-studio-select mt-2"
               />
               <small className="mt-1 block text-[10px] text-slate-500">
-                최대 10자 · 방송 중 저장하면 모든 시청자에게 반영됩니다.
+                {t("최대 10자 · 방송 중 저장하면 모든 시청자에게 반영됩니다.", "Up to 10 characters · changes appear to all viewers while live.")}
               </small>
             </label>
-            {live && <button type="button" onClick={() => void saveTitle()} className="live-studio-button">제목 저장</button>}
+            {live && <button type="button" onClick={() => void saveTitle()} className="live-studio-button">{t("제목 저장", "Save title")}</button>}
           </section>
         </div>
       </div>

@@ -16,6 +16,8 @@ export default function MobileDrawer({ id, open, onOpenChange }: { id: string; o
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const user = useGlobalStore((state) => state.user);
   const setUser = useGlobalStore((state) => state.setUser);
+  const language = useGlobalStore((state) => state.language);
+  const isKorean = language === 'ko';
   const close = () => onOpenChange(false);
 
   useEffect(() => { onOpenChange(false); }, [pathname, onOpenChange]);
@@ -46,10 +48,10 @@ export default function MobileDrawer({ id, open, onOpenChange }: { id: string; o
     };
   }, [open]);
 
-  return <dialog id={id} ref={dialogRef} hidden={!open} className="mobile-drawer" aria-label="GYOPO 전체 메뉴" onCancel={close} onClose={close} onClick={(event) => {
+  return <dialog id={id} ref={dialogRef} hidden={!open} className="mobile-drawer" aria-label={isKorean ? 'GYOPO 전체 메뉴' : 'GYOPO menu'} onCancel={close} onClose={close} onClick={(event) => {
     if (event.target === event.currentTarget) close();
   }}>
-    <button type="button" tabIndex={-1} className="drawer-backdrop" aria-label="메뉴 닫기" onClick={close} />
+     <button type="button" tabIndex={-1} className="drawer-backdrop" aria-label={isKorean ? '메뉴 닫기' : 'Close menu'} onClick={close} />
     <div className="mobile-drawer-panel" onTouchStart={(event) => {
       touchStart.current = null;
       if (event.touches.length !== 1 || (event.target instanceof Element && event.target.closest('input, select, textarea'))) return;
@@ -63,18 +65,18 @@ export default function MobileDrawer({ id, open, onOpenChange }: { id: string; o
       const dy = touch.clientY - start.y;
       if (dx < -64 && Math.abs(dy) < Math.abs(dx) * 0.65) close();
     }} onTouchCancel={() => { touchStart.current = null; }}>
-      <div className="mobile-drawer-header"><Link href="/" onClick={close}>GYOPO</Link><button type="button" data-drawer-close aria-label="메뉴 닫기" onClick={close}><X size={22} aria-hidden="true" /></button></div>
-      <section className="mobile-drawer-account" aria-label="내 계정">
+       <div className="mobile-drawer-header"><Link href="/" onClick={close}>GYOPO</Link><button type="button" data-drawer-close aria-label={isKorean ? '메뉴 닫기' : 'Close menu'} onClick={close}><X size={22} aria-hidden="true" /></button></div>
+       <section className="mobile-drawer-account" aria-label={isKorean ? '내 계정' : 'My account'}>
         {user ? <>
-          <div className="mobile-drawer-profile"><img src={user.image} alt="" width={36} height={36} /><span>{user.name || 'GYOPO 회원'}</span></div>
-          <Link href="/users" onClick={close}><UserRound size={18} aria-hidden="true" />MY / 회원</Link>
-          <Link href="/wallet" onClick={close}><WalletCards size={18} aria-hidden="true" />서비스 잔액</Link>
-          <button type="button" onClick={() => { close(); window.dispatchEvent(new Event('gyopo-profile-edit')); }}><UserRound size={18} aria-hidden="true" />프로필 편집</button>
+           <div className="mobile-drawer-profile"><img src={user.image} alt="" width={36} height={36} /><span>{user.name || (isKorean ? 'GYOPO 회원' : 'GYOPO member')}</span></div>
+           <Link href="/users" onClick={close}><UserRound size={18} aria-hidden="true" />{isKorean ? '내 프로필' : 'My profile'}</Link>
+           <Link href="/wallet" onClick={close}><WalletCards size={18} aria-hidden="true" />{isKorean ? '서비스 잔액' : 'Account balance'}</Link>
+           <button type="button" onClick={() => { close(); window.dispatchEvent(new Event('gyopo-profile-edit')); }}><UserRound size={18} aria-hidden="true" />{isKorean ? '프로필 편집' : 'Edit profile'}</button>
           {isMasterUser(user) && <Link href="/master" onClick={close}>MASTER</Link>}
-          <button type="button" onClick={() => { signOut(); setUser(null); close(); }}><LogOut size={18} aria-hidden="true" />로그아웃</button>
-        </> : <Link href="/login" onClick={close}><LogIn size={18} aria-hidden="true" />로그인</Link>}
-        <button type="button" onClick={() => { close(); window.dispatchEvent(new Event('gyopo-friends-open')); }}><MessageCircle size={18} aria-hidden="true" />친구 채팅·통화</button>
-        {!isCallRoute && <button type="button" onClick={() => { close(); window.dispatchEvent(new Event('gyopo-open-global-chat')); }}><MessageCircle size={18} aria-hidden="true" />실시간 라운지</button>}
+           <button type="button" onClick={() => { signOut(); setUser(null); close(); }}><LogOut size={18} aria-hidden="true" />{isKorean ? '로그아웃' : 'Log out'}</button>
+         </> : <Link href="/login" onClick={close}><LogIn size={18} aria-hidden="true" />{isKorean ? '로그인' : 'Log in'}</Link>}
+         <button type="button" onClick={() => { close(); window.dispatchEvent(new Event('gyopo-friends-open')); }}><MessageCircle size={18} aria-hidden="true" />{isKorean ? '친구 채팅·통화' : 'Friend chat & calls'}</button>
+         {!isCallRoute && <button type="button" onClick={() => { close(); window.dispatchEvent(new Event('gyopo-open-global-chat')); }}><MessageCircle size={18} aria-hidden="true" />{isKorean ? '실시간 라운지' : 'Live Lounge'}</button>}
         <TranslateMenu />
       </section>
       <GlobalSidebar onNavigate={close} />

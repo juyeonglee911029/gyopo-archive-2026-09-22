@@ -8,6 +8,103 @@
   min-width: 0;
 }
 
+.gyopo-global-footer {
+  border-top: 1px solid rgba(148, 163, 184, 0.14) !important;
+  background: linear-gradient(180deg, rgba(10, 18, 31, 0.96), #060c16) !important;
+  padding: 38px 24px calc(38px + env(safe-area-inset-bottom)) !important;
+}
+
+.gyopo-footer-inner {
+  max-width: 1600px;
+}
+
+.gyopo-footer-top {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.4fr);
+  gap: 36px;
+}
+
+.gyopo-footer-brand > p {
+  max-width: 24rem;
+  margin-top: 14px;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.gyopo-footer-logo {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  color: #f8fafc;
+  font-size: 21px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.gyopo-footer-logo span {
+  color: #67e8f9;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+}
+
+.gyopo-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.gyopo-footer-action {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0 13px;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 800;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.gyopo-footer-action:hover,
+.gyopo-footer-action.is-primary {
+  border-color: rgba(103, 232, 249, 0.5);
+  background: rgba(103, 232, 249, 0.1);
+  color: #cffafe;
+}
+
+.gyopo-footer-links {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-content: start;
+  gap: 12px 16px;
+  padding-top: 3px;
+}
+
+.gyopo-footer-link {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  transition: color 140ms ease;
+}
+
+.gyopo-footer-link:hover {
+  color: #a5f3fc;
+}
+
+.gyopo-footer-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 30px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  padding-top: 14px;
+  color: #64748b;
+  font-size: 10px;
+}
+
 .global-public-docks {
   pointer-events: none;
 }
@@ -458,6 +555,41 @@ body:has(.users-page) .site-background-video {
     opacity: 1;
     pointer-events: auto;
   }
+
+  .global-mobile-lounge[data-open="true"] {
+    inset: 0 !important;
+    z-index: 300 !important;
+    width: 100vw;
+    height: 100dvh;
+    pointer-events: none;
+  }
+
+  .global-mobile-lounge[data-open="true"] .global-mobile-lounge-panel {
+    position: fixed !important;
+    inset: 0 !important;
+    display: flex;
+    width: 100vw;
+    height: 100dvh;
+    max-height: none !important;
+    flex-direction: column;
+    margin: 0 !important;
+    border: 0 !important;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    background: #07111f !important;
+    backdrop-filter: none !important;
+  }
+
+  .global-mobile-lounge-messages {
+    min-height: 0;
+    max-height: none !important;
+    flex: 1 1 auto;
+    overscroll-behavior: contain;
+  }
+
+  .global-mobile-lounge-composer {
+    flex: 0 0 auto;
+  }
 }
 
 @media (max-width: 768px) {
@@ -585,15 +717,22 @@ body:has(.users-page) .site-background-video {
 }
 
 .gyopo-friend-dock.friend-dock-call-active {
-  width: min(640px, calc(100vw - 32px)) !important;
+  width: min(960px, calc(100vw - 32px)) !important;
   max-height: calc(100dvh - 32px) !important;
+  overflow-y: auto !important;
 }
 
 .friend-dock-call-active .friend-call-video {
-  height: auto !important;
-  min-height: 0 !important;
-  aspect-ratio: 16 / 9 !important;
+  height: min(58dvh, 560px) !important;
+  min-height: min(300px, 46dvh) !important;
+  max-height: 560px !important;
+  flex: 0 0 auto;
+  aspect-ratio: auto !important;
   border-radius: 0 !important;
+}
+
+.friend-dock-call-active .friend-call-video iframe {
+  min-height: 0;
 }
 
 .gyopo-compact-call {
@@ -617,7 +756,7 @@ body:has(.users-page) .site-background-video {
 }
 
 .compact-call-stage.has-shared-screen {
-  grid-template-rows: minmax(0, 1fr) minmax(72px, 0.36fr);
+  grid-template-rows: minmax(0, 2fr) minmax(96px, 1fr);
 }
 
 .compact-call-shared-screen,
@@ -837,7 +976,26 @@ body:has(.users-page) .site-background-video {
     left: 0 !important;
     width: 100vw !important;
     max-height: 100dvh !important;
+    overflow-y: auto !important;
     border-radius: 0 !important;
+  }
+
+  .friend-dock-call-active .friend-call-video {
+    height: min(54dvh, 520px) !important;
+    min-height: min(280px, 44dvh) !important;
+  }
+
+  .gyopo-footer-top {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .gyopo-footer-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gyopo-global-footer {
+    padding: 30px 16px calc(88px + env(safe-area-inset-bottom)) !important;
   }
 
 }

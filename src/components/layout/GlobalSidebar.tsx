@@ -11,7 +11,7 @@ import { useGlobalStore } from '@/store/useGlobalStore';
 import { beginRoute } from '@/lib/routeExperience';
 
 const navigationGroups = [
-  { title: 'PRIMARY', links: [
+  { title: 'PRIMARY', korean: '주요 메뉴', links: [
     { id: 'home', href: '/', label: '홈', english: 'Home', icon: Home },
     { id: 'community', href: '/community', label: '커뮤니티', english: 'Community', icon: MessageCircle },
     { id: 'jobs', href: '/jobs', label: '구인구직', english: 'Jobs', icon: BriefcaseBusiness },
@@ -20,7 +20,7 @@ const navigationGroups = [
     { id: 'news', href: '/news', label: '뉴스', english: 'News', icon: Newspaper },
     { id: 'events', href: '/regions', label: '행사', english: 'Events', icon: CalendarDays },
   ] },
-  { title: 'DISCOVER', links: [
+  { title: 'DISCOVER', korean: '둘러보기', links: [
     { id: 'friends', href: '/users', label: '친구 매칭', english: 'Friend matching', icon: UserRoundCheck },
     { id: 'music', href: '/music', label: '음악', english: 'Music', icon: Music2 },
     { id: 'watch', href: '/watch', label: '영상', english: 'Watch', icon: Film },
@@ -126,8 +126,9 @@ export default function GlobalSidebar({ onNavigate }: { onNavigate?: () => void 
     <GlobalRegionSelectors onNavigate={onNavigate} />
     {navigationGroups.map((group) => {
       const collapsed = Boolean(collapsedGroups[group.title]);
-      return <nav key={group.title} className={`global-nav-group${collapsed ? ' is-collapsed' : ''}`} aria-label={group.title}>
-      <h2 className="global-nav-heading"><button type="button" className="global-nav-heading-toggle" aria-expanded={!collapsed} onClick={() => setCollapsedGroups((current) => ({ ...current, [group.title]: !current[group.title] }))}><span>{group.title}</span><ChevronDown size={14} aria-hidden="true" /></button></h2>
+      const groupLabel = language === 'ko' ? group.korean : group.title;
+      return <nav key={group.title} className={`global-nav-group${collapsed ? ' is-collapsed' : ''}`} aria-label={groupLabel}>
+      <h2 className="global-nav-heading"><button type="button" className="global-nav-heading-toggle" aria-expanded={!collapsed} onClick={() => setCollapsedGroups((current) => ({ ...current, [group.title]: !current[group.title] }))}><span>{groupLabel}</span><ChevronDown size={14} aria-hidden="true" /></button></h2>
        {!collapsed && group.links.filter(({ id }) => {
          if (renderedNavigationIds.has(id)) return false;
          renderedNavigationIds.add(id);
@@ -137,21 +138,21 @@ export default function GlobalSidebar({ onNavigate }: { onNavigate?: () => void 
         const href = getNavigationHref(publicHref, id, pathname, selectedCountry);
         const needsCountry = !country && publicHref === '/regions';
         const active = !needsCountry && isNavigationActive(pathname, href);
-         return <Link key={id} href={href} onClick={onNavigate} className={`global-nav-link${active ? ' is-active' : ''}${id === 'theater' ? ' global-live-room-link' : ''}`} aria-current={active ? 'page' : undefined} title={needsCountry ? (language === 'ko' ? `${label}: 국가 선택` : `${english}: choose a country`) : undefined}>
+          return <Link key={id} href={href} onClick={onNavigate} className={`global-nav-link${active ? ' is-active' : ''}${id === 'theater' ? ' global-live-room-link' : ''}`} aria-current={active ? 'page' : undefined} title={needsCountry ? (language === 'ko' ? `${label}: 국가 선택` : `${english}: choose a country`) : undefined}>
            <Icon size={18} aria-hidden="true" /><span>{language === 'ko' ? label : english}</span>{id === 'theater' && <i className="global-live-room-dot" aria-hidden="true" />}
          </Link>;
        })}
     </nav>;
     })}
-    <button type="button" className="global-friends-link" style={{ borderRadius: 0 }} onClick={(event) => {
-      const rect = event.currentTarget.getBoundingClientRect();
-      onNavigate?.();
-      if (!user) {
-        if (beginRoute('/users')) router.push('/users');
-        return;
-      }
-      const anchor = window.matchMedia('(min-width: 769px)').matches ? { left: rect.left, top: rect.top, bottom: rect.bottom } : undefined;
-      window.dispatchEvent(new CustomEvent('gyopo-friends-open', { detail: { anchor } }));
-    }}><UserRoundCheck size={18} aria-hidden="true" /><span>{language === 'ko' ? '친구·통화' : 'Friends & calls'}</span></button>
+      <button type="button" className="global-friends-link" style={{ borderRadius: 0 }} onClick={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        onNavigate?.();
+        if (!user) {
+          if (beginRoute('/users')) router.push('/users');
+          return;
+        }
+        const anchor = window.matchMedia('(min-width: 769px)').matches ? { left: rect.left, top: rect.top, bottom: rect.bottom } : undefined;
+        window.dispatchEvent(new CustomEvent('gyopo-friends-open', { detail: { anchor } }));
+      }}><UserRoundCheck size={18} aria-hidden="true" /><span>{language === 'ko' ? '친구·통화' : 'Friends & calls'}</span></button>
   </div>;
 }

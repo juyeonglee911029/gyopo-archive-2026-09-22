@@ -28,15 +28,16 @@ type FriendAttachment = {
   size: number;
 };
 
-function formatFriendMessageTime(value: string) {
+function formatFriendMessageTime(value: string, language: 'ko' | 'en') {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString(language === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
 export default function FriendDock() {
   const user = useGlobalStore((state) => state.user);
   const language = useGlobalStore((state) => state.language);
   const isKorean = language === 'ko';
+  const t = useCallback((korean: string, english: string) => isKorean ? korean : english, [isKorean]);
   const [open, setOpen] = useState(false);
   const [friends, setFriends] = useState<FriendMember[]>([]);
   const [friendsLoading, setFriendsLoading] = useState(false);
@@ -50,7 +51,7 @@ export default function FriendDock() {
   const [error, setError] = useState('');
   const [messageError, setMessageError] = useState('');
   const [messageReadError, setMessageReadError] = useState('');
-  const [messageNotice, setMessageNotice] = useState('');
+  const [messageNotice, setMessageNotice] = useState<{ user: string } | null>(null);
   const [sending, setSending] = useState(false);
   const sendBusyRef = useRef(false);
   const messageContextRef = useRef('');
@@ -218,7 +219,7 @@ export default function FriendDock() {
       try {
         const token = await getFreshSessionToken();
         if (!token) {
-          if (active) setMessageError('다시 로그인해주세요.');
+           if (active) setMessageError(t('다시 로그인해주세요.', 'Please log in again.'));
           return;
         }
         const [connections, onlineUsers] = await Promise.all([
@@ -236,7 +237,7 @@ export default function FriendDock() {
         if (onlineUsers !== null) setOnlineFriendIds(new Set(onlineUsers.map((online) => online.id)));
         setSelectedId((current) => rows.some((friend) => friend.id === current) ? current : rows[0]?.id || '');
       } catch (loadError) {
-        if (active) setMessageError(loadError instanceof Error ? loadError.message : '친구 목록을 불러오지 못했습니다.');
+        if (active) setMessageError(loadError instanceof Error ? loadError.message : t('친구 목록을 불러오지 못했습니다.', 'Could not load your friends.'));
       } finally {
         loading = false;
         if (active) setFriendsLoading(false);
@@ -248,7 +249,7 @@ export default function FriendDock() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [open, user?.id]);
+  }, [open, t, user?.id]);
 
   useEffect(() => {
     if (!user || !pendingCall) return;
@@ -257,7 +258,7 @@ export default function FriendDock() {
       if (Date.now() >= new Date(pendingCall.expiresAt).getTime()) {
         if (active) {
           setPendingCall(null);
-          setError('통화 요청이 1분 동안 응답이 없어 자동 종료되었습니다.');
+           setError(t('통화 요청이 1분 동안 응답이 없어 자동 종료되었습니다.', 'The call request expired after one minute without a response.'));
         }
         return;
       }
@@ -269,10 +270,10 @@ export default function FriendDock() {
         setSelectedId(pendingCall.friendId);
         setVideoCall({ id: pendingCall.id, friendId: pendingCall.friendId });
         setOpen(true);
-        setError('통화가 수락되었습니다. 연결 중입니다.');
+         setError(t('통화가 수락되었습니다. 연결 중입니다.', 'Call accepted. Connecting...'));
       } else if (request.status === 'declined' || request.status === 'expired') {
         setPendingCall(null);
-        setError('친구가 통화를 받지 않아 종료되었습니다.');
+         setError(t('친구가 통화를 받지 않아 종료되었습니다.', 'Your friend did not answer the call.'));
       }
     };
     void check();
@@ -281,7 +282,7 @@ export default function FriendDock() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [pendingCall?.id, user?.id]);
+  }, [pendingCall?.id, t, user?.id]);
 
   useEffect(() => {
     if (!user) {
@@ -321,7 +322,7 @@ export default function FriendDock() {
     event.target.value = '';
     if (!file) return;
     if (file.size > 700 * 1024) {
-      setError('첨부파일은 700KB 이하만 보낼 수 있습니다.');
+      setError(t('첨부파일은 700KB 이하만 보낼 수 있습니다.', 'Attachments must be 700 KB or smaller.'));
       return;
     }
     const reader = new FileReader();
@@ -329,7 +330,7 @@ export default function FriendDock() {
       setAttachment({ data: String(reader.result || ''), name: file.name, type: file.type || 'application/octet-stream', size: file.size });
       setError('');
     };
-    reader.onerror = () => setError('파일을 읽지 못했습니다. 다시 선택해주세요.');
+    reader.onerror = () => setError(t('파일을 읽지 못했습니다. 다시 선택해주세요.', 'Could not read the file. Please choose it again.'));
     reader.readAsDataURL(file);
   };
 
@@ -364,7 +365,7 @@ export default function FriendDock() {
     messageContextRef.current = `${user?.id || ''}:${selected?.friendshipId || ''}`;
     latestMessageIdRef.current = '';
     setMessages([]);
-    setMessageNotice('');
+    setMessageNotice(null);
   }, [selected?.friendshipId, user?.id]);
 
   useEffect(() => {
@@ -386,15 +387,15 @@ export default function FriendDock() {
             if (previousLatestId && latest.authorId !== user.id) {
               setSelectedId(selected.id);
               setOpen(true);
-              setMessageNotice(`${latest.user}: 새 메시지`);
-              window.setTimeout(() => setMessageNotice(''), 4_000);
+               setMessageNotice({ user: latest.user });
+               window.setTimeout(() => setMessageNotice(null), 4_000);
             }
           }
           setMessages(sorted);
           setMessageReadError('');
         }
       } catch (error) {
-        if (active) setMessageReadError(error instanceof Error ? error.message : '메시지를 불러오지 못했습니다.');
+        if (active) setMessageReadError(error instanceof Error ? error.message : t('메시지를 불러오지 못했습니다.', 'Could not load messages.'));
       } finally {
         loading = false;
       }
@@ -413,7 +414,7 @@ export default function FriendDock() {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', updateVisibility);
     };
-  }, [open, selected?.friendshipId, user?.id]);
+  }, [open, selected?.friendshipId, t, user?.id]);
 
   const sendMessage = async (event: FormEvent) => {
     event.preventDefault();
@@ -436,7 +437,7 @@ export default function FriendDock() {
     };
     try {
       const token = await getFreshSessionToken();
-      if (!token) throw new Error('다시 로그인해주세요.');
+      if (!token) throw new Error(t('다시 로그인해주세요.', 'Please log in again.'));
       const id = crypto.randomUUID();
       await createDocument('friendMessages', id, message, token);
       if (messageContextRef.current !== context) return;
@@ -445,7 +446,7 @@ export default function FriendDock() {
       setAttachment((current) => current === sentAttachment ? null : current);
       setMessageError('');
     } catch (error) {
-      if (messageContextRef.current === context) setMessageError(error instanceof Error ? error.message : '메시지를 보내지 못했습니다. 다시 시도해주세요.');
+      if (messageContextRef.current === context) setMessageError(error instanceof Error ? error.message : t('메시지를 보내지 못했습니다. 다시 시도해주세요.', 'Could not send the message. Please try again.'));
     } finally {
       sendBusyRef.current = false;
       setSending(false);
@@ -457,18 +458,18 @@ export default function FriendDock() {
     if (pendingCall || videoCall || callBusyRef.current) return;
     callBusyRef.current = true;
     const operation = ++callOperationRef.current;
-    setError('친구의 통화 수락을 기다리는 중입니다. (최대 1분)');
+    setError(t('친구의 통화 수락을 기다리는 중입니다. (최대 1분)', 'Waiting for your friend to accept (up to 1 minute).'));
     try {
        const token = await getFreshSessionToken();
-       if (!token) throw new Error('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
+       if (!token) throw new Error(t('로그인 세션이 만료되었습니다. 다시 로그인해주세요.', 'Your session expired. Please log in again.'));
        const requestId = await createFriendCallRequest(friendId, user, token);
       if (operation !== callOperationRef.current) return;
       setPendingCall({ id: requestId, friendId, expiresAt: new Date(Date.now() + 60_000).toISOString() });
-      setError('통화 요청을 보냈습니다. 친구가 수락하면 바로 연결됩니다.');
+       setError(t('통화 요청을 보냈습니다. 친구가 수락하면 바로 연결됩니다.', 'Call request sent. You will connect when your friend accepts.'));
     } catch (error) {
       if (operation !== callOperationRef.current) return;
       setPendingCall(null);
-      setError(error instanceof Error ? error.message : '통화 요청을 보내지 못했습니다. 다시 시도해주세요.');
+       setError(error instanceof Error ? error.message : t('통화 요청을 보내지 못했습니다. 다시 시도해주세요.', 'Could not send the call request. Please try again.'));
     } finally {
       callBusyRef.current = false;
     }
@@ -488,11 +489,11 @@ export default function FriendDock() {
         setSelectedId(request.callerId);
         setOpen(true);
         setVideoCall({ id: request.id, friendId: request.callerId });
-        setError('통화를 연결하는 중입니다.');
+         setError(t('통화를 연결하는 중입니다.', 'Connecting the call...'));
       }
     } catch {
       if (operation !== callOperationRef.current) return;
-      setError('통화 요청을 처리하지 못했습니다. 다시 시도해주세요.');
+       setError(t('통화 요청을 처리하지 못했습니다. 다시 시도해주세요.', 'Could not process the call request. Please try again.'));
     } finally {
       callBusyRef.current = false;
     }
@@ -510,12 +511,12 @@ export default function FriendDock() {
                 <button type="button" onClick={() => videoCall ? closeVideoCall() : closeDock()} aria-label={isKorean ? '친구 패널 닫기' : 'Close friends panel'} className="border-0 p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><X size={17} /></button>
               </div>
             </header>
-           {messageNotice && <p role="status" className="mx-3 mb-2 bg-emerald-300/10 px-3 py-2 text-[11px] font-bold text-emerald-100">{messageNotice}</p>}
+            {messageNotice && <p role="status" className="mx-3 mb-2 bg-emerald-300/10 px-3 py-2 text-[11px] font-bold text-emerald-100">{messageNotice.user}: {t('새 메시지', 'New message')}</p>}
            {(messageError || messageReadError) && <p role="alert" className="px-3 py-2 text-xs font-bold text-rose-300">{messageError || messageReadError}</p>}
 
           {incomingCalls.length > 0 && <div className="mx-3 mt-3 border-0 bg-emerald-300/[.08] p-3"><div className="flex items-center gap-2 text-xs font-black text-emerald-100"><PhoneCall size={14} /> {isKorean ? '영상 통화 요청' : 'Incoming call'}</div>{incomingCalls.map((request) => <div key={request.id} className="mt-3 flex items-center gap-2"><img src={request.callerImage} alt="" className="h-8 w-8 rounded-lg object-cover" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-white">{request.callerName}</p><p className="text-[10px] text-emerald-100/65">{isKorean ? '친구가 영상 통화를 요청했습니다.' : 'Your friend requested a video call.'}</p></div><button type="button" onClick={() => void answerVideoCall(request, 'accepted')} aria-label={isKorean ? '통화 수락' : 'Accept call'} className="border-0 bg-emerald-300 p-2 text-slate-950"><Check size={14} /></button><button type="button" onClick={() => void answerVideoCall(request, 'declined')} aria-label={isKorean ? '통화 거절' : 'Decline call'} className="border-0 bg-white/10 p-2 text-slate-300"><X size={14} /></button></div>)}</div>}
 
-         {videoCall && <div className="friend-call-video relative mx-3 mb-3 overflow-hidden bg-black"><iframe ref={callFrameRef} key={videoCall.id} title="친구 영상 통화" src={`/webrtc?friend=${encodeURIComponent(videoCall.friendId)}&compact=1&callKind=friend&callId=${encodeURIComponent(videoCall.id)}&auto=1&videoOnly=0`} allow="camera; microphone; display-capture; fullscreen; autoplay" allowFullScreen className="h-full w-full border-0" /></div>}
+          {videoCall && <div className="friend-call-video relative mx-3 mb-3 overflow-hidden bg-black"><iframe ref={callFrameRef} key={videoCall.id} title={t('친구 영상 통화', 'Friend video call')} src={`/webrtc?friend=${encodeURIComponent(videoCall.friendId)}&compact=1&callKind=friend&callId=${encodeURIComponent(videoCall.id)}&auto=1&videoOnly=0`} allow="camera; microphone; display-capture; fullscreen; autoplay" allowFullScreen className="h-full w-full border-0" /></div>}
 
           {friendsLoading && friends.length === 0 ? (
             <div className="px-6 py-5 text-center text-xs font-bold text-slate-400">{isKorean ? '친구 목록을 불러오는 중입니다...' : 'Loading friends...'}</div>
@@ -553,29 +554,29 @@ export default function FriendDock() {
 
             {selected && <div className="p-3">
                {videoCall ? null : pendingCall?.friendId === selected.id ? (
-                 <div className="mb-3 flex min-h-12 items-center gap-2 bg-amber-300/[.08] px-3 py-2 text-xs font-bold text-amber-100"><PhoneCall size={15} className="shrink-0" /><span>친구의 통화 수락을 기다리는 중입니다. 1분 후 자동 종료됩니다.</span></div>
+                  <div className="mb-3 flex min-h-12 items-center gap-2 bg-amber-300/[.08] px-3 py-2 text-xs font-bold text-amber-100"><PhoneCall size={15} className="shrink-0" /><span>{t('친구의 통화 수락을 기다리는 중입니다. 1분 후 자동 종료됩니다.', 'Waiting for your friend to accept. The request ends after 1 minute.')}</span></div>
                ) : (
                    <button type="button" onClick={() => void requestVideoCall(selected.id)} className="mb-3 flex w-full items-center justify-center gap-2 border-0 bg-cyan-300 py-2.5 text-xs font-black text-slate-950"><Video size={15} /> {isKorean ? `${selected.name || '친구'} 통화 요청` : `Call ${selected.name || 'friend'}`}</button>
               )}
 
                 <div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[.16em] text-slate-500"><span className="flex items-center gap-1.5"><MessageCircle size={13} /> {isKorean ? '친구 채팅' : 'Friend chat'}</span></div>
-                  <div className="friend-chat-thread h-48 space-y-1 overflow-y-auto p-3">
-                    {messages.length === 0 ? <p className="py-10 text-center text-xs text-slate-600">첫 메시지를 보내보세요.</p> : messages.map((message) => (
+                   <div className="friend-chat-thread h-48 space-y-1 overflow-y-auto p-3">
+                     {messages.length === 0 ? <p className="py-10 text-center text-xs text-slate-600">{t('첫 메시지를 보내보세요.', 'Start the conversation.')}</p> : messages.map((message) => (
                       <div key={message.id} className={`friend-message-bubble px-2 py-1.5 text-xs ${message.authorId === user.id ? 'is-own text-emerald-100' : 'is-other text-amber-100'}`}>
                         <div className="friend-message-line">
                           <span className="friend-message-author" title={message.authorId}>{message.user || message.authorId}:</span>
                           {message.text && <span className="friend-message-text">{message.text}</span>}
-                          <time className="friend-message-time" dateTime={message.createdAt}>{formatFriendMessageTime(message.createdAt)}</time>
+                           <time className="friend-message-time" dateTime={message.createdAt}>{formatFriendMessageTime(message.createdAt, language)}</time>
                         </div>
-                        {message.attachmentData && (message.attachmentType?.startsWith('image/') ? <a href={message.attachmentData} target="_blank" rel="noreferrer" className="mt-1 block overflow-hidden"><img src={message.attachmentData} alt={message.attachmentName || '첨부 사진'} loading="lazy" className="max-h-28 w-full object-contain" /></a> : <a href={message.attachmentData} download={message.attachmentName} className="mt-1 flex items-center gap-1.5 px-2 py-1.5 text-[10px] underline"><FileText size={13} /> <span className="truncate">{message.attachmentName || '첨부파일'}</span></a>)}
+                        {message.attachmentData && (message.attachmentType?.startsWith('image/') ? <a href={message.attachmentData} target="_blank" rel="noreferrer" className="mt-1 block overflow-hidden"><img src={message.attachmentData} alt={message.attachmentName || t('첨부 사진', 'Attached photo')} loading="lazy" className="max-h-28 w-full object-contain" /></a> : <a href={message.attachmentData} download={message.attachmentName} className="mt-1 flex items-center gap-1.5 px-2 py-1.5 text-[10px] underline"><FileText size={13} /> <span className="truncate">{message.attachmentName || t('첨부파일', 'Attachment')}</span></a>)}
                       </div>
                     ))}
                     <div ref={messagesEndRef} />
                   </div>
                {error && <p role="alert" className="mt-2 text-xs font-bold text-rose-300">{error}</p>}
                 <form onSubmit={sendMessage} aria-busy={sending} className="mt-2 space-y-2">
-                 {attachment && <div className="flex items-center gap-2 bg-white/[.08] px-2 py-1.5 text-[10px] text-slate-200"><span className="grid h-7 w-7 shrink-0 place-items-center bg-black/20">{attachment.type.startsWith('image/') ? <img src={attachment.data} alt="첨부 미리보기" className="h-full w-full object-cover" /> : <FileText size={14} />}</span><span className="min-w-0 flex-1 truncate">{attachment.name}</span><button type="button" onClick={() => setAttachment(null)} aria-label="첨부파일 취소" className="p-1 text-slate-400 hover:text-white"><X size={13} /></button></div>}
-                 <div className="flex gap-2"><input value={input} onChange={(event) => setInput(event.target.value)} placeholder="친구에게 메시지..." className="min-w-0 flex-1 border-0 bg-white/[.08] px-3 py-2 text-xs text-white outline-none" /><input ref={fileInputRef} type="file" accept="image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.zip" onChange={handleAttachment} className="hidden" /><button type="button" onClick={() => fileInputRef.current?.click()} aria-label="사진 또는 파일 첨부" title="사진 또는 파일 첨부" className="border-0 bg-white/[.08] px-2.5 text-slate-300 hover:bg-white/[.14]"><Paperclip size={15} /></button><button aria-label="친구 메시지 보내기" className="border-0 bg-cyan-300 px-3 text-slate-950"><Send size={15} /></button></div>
+                  {attachment && <div className="flex items-center gap-2 bg-white/[.08] px-2 py-1.5 text-[10px] text-slate-200"><span className="grid h-7 w-7 shrink-0 place-items-center bg-black/20">{attachment.type.startsWith('image/') ? <img src={attachment.data} alt={t('첨부 미리보기', 'Attachment preview')} className="h-full w-full object-cover" /> : <FileText size={14} />}</span><span className="min-w-0 flex-1 truncate">{attachment.name}</span><button type="button" onClick={() => setAttachment(null)} aria-label={t('첨부파일 취소', 'Remove attachment')} className="p-1 text-slate-400 hover:text-white"><X size={13} /></button></div>}
+                  <div className="flex gap-2"><input value={input} onChange={(event) => setInput(event.target.value)} placeholder={t('친구에게 메시지...', 'Message your friend...')} className="min-w-0 flex-1 border-0 bg-white/[.08] px-3 py-2 text-xs text-white outline-none" /><input ref={fileInputRef} type="file" accept="image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.zip" onChange={handleAttachment} aria-label={t('친구 채팅 첨부파일', 'Attach a file to friend chat')} className="hidden" /><button type="button" onClick={() => fileInputRef.current?.click()} aria-label={t('사진 또는 파일 첨부', 'Attach photo or file')} title={t('사진 또는 파일 첨부', 'Attach photo or file')} className="border-0 bg-white/[.08] px-2.5 text-slate-300 hover:bg-white/[.14]"><Paperclip size={15} /></button><button aria-label={t('친구 메시지 보내기', 'Send friend message')} className="border-0 bg-cyan-300 px-3 text-slate-950"><Send size={15} /></button></div>
                </form>
             </div>}
           </>

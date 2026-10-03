@@ -18,10 +18,10 @@ export default function MobileBottomNav() {
     { href: '/users', label: '친구', english: 'Friends', icon: UserRound },
   ];
 
-  return <nav className="global-bottom-nav mobile-bottom-nav" aria-label="모바일 주요 메뉴">
+  return <nav className="global-bottom-nav mobile-bottom-nav" aria-label={language === 'ko' ? '모바일 주요 메뉴' : 'Mobile main menu'}>
     {links.map(({ href, label, english, icon: Icon }) => {
       const active = isNavigationActive(pathname, href);
-      return <Link key={label} href={href} className={`global-bottom-nav-link mobile-bottom-nav-link${active ? ' is-active mobile-bottom-nav-link-active' : ''}`} aria-current={active ? 'page' : undefined}>
+      return <Link key={label} href={href} aria-label={href === '/users' && language === 'en' ? 'Friend matching' : undefined} className={`global-bottom-nav-link mobile-bottom-nav-link${active ? ' is-active mobile-bottom-nav-link-active' : ''}`} aria-current={active ? 'page' : undefined}>
         <Icon size={20} aria-hidden="true" /><span>{language === 'ko' ? label : english}</span>
       </Link>;
     })}

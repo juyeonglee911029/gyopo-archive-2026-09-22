@@ -132,7 +132,7 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(dock, /friend-message-bubble/);
   assert.match(dock, /friend-chat-thread h-48/);
   assert.match(dock, /friend-message-author/);
-  assert.match(dock, /formatFriendMessageTime\(message\.createdAt\)/);
+  assert.match(dock, /formatFriendMessageTime\(message\.createdAt, language\)/);
   assert.match(sidebar, /<span>\{language === 'ko' \? '친구·통화' : 'Friends & calls'\}<\/span>/);
   assert.doesNotMatch(dock, /friend-dock-launch-control|id="friend-dock-launch"/);
   assert.doesNotMatch(dock, /friends\.length\}명|friends\.length\} friends/);
@@ -141,7 +141,7 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   const lounge = read('src/components/layout/GlobalChat.tsx');
   assert.match(lounge, /gyopo-open-global-chat/);
   assert.match(lounge, /if \(isCallRoute\) \{\s*setMobileOpen\(false\);\s*return;/);
-  assert.match(lounge, /aria-label=\{language === 'ko' \? '라운지 닫기' : 'Close lounge'\}/);
+  assert.match(lounge, /aria-label=\{isKorean \? '라운지 닫기' : 'Close lounge'\}/);
   assert.match(lounge, /onDesktopOpenChange\(false\)/);
   assert.match(lounge, /onDesktopOpenChange\(true\)/);
   assert.match(lounge, /else onDesktopOpenChange\(true\)/);
@@ -153,7 +153,7 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(read('src/components/layout/MobileDrawer.tsx'), /!isCallRoute && <button[^\n]*gyopo-open-global-chat/);
   assert.match(lounge, /global-chat-line/);
   assert.match(lounge, /global-chat-author/);
-  assert.match(lounge, /formatTime\(message\.createdAt\)/);
+  assert.match(lounge, /formatTime\(message\.createdAt, language\)/);
   assert.doesNotMatch(lounge, /memberCount|onlineCount|api\/online-count|global-lounge-launch-control|global-lounge-expand|desktopMaximized|gyopo-lounge-change/);
   const styles = read('src/app/experience-refinements.css');
   assert.match(styles, /\.global-app-shell\.has-lounge-open\s*>\s*\.global-page-body/);
@@ -231,4 +231,41 @@ test('mobile AI search keeps recent questions and its safety notice available', 
   assert.match(assistant, /AI 답변은 참고용 정보입니다/);
   assert.match(styles, /\.assistant-page \.assistant-mobile-history\s*\{\s*display: block !important;/);
   assert.doesNotMatch(styles, /\.assistant-page form\[aria-label="GYOPO AI 질문 보내기"\] \+ p\s*\{\s*display: none/);
+});
+
+test('responsive chat, live controls, and notices remain usable after state changes', () => {
+  const lounge = read('src/components/layout/GlobalChat.tsx');
+  assert.match(lounge, /mobileBreakpoint\.addEventListener\('change', closeOnDesktop\)/);
+
+  const discovery = read('src/components/friends/FriendDiscoveryDeck.tsx');
+  assert.match(discovery, /type DiscoveryNotice = 'passed' \| 'liked' \| ''/);
+  assert.match(discovery, /notice === 'passed' \? t\(/);
+
+  const dock = read('src/components/layout/FriendDock.tsx');
+  assert.match(dock, /setMessageNotice\(\{ user: latest\.user \}\)/);
+  assert.match(dock, /messageNotice\.user\}: \{t\('새 메시지', 'New message'\)\}/);
+
+  const broadcast = read('src/app/theater/broadcast/page.tsx');
+  assert.match(broadcast, /input\.value = broadcastReplyDraftRef\.current\.value/);
+  assert.match(broadcast, /broadcastReplyDraftRef\.current = \{ userId, value: input\.value \}/);
+  assert.match(broadcast, /const submittedDraft = input\.value;\s*const text = submittedDraft\.trim\(\)/);
+  assert.match(broadcast, /currentDraft\.userId !== userId \|\|\s*currentDraft\.value !== submittedDraft/);
+  assert.match(broadcast, /if \(activeInput && activeInput\.value !== submittedDraft\) return;/);
+
+  const users = read('src/app/users/page.tsx');
+  assert.match(users, /FRIEND_REQUEST_ERROR_EN/);
+  assert.match(users, /localizeFriendError\(error/);
+
+  const sharedRoom = read('src/app/theater/liveRoomShared.tsx');
+  const theater = read('src/app/theater/page.tsx');
+  for (const source of [sharedRoom, theater]) {
+    assert.match(source, /muted=\{muted\}/);
+    assert.match(source, /compact && hasRemoteMedia && !needsPlay/);
+    assert.match(source, /Tap to unmute/);
+  }
+
+  const call = read('src/app/webrtc/page.tsx');
+  assert.match(call, /const CALL_STATUS_EN/);
+  assert.match(call, /active \|\| isStarting \|\| isMatching\) \? displayStatus/);
+  assert.match(call, /'중계 경로 확인 중 · 연결 실패 시 네트워크\/TURN 설정을 확인해주세요': 'Checking relay route · Check your network\/TURN settings if the connection fails'/);
 });

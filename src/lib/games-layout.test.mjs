@@ -73,7 +73,7 @@ test('Tetris video-only calls explain that each camera requires an explicit star
 
   assert.match(cameraPanel, /각자 직접 시작/);
   assert.match(cameraPanel, /각자 카메라를 직접 시작해야 연결됩니다/);
-  assert.match(call, /videoOnly \? '카메라 시작' : '카메라·마이크 시작'/);
+  assert.match(call, /videoOnly \? t\('카메라 시작', 'Start camera'\) : t\('카메라·마이크 시작', 'Start camera & mic'\)/);
 });
 
 test('legacy Tetris camera URLs resolve to a validated game room', () => {

@@ -6,10 +6,10 @@ import test from 'node:test';
 import { createContext, SourceTextModule } from 'node:vm';
 
 const source = stripTypeScriptTypes(readFileSync(new URL('./src/lib/firebaseAdmin.ts', import.meta.url), 'utf8'));
-const module = new SourceTextModule(source, { context: createContext({ Response, Headers, TextEncoder, crypto, process }) });
-await module.link(() => { throw new Error('Unexpected import'); });
-await module.evaluate();
-const { parseBatchGet } = module.namespace;
+const sourceModule = new SourceTextModule(source, { context: createContext({ Response, Headers, TextEncoder, crypto, process }) });
+await sourceModule.link(() => { throw new Error('Unexpected import'); });
+await sourceModule.evaluate();
+const { parseBatchGet } = sourceModule.namespace;
 const names = ['projects/test/databases/(default)/documents/profiles/alice', 'projects/test/databases/(default)/documents/profiles/bob'];
 const found = { found: { name: names[0], fields: { age: { integerValue: '28' } } } };
 const missing = { missing: names[1] };
