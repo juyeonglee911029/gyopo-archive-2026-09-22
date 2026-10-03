@@ -135,7 +135,7 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(dock, /friend-chat-thread h-48/);
   assert.match(dock, /friend-message-author/);
   assert.match(dock, /formatFriendMessageTime\(message\.createdAt, language\)/);
-  assert.match(sidebar, /<span>\{language === 'ko' \? '친구 매칭·통화' : 'Matching & calls'\}<\/span>/);
+  assert.match(sidebar, /<span>\{language === 'ko' \? '친구 매칭' : 'Friend matching'\}<\/span>/);
   assert.doesNotMatch(dock, /friend-dock-launch-control|id="friend-dock-launch"/);
   assert.doesNotMatch(dock, /friends\.length\}명|friends\.length\} friends/);
   assert.doesNotMatch(dock, /<b className="block text-\[9px\] opacity-65">\{message\.user\}<\/b>/);
@@ -180,6 +180,9 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(styles, /\.global-chat-message-bubble\s*\{[^}]*border: 0 !important;[^}]*background: transparent !important;/);
   assert.match(styles, /\.global-sidebar \.global-friends-link:hover\s*\{[^}]*border-color: transparent !important;/);
   assert.match(styles, /\.gyopo-friend-dock\s*\{[^}]*border-radius: 0 !important;/);
+  assert.match(styles, /\.gyopo-friend-dock\.friend-dock-call-active\s*\{[^}]*inset: clamp\(12px, 2\.4vw, 32px\) !important;[^}]*display: flex !important;[^}]*overflow: hidden !important;/s);
+  assert.match(styles, /\.friend-dock-call-active \.friend-call-video\s*\{[^}]*min-height: 0 !important;[^}]*flex: 1 1 0;/s);
+  assert.match(styles, /@media \(max-width: 768px\)\s*\{[\s\S]*?\.gyopo-friend-dock\.friend-dock-call-active\s*\{[^}]*height: 100dvh !important;/);
   assert.doesNotMatch(styles, /margin-right:\s*58px/);
 });
 
@@ -213,6 +216,31 @@ test('friend calls auto-start after acceptance while screen sharing keeps its na
   assert.doesNotMatch(call, /<video ref=\{remoteVideoRef\}[^>]*autoPlay/);
   assert.doesNotMatch(call, /<video ref=\{sidebarVideoRef\}[^>]*autoPlay/);
   assert.match(dock, /allow="camera; microphone; display-capture; fullscreen; autoplay" allowFullScreen/);
+  assert.match(dock, /videoCall \? <div className="friend-call-video[\s\S]*? : <>/);
+});
+
+test('matching, lounge, footer, and navigation labels stay clear in both languages', () => {
+  const sidebar = read('src/components/layout/GlobalSidebar.tsx');
+  const mobileNav = read('src/components/layout/MobileBottomNav.tsx');
+  const mobileDrawer = read('src/components/layout/MobileDrawer.tsx');
+  const matching = read('src/components/friends/FriendDiscoveryDeck.tsx');
+  const users = read('src/app/users/page.tsx');
+  const lounge = read('src/components/layout/GlobalChat.tsx');
+  const footer = read('src/components/layout/footer.tsx');
+
+  assert.match(sidebar, /label: '친구 매칭', english: 'Friend matching'/);
+  assert.match(sidebar, /label: '라이브 룸', english: 'Live rooms'/);
+  assert.match(sidebar, /'친구 매칭' : 'Friend matching'/);
+  assert.match(mobileNav, /label: '친구 매칭', english: 'Friend matching'/);
+  assert.match(mobileDrawer, /'친구 매칭' : 'Friend matching'/);
+  assert.match(mobileDrawer, /'글로벌 라운지' : 'Global Lounge'/);
+  assert.match(matching, /'좋아요를 보내세요\. 서로 좋아요를 누르면 매칭되어 채팅할 수 있어요\.'[\s\S]*?'Tap Like\. If they like you too, match and chat\.'/);
+  assert.match(matching, /LIKE \/ 좋아요/);
+  assert.match(users, /t\('서로 좋아요를 보내면 매칭돼요\.', 'Like each other to match\.'\)/);
+  assert.match(lounge, /'글로벌 라운지' : 'Global Lounge'/);
+  assert.match(lounge, /'한국어와 English 모두 환영해요' : 'Korean and English are welcome'/);
+  assert.match(footer, /'서로 좋아요를 누르면 매칭돼요\.' : 'Like each other to match and chat\.'/);
+  assert.match(footer, /'방송을 보거나 직접 참여하세요\.' : 'Watch or join a live room\.'/);
 });
 
 test('public routes reserve space only while the lounge is expanded and the directory map opens its tab', () => {
