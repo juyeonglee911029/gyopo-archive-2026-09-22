@@ -129,6 +129,8 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(dock, /오프라인/);
   assert.match(dock, /friend-list max-h-40/);
   assert.match(dock, /friend-row-action/);
+  assert.match(dock, /void requestVideoCall\(friend\.id\)/);
+  assert.doesNotMatch(dock, /requestVideoCall\(selected\.id\)/);
   assert.match(dock, /friend-message-bubble/);
   assert.match(dock, /friend-chat-thread h-48/);
   assert.match(dock, /friend-message-author/);

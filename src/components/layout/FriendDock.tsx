@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Check, FileText, MessageCircle, Paperclip, PhoneCall, Send, UserPlus, UserRoundCheck, Video, X } from 'lucide-react';
+import { Check, FileText, MessageCircle, Paperclip, PhoneCall, Send, UserPlus, UserRoundCheck, X } from 'lucide-react';
 import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFreshSessionToken, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, listOnlineUsers, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
 
@@ -553,11 +553,9 @@ export default function FriendDock() {
               </div>
 
             {selected && <div className="p-3">
-               {videoCall ? null : pendingCall?.friendId === selected.id ? (
+                {!videoCall && pendingCall?.friendId === selected.id && (
                   <div className="mb-3 flex min-h-12 items-center gap-2 bg-amber-300/[.08] px-3 py-2 text-xs font-bold text-amber-100"><PhoneCall size={15} className="shrink-0" /><span>{t('친구의 통화 수락을 기다리는 중입니다. 1분 후 자동 종료됩니다.', 'Waiting for your friend to accept. The request ends after 1 minute.')}</span></div>
-               ) : (
-                   <button type="button" onClick={() => void requestVideoCall(selected.id)} className="mb-3 flex w-full items-center justify-center gap-2 border-0 bg-cyan-300 py-2.5 text-xs font-black text-slate-950"><Video size={15} /> {isKorean ? `${selected.name || '친구'} 통화 요청` : `Call ${selected.name || 'friend'}`}</button>
-              )}
+                )}
 
                 <div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[.16em] text-slate-500"><span className="flex items-center gap-1.5"><MessageCircle size={13} /> {isKorean ? '친구 채팅' : 'Friend chat'}</span></div>
                    <div className="friend-chat-thread h-48 space-y-1 overflow-y-auto p-3">
