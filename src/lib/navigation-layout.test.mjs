@@ -23,9 +23,10 @@ test('mobile navigation puts Search in the center and replaces Regions with Dire
   const directory = navigation.indexOf("href: '/directory', label: '업소록'");
   const search = navigation.indexOf("href: '/search', label: '검색'");
   const community = navigation.indexOf("label: '커뮤니티'");
-  const friends = navigation.indexOf("href: '/users', label: '친구'");
+  const friends = navigation.indexOf("href: '/users', label: '친구 매칭'");
 
   assert.ok(home < directory && directory < search && search < community && community < friends);
+  assert.match(navigation, /Friend matching/);
   assert.doesNotMatch(navigation, /href: '\/regions', label: '지역'/);
 });
 
@@ -41,6 +42,22 @@ test('friend matching is visible in the sidebar and opens the existing member fl
   assert.doesNotMatch(discovery, /demoMode|onEnterDemo|159개 검수용/);
   assert.match(members, /sendFriendRequest/);
   assert.match(members, /respondToFriendRequest/);
+});
+
+test('friend matching and live rooms explain the global flows in Korean and English', () => {
+  const users = read('src/app/users/page.tsx');
+  const discovery = read('src/components/friends/FriendDiscoveryDeck.tsx');
+  const liveRooms = read('src/app/theater/page.tsx');
+  const footer = read('src/components/layout/footer.tsx');
+  const styles = read('src/app/experience-refinements.css');
+
+  assert.match(users, /서로 좋아요를 보내면 매칭돼요\. \/ Like each other to match\./);
+  assert.match(discovery, /Match when you both like each other, then start a chat\./);
+  assert.match(liveRooms, /Watch a LIVE room or start a broadcast in an open room\./);
+  assert.match(footer, /gyopo-footer-features/);
+  assert.match(footer, /Friend matching/);
+  assert.match(footer, /Live rooms/);
+  assert.match(styles, /\.gyopo-footer-feature/);
 });
 
 test('desktop live lounge reaches the viewport bottom at a narrower width', () => {

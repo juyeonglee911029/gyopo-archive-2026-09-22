@@ -153,6 +153,6 @@ export default function GlobalSidebar({ onNavigate }: { onNavigate?: () => void 
         }
         const anchor = window.matchMedia('(min-width: 769px)').matches ? { left: rect.left, top: rect.top, bottom: rect.bottom } : undefined;
         window.dispatchEvent(new CustomEvent('gyopo-friends-open', { detail: { anchor } }));
-      }}><UserRoundCheck size={18} aria-hidden="true" /><span>{language === 'ko' ? '친구·통화' : 'Friends & calls'}</span></button>
+      }}><UserRoundCheck size={18} aria-hidden="true" /><span>{language === 'ko' ? '친구 매칭·통화' : 'Matching & calls'}</span></button>
   </div>;
 }
