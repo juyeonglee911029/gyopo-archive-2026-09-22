@@ -335,7 +335,7 @@ export default function FriendDock() {
   };
 
   const startDockDrag = (event: ReactPointerEvent<HTMLElement>) => {
-    if ((event.target as HTMLElement).closest('button, a')) return;
+    if (videoCall || (event.target as HTMLElement).closest('button, a')) return;
     const panel = document.getElementById('friend-dock');
     if (!panel) return;
     const rect = panel.getBoundingClientRect();
@@ -504,21 +504,20 @@ export default function FriendDock() {
   return (
     <>
           <aside id="friend-dock" style={{ ...(dockPosition ? { left: dockPosition.left, top: dockPosition.top, right: 'auto', bottom: 'auto' } : {}), maxHeight: 'calc(100dvh - 16px)' }} className={`gyopo-friend-dock fixed bottom-4 left-3 right-3 z-[70] overflow-x-hidden overflow-y-auto rounded-none border-0 bg-[#091120] text-white shadow-[0_25px_100px_rgba(0,0,0,.7)] transition ${dragging ? 'cursor-grabbing select-none transition-none' : 'cursor-default'} lg:left-4 lg:right-auto lg:w-[480px] ${videoCall ? 'friend-dock-call-active' : ''} ${videoClosing ? 'friend-dock-call-closing' : ''} ${open ? 'visible translate-y-0 opacity-100' : videoClosing ? 'visible translate-y-5 opacity-0' : 'invisible translate-y-5 opacity-0'}`}>
-            <header onPointerDown={startDockDrag} onPointerMove={moveDock} onPointerUp={stopDockDrag} onPointerCancel={stopDockDrag} className={`flex items-center justify-between gap-2 border-0 px-4 py-3 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}>
+            <header onPointerDown={startDockDrag} onPointerMove={moveDock} onPointerUp={stopDockDrag} onPointerCancel={stopDockDrag} className={`flex items-center justify-between gap-2 border-0 px-4 py-3 ${dragging ? 'cursor-grabbing' : videoCall ? 'cursor-default' : 'cursor-grab'}`}>
               <div className="flex min-w-0 items-center gap-2 text-sm font-black"><UserRoundCheck size={17} className="shrink-0 text-cyan-300" /> <span className="truncate">{isKorean ? '친구 채팅·통화' : 'Friends Chat & Call'}</span></div>
               <div className="flex shrink-0 items-center gap-1">
                 <Link href="/users" onPointerDown={(event) => event.stopPropagation()} className="inline-flex items-center gap-1.5 border-0 px-2 py-1.5 text-[10px] font-black text-cyan-200 hover:bg-white/10"><UserPlus size={14} />{isKorean ? '친구 찾기' : 'Find friends'}</Link>
                 <button type="button" onClick={() => videoCall ? closeVideoCall() : closeDock()} aria-label={isKorean ? '친구 패널 닫기' : 'Close friends panel'} className="border-0 p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><X size={17} /></button>
               </div>
             </header>
-            {messageNotice && <p role="status" className="mx-3 mb-2 bg-emerald-300/10 px-3 py-2 text-[11px] font-bold text-emerald-100">{messageNotice.user}: {t('새 메시지', 'New message')}</p>}
+           {videoCall ? <div className="friend-call-video relative overflow-hidden bg-black"><iframe ref={callFrameRef} key={videoCall.id} title={t('친구 영상 통화', 'Friend video call')} src={`/webrtc?friend=${encodeURIComponent(videoCall.friendId)}&compact=1&callKind=friend&callId=${encodeURIComponent(videoCall.id)}&auto=1&videoOnly=0`} allow="camera; microphone; display-capture; fullscreen; autoplay" allowFullScreen className="h-full w-full border-0" /></div> : <>
+           {messageNotice && <p role="status" className="mx-3 mb-2 bg-emerald-300/10 px-3 py-2 text-[11px] font-bold text-emerald-100">{messageNotice.user}: {t('새 메시지', 'New message')}</p>}
            {(messageError || messageReadError) && <p role="alert" className="px-3 py-2 text-xs font-bold text-rose-300">{messageError || messageReadError}</p>}
 
-          {incomingCalls.length > 0 && <div className="mx-3 mt-3 border-0 bg-emerald-300/[.08] p-3"><div className="flex items-center gap-2 text-xs font-black text-emerald-100"><PhoneCall size={14} /> {isKorean ? '영상 통화 요청' : 'Incoming call'}</div>{incomingCalls.map((request) => <div key={request.id} className="mt-3 flex items-center gap-2"><img src={request.callerImage} alt="" className="h-8 w-8 rounded-lg object-cover" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-white">{request.callerName}</p><p className="text-[10px] text-emerald-100/65">{isKorean ? '친구가 영상 통화를 요청했습니다.' : 'Your friend requested a video call.'}</p></div><button type="button" onClick={() => void answerVideoCall(request, 'accepted')} aria-label={isKorean ? '통화 수락' : 'Accept call'} className="border-0 bg-emerald-300 p-2 text-slate-950"><Check size={14} /></button><button type="button" onClick={() => void answerVideoCall(request, 'declined')} aria-label={isKorean ? '통화 거절' : 'Decline call'} className="border-0 bg-white/10 p-2 text-slate-300"><X size={14} /></button></div>)}</div>}
+           {incomingCalls.length > 0 && <div className="mx-3 mt-3 border-0 bg-emerald-300/[.08] p-3"><div className="flex items-center gap-2 text-xs font-black text-emerald-100"><PhoneCall size={14} /> {isKorean ? '영상 통화 요청' : 'Incoming call'}</div>{incomingCalls.map((request) => <div key={request.id} className="mt-3 flex items-center gap-2"><img src={request.callerImage} alt="" className="h-8 w-8 rounded-lg object-cover" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-white">{request.callerName}</p><p className="text-[10px] text-emerald-100/65">{isKorean ? '친구가 영상 통화를 요청했습니다.' : 'Your friend requested a video call.'}</p></div><button type="button" onClick={() => void answerVideoCall(request, 'accepted')} aria-label={isKorean ? '통화 수락' : 'Accept call'} className="border-0 bg-emerald-300 p-2 text-slate-950"><Check size={14} /></button><button type="button" onClick={() => void answerVideoCall(request, 'declined')} aria-label={isKorean ? '통화 거절' : 'Decline call'} className="border-0 bg-white/10 p-2 text-slate-300"><X size={14} /></button></div>)}</div>}
 
-          {videoCall && <div className="friend-call-video relative mx-3 mb-3 overflow-hidden bg-black"><iframe ref={callFrameRef} key={videoCall.id} title={t('친구 영상 통화', 'Friend video call')} src={`/webrtc?friend=${encodeURIComponent(videoCall.friendId)}&compact=1&callKind=friend&callId=${encodeURIComponent(videoCall.id)}&auto=1&videoOnly=0`} allow="camera; microphone; display-capture; fullscreen; autoplay" allowFullScreen className="h-full w-full border-0" /></div>}
-
-          {friendsLoading && friends.length === 0 ? (
+           {friendsLoading && friends.length === 0 ? (
             <div className="px-6 py-5 text-center text-xs font-bold text-slate-400">{isKorean ? '친구 목록을 불러오는 중입니다...' : 'Loading friends...'}</div>
           ) : friends.length === 0 ? (
               <div className="p-8 text-center"><UserRoundCheck size={28} className="mx-auto text-slate-600" /><p className="mt-3 text-sm font-bold text-slate-300">{isKorean ? '아직 매칭된 친구가 없습니다.' : 'No matches yet.'}</p><p className="mt-1 text-xs text-slate-500">{isKorean ? '받은 좋아요는 매칭 카드에 먼저 표시됩니다. 서로 좋아요를 보내면 대화할 수 있어요.' : 'Incoming likes appear first in matching. Like each other to start chatting.'}</p><Link href="/users" className="mt-4 inline-flex items-center gap-2 border border-cyan-200/25 bg-cyan-300/10 px-4 py-2.5 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/20"><UserPlus size={14} />{isKorean ? '매칭 카드 보기' : 'Open matching'}</Link></div>
@@ -578,8 +577,9 @@ export default function FriendDock() {
                </form>
             </div>}
           </>
-        )}
-      </aside>
+         )}
+           </>}
+       </aside>
     </>
   );
 }

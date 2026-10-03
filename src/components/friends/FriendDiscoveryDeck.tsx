@@ -102,7 +102,8 @@ export default function FriendDiscoveryDeck({ viewerId, canLike, candidates, inc
         <div>
           <p className="text-[10px] font-black uppercase tracking-[.24em] text-cyan-200/70">MEMBER MATCHING</p>
            <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl">{t('회원 프로필', 'Member profiles')}</h2>
-           <p className="mt-2 max-w-xl text-xs leading-5 text-slate-400">{t('서로 좋아요를 보내면 매칭되어 채팅할 수 있어요.', 'Match when you both like each other, then start a chat.')}</p>
+            <p className="mt-2 max-w-xl text-xs leading-5 text-slate-400">{t('좋아요를 보내세요. 서로 좋아요를 누르면 매칭되어 채팅할 수 있어요.', 'Tap Like. If they like you too, match and chat.')}</p>
+            <p className="mt-1 text-[10px] font-bold tracking-wide text-cyan-100/70">LIKE / 좋아요 <span aria-hidden="true">·</span> PASS / 건너뛰기</p>
         </div>
          <span className="rounded-full border border-white/10 bg-white/[.04] px-3 py-1.5 text-xs font-bold text-slate-300">{isKorean ? `${candidates.length}명 둘러보기` : `Explore ${candidates.length}`}</span>
       </header>

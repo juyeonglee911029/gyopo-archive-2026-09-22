@@ -15,7 +15,7 @@ export default function MobileBottomNav() {
     { href: '/directory', label: '업소록', english: 'Directory', icon: Store },
     { href: '/search', label: '검색', english: 'Search', icon: Search },
     { href: getNavigationHref('/community', 'community', pathname, selectedCountry), label: '커뮤니티', english: 'Community', icon: MessageCircle },
-    { href: '/users', label: '친구 매칭', english: 'Matching', icon: UserRound },
+    { href: '/users', label: '친구 매칭', english: 'Friend matching', icon: UserRound },
   ];
 
   return <nav className="global-bottom-nav mobile-bottom-nav" aria-label={language === 'ko' ? '모바일 주요 메뉴' : 'Mobile main menu'}>

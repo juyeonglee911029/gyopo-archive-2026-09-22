@@ -254,7 +254,7 @@ export default function UsersPage() {
     <div className="category-page users-page min-h-[calc(100vh-64px)] bg-transparent px-4 py-8 md:py-12" data-mobile-tab={mobileTab}>
       <div className="users-mobile-bar">
         <Link href="/" className="users-mobile-action" aria-label={t('홈으로 돌아가기', 'Back to home')}><ArrowLeft size={19} aria-hidden="true" /></Link>
-        <div className="users-mobile-copy"><span>MATCHING</span><strong>{t('친구 매칭', 'Friend matching')}</strong><small>서로 좋아요를 보내면 매칭돼요. / Like each other to match.</small></div>
+         <div className="users-mobile-copy"><span>MATCHING</span><strong>{t('친구 매칭', 'Friend matching')}</strong><small>{t('서로 좋아요를 보내면 매칭돼요.', 'Like each other to match.')}</small></div>
       </div>
       <div className="category-shell mx-auto max-w-6xl">
         <header className="category-header">

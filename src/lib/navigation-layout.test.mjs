@@ -51,8 +51,9 @@ test('friend matching and live rooms explain the global flows in Korean and Engl
   const footer = read('src/components/layout/footer.tsx');
   const styles = read('src/app/experience-refinements.css');
 
-  assert.match(users, /서로 좋아요를 보내면 매칭돼요\. \/ Like each other to match\./);
-  assert.match(discovery, /Match when you both like each other, then start a chat\./);
+  assert.match(users, /t\('서로 좋아요를 보내면 매칭돼요\.', 'Like each other to match\.'\)/);
+  assert.match(discovery, /Tap Like\. If they like you too, match and chat\./);
+  assert.match(discovery, /LIKE \/ 좋아요.*PASS \/ 건너뛰기/s);
   assert.match(liveRooms, /Watch a LIVE room or start a broadcast in an open room\./);
   assert.match(footer, /gyopo-footer-features/);
   assert.match(footer, /Friend matching/);
