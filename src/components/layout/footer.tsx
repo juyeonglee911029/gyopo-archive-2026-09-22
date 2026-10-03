@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ArrowUpRight, Radio, UserRoundCheck } from 'lucide-react';
 import { useGlobalStore } from '@/store/useGlobalStore';
 
 export default function Footer() {
@@ -28,14 +29,24 @@ export default function Footer() {
           <div className="gyopo-footer-brand">
             <Link href="/" className="gyopo-footer-logo">GYOPO<span>GLOBAL NETWORK</span></Link>
             <p>{isKorean ? '어디에 살든, 사람과 생활 정보를 연결합니다.' : 'Connecting people and local life, wherever you live.'}</p>
-            <div className="gyopo-footer-actions">
-              <Link href="/users" className="gyopo-footer-action is-primary">{isKorean ? '친구 매칭' : 'Friend matching'}</Link>
-              <Link href="/theater" className="gyopo-footer-action">{isKorean ? '라이브 룸' : 'Live rooms'}</Link>
-            </div>
           </div>
-          <nav className="gyopo-footer-links" aria-label={isKorean ? '푸터 메뉴' : 'Footer links'}>
-            {links.map(({ href, ko, en }) => <Link key={href} href={href} className="gyopo-footer-link">{isKorean ? ko : en}</Link>)}
-          </nav>
+          <div className="gyopo-footer-main">
+            <div className="gyopo-footer-features">
+              <Link href="/users" className="gyopo-footer-feature is-primary">
+                <span className="gyopo-footer-feature-icon"><UserRoundCheck size={18} aria-hidden="true" /></span>
+                <span className="gyopo-footer-feature-copy"><strong>{isKorean ? '친구 매칭' : 'Friend matching'}</strong><small>{isKorean ? '프로필을 둘러보고 서로 좋아요를 보내 연결하세요.' : 'Browse profiles and connect with mutual likes.'}</small></span>
+                <ArrowUpRight size={16} aria-hidden="true" />
+              </Link>
+              <Link href="/theater" className="gyopo-footer-feature is-live">
+                <span className="gyopo-footer-feature-icon"><Radio size={18} aria-hidden="true" /></span>
+                <span className="gyopo-footer-feature-copy"><strong>{isKorean ? '라이브 룸' : 'Live rooms'}</strong><small>{isKorean ? '전 세계 교민과 방송을 보고 이야기를 나눠보세요.' : 'Watch, broadcast, and chat with the global community.'}</small></span>
+                <ArrowUpRight size={16} aria-hidden="true" />
+              </Link>
+            </div>
+            <nav className="gyopo-footer-links" aria-label={isKorean ? '푸터 메뉴' : 'Footer links'}>
+              {links.map(({ href, ko, en }) => <Link key={href} href={href} className="gyopo-footer-link">{isKorean ? ko : en}</Link>)}
+            </nav>
+          </div>
         </div>
         <div className="gyopo-footer-bottom">
           <span>© 2026 GYOPO GLOBAL NETWORK</span>

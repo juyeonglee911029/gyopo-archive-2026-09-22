@@ -133,7 +133,7 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(dock, /friend-chat-thread h-48/);
   assert.match(dock, /friend-message-author/);
   assert.match(dock, /formatFriendMessageTime\(message\.createdAt, language\)/);
-  assert.match(sidebar, /<span>\{language === 'ko' \? '친구·통화' : 'Friends & calls'\}<\/span>/);
+  assert.match(sidebar, /<span>\{language === 'ko' \? '친구 매칭·통화' : 'Matching & calls'\}<\/span>/);
   assert.doesNotMatch(dock, /friend-dock-launch-control|id="friend-dock-launch"/);
   assert.doesNotMatch(dock, /friends\.length\}명|friends\.length\} friends/);
   assert.doesNotMatch(dock, /<b className="block text-\[9px\] opacity-65">\{message\.user\}<\/b>/);
@@ -171,6 +171,10 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(styles, /\.global-lounge \.global-chat-time\s*\{\s*color: #cbd5e1;/);
   assert.match(styles, /@media \(max-width: 1023px\)\s*\{[\s\S]*?\.global-mobile-lounge-panel\s*\{/);
   assert.match(styles, /@media \(max-width: 768px\)\s*\{[\s\S]*?\.global-mobile-lounge-panel\s*\{[^}]*bottom:\s*calc\(var\(--bottom-nav-height,\s*68px\)\s*\+/);
+  assert.match(lounge, /data-open=\{mobileOpen\}/);
+  assert.match(lounge, /role="dialog" aria-modal="true"/);
+  assert.match(styles, /\.global-mobile-lounge\[data-open="true"\]\s*\{[^}]*inset: 0 !important;[^}]*height: 100dvh;/s);
+  assert.match(styles, /\.global-mobile-lounge\[data-open="true"\] \.global-mobile-lounge-panel\s*\{[^}]*height: 100dvh;[^}]*max-height: none !important;/s);
   assert.match(styles, /\.global-chat-message-bubble\s*\{[^}]*border: 0 !important;[^}]*background: transparent !important;/);
   assert.match(styles, /\.global-sidebar \.global-friends-link:hover\s*\{[^}]*border-color: transparent !important;/);
   assert.match(styles, /\.gyopo-friend-dock\s*\{[^}]*border-radius: 0 !important;/);
@@ -200,7 +204,10 @@ test('friend calls auto-start after acceptance while screen sharing keeps its na
   assert.match(call, /sharedScreenVisible && <div className="webrtc-stage-shared-screen"/);
   assert.match(call, /webrtc-stage-camera-row/);
   assert.doesNotMatch(call, /webrtc-sidebar-screen/);
-  assert.match(read('src/app/experience-refinements.css'), /\.webrtc-stage-camera-row\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/s);
+  const styles = read('src/app/experience-refinements.css');
+  assert.match(styles, /\.webrtc-stage-camera-row\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/s);
+  assert.match(styles, /\.webrtc-stage-camera-tile video\s*\{\s*object-fit: contain;/);
+  assert.match(styles, /\.compact-call-video-tile video\s*\{\s*object-fit: contain;/);
   assert.doesNotMatch(call, /<video ref=\{remoteVideoRef\}[^>]*autoPlay/);
   assert.doesNotMatch(call, /<video ref=\{sidebarVideoRef\}[^>]*autoPlay/);
   assert.match(dock, /allow="camera; microphone; display-capture; fullscreen; autoplay" allowFullScreen/);

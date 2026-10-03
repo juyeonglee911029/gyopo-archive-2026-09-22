@@ -421,6 +421,10 @@ export default function LiveRoomPage() {
             <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.28em] text-rose-400"><Radio size={15} /> LIVE BROADCAST</div>
             <h1 className="text-3xl font-black tracking-[-0.04em] text-rose-400 sm:text-4xl">LIVE ROOM</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-400">{t('방송하기와 시청하기를 선택하고, 방 안에서 방송인과 실시간으로 소통하세요.', 'Choose a room to broadcast or watch, then chat with the host live.')}</p>
+            <div className="live-room-global-guide mt-4 grid gap-2 rounded-2xl border border-rose-200/10 bg-white/[.035] p-3 text-xs leading-5 text-slate-300 sm:grid-cols-2">
+              <p><strong className="mr-2 text-rose-200">한국어</strong>방송 중인 방은 시청하고, 빈 방에서는 방송을 시작하세요.</p>
+              <p><strong className="mr-2 text-rose-200">English</strong>Watch a LIVE room or start a broadcast in an open room.</p>
+            </div>
           </div>
           <div className="flex items-center gap-3 text-xs font-bold text-slate-300"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-400 shadow-[0_0_14px_rgba(251,113,133,.9)]" />{t('30개 방 · 페이지당 10개', '30 rooms · 10 per page')}</div>
         </header>
