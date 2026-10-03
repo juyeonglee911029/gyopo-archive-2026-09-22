@@ -169,7 +169,7 @@ export default function GlobalChat({ desktopOpen, onDesktopOpenChange }: GlobalC
        <aside id="global-lounge" data-minimized={!desktopOpen} aria-label={language === 'ko' ? '실시간 라운지' : 'Live Lounge'} className="global-lounge fixed bottom-4 right-4 top-24 z-[240] hidden w-[20rem] flex-col overflow-hidden border border-cyan-200/15 bg-transparent shadow-none backdrop-blur-none lg:flex">
          {desktopOpen ? <>
            <div className="global-lounge-header flex items-start justify-between gap-3 border-b border-white/8 p-4">
-             <div className="global-lounge-heading"><div className="flex items-center gap-2 font-black text-white"><MessageCircle size={17} className="text-teal-300" /> {language === 'ko' ? '실시간 라운지' : 'Live Lounge'}</div><p className="mt-1 text-[11px] text-slate-300/75">{language === 'ko' ? '지역에 관계없이 연결된 교민들' : 'Connect with the global Korean community'}</p></div>
+              <div className="global-lounge-heading"><div className="flex items-center gap-2 font-black text-white"><MessageCircle size={17} className="text-teal-300" /> {language === 'ko' ? '글로벌 라운지' : 'Global Lounge'}</div><p className="mt-1 text-[11px] text-slate-300/75">{language === 'ko' ? '한국어와 English 모두 환영해요' : 'Korean and English are welcome'}</p></div>
               <button ref={desktopToggleRef} type="button" onClick={() => onDesktopOpenChange(false)} aria-expanded={desktopOpen} aria-controls="global-lounge" aria-label={language === 'ko' ? '라운지 최소화' : 'Minimize lounge'} title={language === 'ko' ? '라운지 최소화' : 'Minimize lounge'} className="grid h-8 w-8 shrink-0 place-items-center border-0 bg-transparent text-teal-100 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-200"><Minus size={16} /></button>
            </div>
 
@@ -213,9 +213,12 @@ export default function GlobalChat({ desktopOpen, onDesktopOpenChange }: GlobalC
              if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
              else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
            }} className="global-mobile-lounge-panel overflow-hidden border border-white/10 bg-white/10 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#10182b]/48">
-           <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
-             <span id="global-mobile-lounge-title" className="text-xs font-black text-white">{isKorean ? '실시간 라운지' : 'Live Lounge'}</span>
-             <button ref={mobileCloseRef} type="button" onClick={() => setMobileOpen(false)} aria-label={isKorean ? '라운지 닫기' : 'Close lounge'} className="grid h-8 w-8 place-items-center text-slate-300 hover:bg-white/10"><X size={15} /></button>
+            <div className="global-mobile-lounge-header flex items-center justify-between gap-3 border-b border-white/10 px-3 py-2">
+              <div className="min-w-0">
+                <span id="global-mobile-lounge-title" className="block text-sm font-black text-white">{isKorean ? '글로벌 라운지' : 'Global Lounge'}</span>
+                <span className="mt-1 block text-[11px] text-slate-400">{isKorean ? '한국어와 English 모두 환영해요' : 'Korean and English are welcome'}</span>
+              </div>
+              <button ref={mobileCloseRef} type="button" onClick={() => setMobileOpen(false)} aria-label={isKorean ? '라운지 닫기' : 'Close lounge'} className="grid h-8 w-8 place-items-center text-slate-300 hover:bg-white/10"><X size={15} /></button>
            </div>
            <div className="global-mobile-lounge-messages flex flex-col gap-2 overflow-y-auto p-3">
              {messages.length === 0 && <div className="lounge-empty-mark" aria-hidden="true"><MessageCircle size={16} /></div>}

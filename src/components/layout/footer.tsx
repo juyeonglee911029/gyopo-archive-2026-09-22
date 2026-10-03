@@ -34,12 +34,12 @@ export default function Footer() {
             <div className="gyopo-footer-features">
               <Link href="/users" className="gyopo-footer-feature is-primary">
                 <span className="gyopo-footer-feature-icon"><UserRoundCheck size={18} aria-hidden="true" /></span>
-                <span className="gyopo-footer-feature-copy"><strong>{isKorean ? '친구 매칭' : 'Friend matching'}</strong><small>{isKorean ? '프로필을 둘러보고 서로 좋아요를 보내 연결하세요.' : 'Browse profiles and connect with mutual likes.'}</small></span>
+                <span className="gyopo-footer-feature-copy"><strong>{isKorean ? '친구 매칭' : 'Friend matching'}</strong><small>{isKorean ? '서로 좋아요를 누르면 매칭돼요.' : 'Like each other to match and chat.'}</small></span>
                 <ArrowUpRight size={16} aria-hidden="true" />
               </Link>
               <Link href="/theater" className="gyopo-footer-feature is-live">
                 <span className="gyopo-footer-feature-icon"><Radio size={18} aria-hidden="true" /></span>
-                <span className="gyopo-footer-feature-copy"><strong>{isKorean ? '라이브 룸' : 'Live rooms'}</strong><small>{isKorean ? '전 세계 교민과 방송을 보고 이야기를 나눠보세요.' : 'Watch, broadcast, and chat with the global community.'}</small></span>
+                <span className="gyopo-footer-feature-copy"><strong>{isKorean ? '라이브 룸' : 'Live rooms'}</strong><small>{isKorean ? '방송을 보거나 직접 참여하세요.' : 'Watch or join a live room.'}</small></span>
                 <ArrowUpRight size={16} aria-hidden="true" />
               </Link>
             </div>
