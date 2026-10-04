@@ -373,18 +373,41 @@ export async function createDocument<T extends Record<string, unknown>>(
   );
 }
 
+function storageUploadOwner(path: string): string | null {
+  const parts = path.split('/');
+  if (parts.some((part) => !part || part === '.' || part === '..')) return null;
+  const profilePath = parts[0] === 'profiles'
+    && (parts.length === 3 || (parts.length === 4 && parts[2] === 'gallery'));
+  const contentPath = (parts[0] === 'posts' || parts[0] === 'jobs') && parts.length === 3;
+  if (!profilePath && !contentPath) return null;
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(parts[1])) return null;
+  return parts[1];
+}
+
 export async function uploadStorageFile(file: Blob, path: string, token?: string): Promise<string> {
   if (!token) throw new Error('로그인 세션이 없어 파일을 업로드할 수 없습니다.');
-  const response = await fetch(`https://firebasestorage.googleapis.com/v0/b/${firebaseStorageBucket}/o?uploadType=media&name=${encodeURIComponent(path)}`, {
+  const ownerId = storageUploadOwner(path);
+  if (!ownerId || getTokenUserId(token) !== ownerId) throw new Error('로그인 계정과 파일 저장 경로가 일치하지 않습니다.');
+
+  const url = `https://firebasestorage.googleapis.com/v0/b/${firebaseStorageBucket}/o?uploadType=media&name=${encodeURIComponent(path)}`;
+  const send = (requestToken: string) => fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${requestToken}`,
       'Content-Type': file.type || 'application/octet-stream',
     },
     body: file,
   });
-  const result = await response.json().catch(() => null) as { name?: string; downloadTokens?: string } | null;
-  if (!response.ok || !result?.name) throw new Error('파일 업로드에 실패했습니다.');
+  let response = await send(token);
+  if (response.status === 401 || response.status === 403) {
+    const refreshed = await getFreshSessionToken(true);
+    if (refreshed && getTokenUserId(refreshed) === ownerId) response = await send(refreshed);
+  }
+  const result = await response.json().catch(() => null) as { name?: string; downloadTokens?: string; error?: { message?: string } } | null;
+  if (!response.ok || !result?.name) {
+    const detail = result?.error?.message?.slice(0, 160);
+    throw new Error(detail ? `파일 업로드에 실패했습니다: ${detail}` : `파일 업로드에 실패했습니다. (${response.status})`);
+  }
   const downloadToken = result.downloadTokens?.split(',')[0];
   const query = downloadToken ? `&token=${encodeURIComponent(downloadToken)}` : '';
   return `https://firebasestorage.googleapis.com/v0/b/${firebaseStorageBucket}/o/${encodeURIComponent(result.name)}?alt=media${query}`;
@@ -942,6 +965,35 @@ function isFreshQueueDocument(row: FirestoreDocument, maxAgeMs: number): boolean
   return typeof lastSeenAt === 'string' && new Date(lastSeenAt).getTime() > Date.now() - maxAgeMs && Boolean(row.name && row.updateTime);
 }
 
+export async function heartbeatWebrtcQueue(userId: string, token?: string): Promise<boolean> {
+  if (!token || getTokenUserId(token) !== userId) return false;
+  const current = await getRawDocument('webrtcQueue', userId, token);
+  if (!current?.name || !current.updateTime || fromFirestoreValue(current.fields?.status) !== 'waiting') return false;
+  const response = await authenticatedFetch(`${firestoreBase}:commit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ writes: [{
+      update: {
+        name: current.name,
+        fields: encodeFields({ lastSeenAt: new Date() }),
+      },
+      updateMask: { fieldPaths: ['lastSeenAt'] },
+      currentDocument: { updateTime: current.updateTime },
+    }] }),
+  }, token);
+  if (response.status === 409 || response.status === 412) return false;
+  if (!response.ok) {
+    const result = await response.json().catch(() => null) as { error?: { message?: string; status?: string } } | null;
+    if (response.status === 400 && result?.error?.status === 'FAILED_PRECONDITION') return false;
+    if (response.status === 403) {
+      const latest = await getRawDocument('webrtcQueue', userId, token).catch(() => null);
+      if (!latest || latest.updateTime !== current.updateTime || fromFirestoreValue(latest.fields?.status) !== 'waiting') return false;
+    }
+    throw new Error(result?.error?.message || `매칭 대기 갱신이 거절되었습니다. (${response.status})`);
+  }
+  return true;
+}
+
 export async function claimTetrisMatch(profile: TetrisQueueProfile, token?: string): Promise<TetrisMatchClaim | null> {
   const waiting = await getWaitingQueueDocuments('tetrisQueue', token);
   const candidateRow = waiting.find((row) => {
@@ -1185,7 +1237,7 @@ export async function listEscrowOrdersForMember(memberId: string, token = getSes
     .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime());
 }
 
-export type FriendStatus = 'pending' | 'accepted' | 'declined';
+export type FriendStatus = 'pending' | 'accepted' | 'declined' | 'removed';
 export async function listFriendMessages<T>(userId: string, friendshipId: string): Promise<Array<T & { id: string }>> {
   const token = await getFreshSessionToken();
   if (!token || getTokenUserId(token) !== userId) throw new Error('다시 로그인해주세요.');
@@ -1218,7 +1270,31 @@ export async function listFriendConnections(userId: string, token = getSessionTo
     queryDocumentsWhere<Omit<FriendConnection, 'id'>>(collection, [{ field: 'addresseeId', op: 'EQUAL', value: userId }], token).then((items) => items.map((item) => ({ ...item, sourceCollection: collection }))).catch(() => []),
   ]));
   return [...new Map(rows.flat().reverse().map((item) => [item.id, item])).values()]
+    .filter((item) => item.status !== 'removed')
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+export async function manageFriendConnection(
+  targetUserId: string,
+  action: 'remove' | 'block',
+  blockedName = '',
+  token?: string,
+): Promise<void> {
+  const authToken = token || await getFreshSessionToken();
+  const viewerId = getTokenUserId(authToken);
+  if (!authToken || !viewerId || viewerId !== getSessionUserId() || !targetUserId || viewerId === targetUserId) {
+    throw new Error('친구 관리 권한을 확인하거나 다시 로그인해주세요.');
+  }
+  const response = await authenticatedFetch('/api/matching/manage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetUserId, action, ...(action === 'block' ? { blockedName: blockedName.slice(0, 80) } : {}) }),
+  }, authToken);
+  const result = await response.json().catch(() => null) as { removed?: boolean; blocked?: boolean; error?: string } | null;
+  if (getSessionUserId() !== viewerId) throw new Error('로그인 계정이 변경되었습니다. 다시 시도해주세요.');
+  if (!response.ok || (action === 'remove' ? result?.removed !== true : result?.blocked !== true)) {
+    throw new Error(result?.error || (action === 'remove' ? '친구를 삭제하지 못했습니다.' : '친구를 차단하지 못했습니다.'));
+  }
 }
 
 export async function sendFriendRequest(addresseeId: string, token?: string, action: 'like' | 'accept' = 'like'): Promise<boolean> {
