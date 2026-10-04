@@ -2,8 +2,8 @@
 
 import { type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Check, FileText, MessageCircle, Paperclip, PhoneCall, Send, UserPlus, UserRoundCheck, X } from 'lucide-react';
-import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFreshSessionToken, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, listOnlineUsers, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
+import { Ban, Check, FileText, MessageCircle, MoreHorizontal, Paperclip, PhoneCall, Send, UserMinus, UserPlus, UserRoundCheck, X } from 'lucide-react';
+import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFreshSessionToken, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, listOnlineUsers, manageFriendConnection, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
 
 type FriendMember = Partial<PublicProfile> & { id: string; friendshipId: string };
@@ -43,6 +43,8 @@ export default function FriendDock() {
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [onlineFriendIds, setOnlineFriendIds] = useState<Set<string> | null>(null);
   const [selectedId, setSelectedId] = useState('');
+  const [friendActionMenuId, setFriendActionMenuId] = useState('');
+  const [friendActionBusy, setFriendActionBusy] = useState(false);
   const [videoCall, setVideoCall] = useState<{ id: string; friendId: string } | null>(null);
   const [videoClosing, setVideoClosing] = useState(false);
   const [messages, setMessages] = useState<FriendMessage[]>([]);
@@ -72,6 +74,7 @@ export default function FriendDock() {
 
   const closeDock = useCallback(() => {
     setOpen(false);
+    setFriendActionMenuId('');
     if (window.matchMedia('(max-width: 768px)').matches) window.dispatchEvent(new Event('gyopo-mobile-friends-closed'));
   }, []);
 
@@ -499,6 +502,31 @@ export default function FriendDock() {
     }
   };
 
+  const manageFriend = async (friend: FriendMember, action: 'remove' | 'block') => {
+    if (!user || friendActionBusy) return;
+    const name = friend.name || t('이 친구', 'this friend');
+    const confirmation = action === 'block'
+      ? t(`${name} 님을 차단할까요? 친구 관계도 함께 끊기며 다시 매칭되지 않습니다.`, `Block ${name}? This also removes the friendship and prevents future matching.`)
+      : t(`${name} 님을 친구 목록에서 삭제할까요?`, `Remove ${name} from your friends?`);
+    if (!window.confirm(confirmation)) return;
+    setFriendActionBusy(true);
+    setError('');
+    try {
+      const token = await getFreshSessionToken();
+      if (!token) throw new Error(t('다시 로그인해주세요.', 'Please log in again.'));
+      await manageFriendConnection(friend.id, action, name, token);
+      setFriends((rows) => rows.filter((row) => row.id !== friend.id));
+      setSelectedId((current) => current === friend.id ? '' : current);
+      setFriendActionMenuId('');
+      setMessages([]);
+      setAttachment(null);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : t('친구 설정을 변경하지 못했습니다.', 'Could not update this friend.'));
+    } finally {
+      setFriendActionBusy(false);
+    }
+  };
+
   if (!user) return null;
 
   return (
@@ -532,21 +560,28 @@ export default function FriendDock() {
                   const statusLabel = onlineFriendIds === null
                     ? (isKorean ? '상태 확인 중' : 'Checking status')
                     : online ? (isKorean ? '온라인' : 'Online') : (isKorean ? '오프라인' : 'Offline');
-                  return <div key={friend.id} className="friend-row" data-selected={friend.id === selectedId} role="group" aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')}: ${statusLabel}`}>
-                    <button type="button" aria-pressed={friend.id === selectedId} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '채팅 선택' : 'select chat'}`} onClick={() => setSelectedId(friend.id)} className="friend-row-select">
-                      {friend.image ? <img src={friend.image} alt="" /> : <span className="friend-row-avatar">{friend.name?.slice(0, 1) || '?'}</span>}
-                      <span className="friend-row-copy">
-                        <span className="friend-row-name">{friend.name || (isKorean ? '친구' : 'Friend')}</span>
-                        <span className={`friend-row-status ${onlineFriendIds === null ? 'is-unknown' : online ? 'is-online' : ''}`}>
-                          <span aria-hidden="true" />
-                          {statusLabel}
+                  return <div key={friend.id} className="space-y-1">
+                    <div className="friend-row" data-selected={friend.id === selectedId} role="group" aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')}: ${statusLabel}`}>
+                      <button type="button" aria-pressed={friend.id === selectedId} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '채팅 선택' : 'select chat'}`} onClick={() => { setSelectedId(friend.id); setFriendActionMenuId(''); }} className="friend-row-select">
+                        {friend.image ? <img src={friend.image} alt="" /> : <span className="friend-row-avatar">{friend.name?.slice(0, 1) || '?'}</span>}
+                        <span className="friend-row-copy">
+                          <span className="friend-row-name">{friend.name || (isKorean ? '친구' : 'Friend')}</span>
+                          <span className={`friend-row-status ${onlineFriendIds === null ? 'is-unknown' : online ? 'is-online' : ''}`}>
+                            <span aria-hidden="true" />
+                            {statusLabel}
+                          </span>
                         </span>
+                      </button>
+                      <span className="friend-row-actions">
+                        <button type="button" onClick={() => setSelectedId(friend.id)} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '채팅 열기' : 'open chat'}`} title={isKorean ? '채팅 열기' : 'Open chat'} className="friend-row-action"><MessageCircle size={15} /></button>
+                        <button type="button" onClick={() => { setSelectedId(friend.id); void requestVideoCall(friend.id); }} disabled={Boolean(pendingCall || videoCall)} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '통화 요청' : 'call'}`} title={isKorean ? '통화 요청' : 'Call'} className="friend-row-action"><PhoneCall size={15} /></button>
+                        <button type="button" disabled={pendingCall?.friendId === friend.id} onClick={() => setFriendActionMenuId((current) => current === friend.id ? '' : friend.id)} aria-label={t(`${friend.name || '친구'} 관리 메뉴`, `Manage ${friend.name || 'friend'}`)} aria-expanded={friendActionMenuId === friend.id} title={pendingCall?.friendId === friend.id ? t('통화 요청이 끝난 뒤 관리할 수 있습니다', 'Manage this friend after the call request ends') : t('친구 관리', 'Manage friend')} className="friend-row-action"><MoreHorizontal size={16} /></button>
                       </span>
-                    </button>
-                    <span className="friend-row-actions">
-                      <button type="button" onClick={() => setSelectedId(friend.id)} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '채팅 열기' : 'open chat'}`} title={isKorean ? '채팅 열기' : 'Open chat'} className="friend-row-action"><MessageCircle size={15} /></button>
-                      <button type="button" onClick={() => { setSelectedId(friend.id); void requestVideoCall(friend.id); }} disabled={Boolean(pendingCall || videoCall)} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '통화 요청' : 'call'}`} title={isKorean ? '통화 요청' : 'Call'} className="friend-row-action"><PhoneCall size={15} /></button>
-                    </span>
+                    </div>
+                    {friendActionMenuId === friend.id && <div role="group" aria-label={t(`${friend.name || '친구'} 관리`, 'Friend options')} className="friend-row-menu">
+                      <button type="button" disabled={friendActionBusy || pendingCall?.friendId === friend.id} onClick={() => void manageFriend(friend, 'remove')}><UserMinus size={14} />{t('친구 삭제', 'Remove friend')}</button>
+                      <button type="button" disabled={friendActionBusy || pendingCall?.friendId === friend.id} onClick={() => void manageFriend(friend, 'block')}><Ban size={14} />{t('차단하고 친구 삭제', 'Block and remove')}</button>
+                    </div>}
                   </div>;
                 })}
               </div>

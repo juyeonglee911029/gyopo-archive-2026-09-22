@@ -384,6 +384,45 @@
   cursor: not-allowed;
 }
 
+.friend-row-menu {
+  display: grid;
+  gap: 2px;
+  margin: 0 4px 4px 38px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(7, 14, 27, 0.96);
+  padding: 4px;
+}
+
+.friend-row-menu button {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  padding: 6px 8px;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.friend-row-menu button:hover,
+.friend-row-menu button:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  outline: none;
+}
+
+.friend-row-menu button:last-child {
+  color: #fda4af;
+}
+
+.friend-row-menu button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
 .friend-chat-thread {
   border: 1px solid rgba(226, 232, 240, 0.08);
   border-radius: 0;

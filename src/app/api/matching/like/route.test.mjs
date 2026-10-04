@@ -158,6 +158,18 @@ test('legacy pending matches migrate to canonical; a declined legacy request can
   assert.equal(state.documents.get('friendships/friend-alice-bob').fields.status.stringValue, 'pending');
 });
 
+test('a removed friendship can restart only as a new request from the current member', async () => {
+  const { state, put, post } = await harness();
+  put('friendships', 'friend-alice-bob', { requesterId: 'bob', addresseeId: 'alice', status: 'removed' });
+  const result = await post({ targetUserId: 'bob' });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.matched, false);
+  const relationship = state.documents.get('friendships/friend-alice-bob').fields;
+  assert.equal(relationship.requesterId.stringValue, 'alice');
+  assert.equal(relationship.addresseeId.stringValue, 'bob');
+  assert.equal(relationship.status.stringValue, 'pending');
+});
+
 test('existing accepted legacy friendships migrate without another quota charge', async () => {
   const { state, put, post } = await harness();
   put('webrtcCalls', 'friend-alice-bob', { requesterId: 'bob', addresseeId: 'alice', status: 'accepted' });

@@ -133,7 +133,7 @@ export async function POST(request: Request) {
         const addressee = decodeFirestoreValue(connection.fields?.addresseeId);
         const status = decodeFirestoreValue(connection.fields?.status);
         if (!((requester === user.uid && addressee === targetUserId) || (requester === targetUserId && addressee === user.uid))
-          || !['pending', 'accepted', 'declined'].includes(String(status))) throw new UnavailableMatch();
+          || !['pending', 'accepted', 'declined', 'removed'].includes(String(status))) throw new UnavailableMatch();
         if (status === 'accepted') return { writes: primary ? [] : [{ update: {
           name: adminDocumentName(projectId, canonical.collection, friendshipId),
           fields: { requesterId: firestoreValue(requester), addresseeId: firestoreValue(addressee), status: firestoreValue('accepted'),
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
       if (used >= 30) throw new QuotaExceeded();
       const now = new Date().toISOString();
       const writes: FirestoreWrite[] = [];
-      if (connection?.fields && decodeFirestoreValue(connection.fields.status) === 'declined') {
+      if (connection?.fields && ['declined', 'removed'].includes(String(decodeFirestoreValue(connection.fields.status)))) {
         if (primary && !connection.updateTime) throw new Error('Invalid connection snapshot.');
         writes.push({ update: { name: adminDocumentName(projectId, canonical.collection, friendshipId), fields: {
           requesterId: firestoreValue(user.uid), addresseeId: firestoreValue(targetUserId), status: firestoreValue('pending'),
