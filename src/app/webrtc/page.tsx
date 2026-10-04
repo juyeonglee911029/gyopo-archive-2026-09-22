@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useEffectEvent } from '@/lib/useeffectevent';
-import { Ban, Camera, CheckCircle2, Flag, Headphones, LoaderCircle, Maximize2, Mic, MicOff, Minimize2, MonitorUp, PhoneCall, RefreshCcw, ShieldAlert, VideoOff } from 'lucide-react';
+import { ArrowLeftRight, Ban, Camera, CheckCircle2, Flag, Headphones, LoaderCircle, Maximize2, Mic, MicOff, Minimize2, MonitorUp, PhoneCall, RefreshCcw, ShieldAlert, VideoOff } from 'lucide-react';
 import {
   deleteDocument,
   claimWebrtcMatch,
@@ -15,6 +15,7 @@ import {
   getAccountModeration,
   getDocument,
   getFreshSessionToken,
+  heartbeatWebrtcQueue,
   mergeDocument,
   listBlockedUserIds,
   OnlineUser,
@@ -113,6 +114,8 @@ const CALL_STATUS_EN: Record<string, string> = {
   '상대가 통화를 종료했습니다.': 'Your friend ended the call',
 };
 
+const WEBRTC_QUEUE_HEARTBEAT_INTERVAL_MS = 30_000;
+
 export default function WebRTCPage() {
   const router = useRouter();
   const user = useGlobalStore((state) => state.user);
@@ -182,6 +185,7 @@ export default function WebRTCPage() {
   const callRef = useRef<ActiveCall | null>(null);
   const connectionStartedAt = useRef<number | null>(null);
   const queueStartedAtRef = useRef<number | null>(null);
+  const queueHeartbeatAtRef = useRef(0);
   const signalingErrorAtRef = useRef<number | null>(null);
   const connectedAtRef = useRef<number | null>(null);
   const connectedRef = useRef(false);
@@ -800,6 +804,7 @@ export default function WebRTCPage() {
       return;
     }
     queueStartedAtRef.current = Date.now();
+    queueHeartbeatAtRef.current = queueStartedAtRef.current;
     setActive(true);
   };
 
@@ -909,6 +914,7 @@ export default function WebRTCPage() {
     resetSignalingState();
     connectionStartedAt.current = null;
     queueStartedAtRef.current = null;
+    queueHeartbeatAtRef.current = 0;
     connectedRef.current = false;
     signalEnded(currentCall?.callId);
     if (userRef.current && startedRef.current) {
@@ -1093,6 +1099,7 @@ export default function WebRTCPage() {
             await queueWrite(() => stale() ? Promise.resolve() : mergeDocument('webrtcQueue', user.id, { ...profile, userId: user.id, status: 'waiting', callId: null, opponent: null, lastSeenAt: new Date() }, token));
             if (stale()) return;
             queueNeedsResetRef.current = false;
+            queueHeartbeatAtRef.current = Date.now();
           }
           const ownQueue = await getDocument<QueueEntry>('webrtcQueue', user.id, token);
           if (stale()) return;
@@ -1116,7 +1123,11 @@ export default function WebRTCPage() {
             }
             nextCall = { callId: ownQueue.callId, peer: matchedPeer, initiator: user.id < matchedPeer.userId };
           } else {
-            await queueWrite(() => stale() ? Promise.resolve() : mergeDocument('webrtcQueue', user.id, { lastSeenAt: new Date() }, token));
+            if (Date.now() - queueHeartbeatAtRef.current >= WEBRTC_QUEUE_HEARTBEAT_INTERVAL_MS) {
+              const refreshed = await queueWrite(() => stale() ? Promise.resolve(false) : heartbeatWebrtcQueue(user.id, token));
+              if (stale()) return;
+              if (refreshed) queueHeartbeatAtRef.current = Date.now();
+            }
             if (stale()) {
               return;
             }
@@ -1181,10 +1192,6 @@ export default function WebRTCPage() {
           return;
         }
 
-        await queueWrite(() => stale() ? Promise.resolve() : mergeDocument('webrtcQueue', user.id, { lastSeenAt: new Date() }, token));
-        if (stale()) {
-          return;
-        }
         const connection = ensureConnection(current);
          const call = await getDocument<CallDocument>('webrtcCalls', current.callId, token).catch(() => null);
          if (stale()) return;
@@ -1510,8 +1517,9 @@ export default function WebRTCPage() {
                {!isSharingScreen && !hasRemoteScreen && <div className="compact-call-placeholder" role="status">{t('상대 화면 연결 중', 'Connecting to shared screen')}</div>}
             </div>}
             <div className="compact-call-camera-row">
-              <div className="compact-call-video-tile">
-                 <span className="compact-call-video-label">{t('내 카메라', 'Your camera')}</span>
+               <div className="compact-call-video-tile relative">
+                  <span className="compact-call-video-label">{t('내 카메라', 'Your camera')}</span>
+                 <button type="button" onClick={() => setFlip((value) => !value)} aria-pressed={flip} aria-label={t(flip ? '좌우 반전 끄기' : '좌우 반전 켜기', flip ? 'Turn camera mirroring off' : 'Turn camera mirroring on')} title={t(flip ? '좌우 반전 끄기' : '좌우 반전 켜기', flip ? 'Turn camera mirroring off' : 'Turn camera mirroring on')} className="absolute right-2 top-2 z-20 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/65 text-white hover:bg-black/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"><ArrowLeftRight size={16} className={flip ? 'text-cyan-200' : 'text-white'} /></button>
                 <video ref={videoRef} muted autoPlay playsInline className={flip ? 'scale-x-[-1]' : ''} />
                  {(!active || !streamRef.current) && <div className="compact-call-placeholder">{t('카메라 시작 후 내 영상이 표시됩니다.', 'Your video appears when the camera starts.')}</div>}
               </div>
@@ -1570,8 +1578,9 @@ export default function WebRTCPage() {
                   {!isSharingScreen && !hasRemoteScreen && <div className="webrtc-stage-placeholder">상대 화면 연결 중</div>}
                 </div>}
                 <div className={`webrtc-stage-camera-row ${sharedScreenVisible ? 'has-shared-screen' : ''}`}>
-                  <div className="webrtc-stage-camera-tile">
+                  <div className="webrtc-stage-camera-tile relative">
                     <span className="webrtc-stage-label">내 카메라</span>
+                    <button type="button" onClick={() => setFlip((value) => !value)} aria-pressed={flip} aria-label={t(flip ? '좌우 반전 끄기' : '좌우 반전 켜기', flip ? 'Turn camera mirroring off' : 'Turn camera mirroring on')} title={t(flip ? '좌우 반전 끄기' : '좌우 반전 켜기', flip ? 'Turn camera mirroring off' : 'Turn camera mirroring on')} className="absolute right-2 top-2 z-20 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/65 text-white hover:bg-black/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"><ArrowLeftRight size={16} className={flip ? 'text-cyan-200' : 'text-white'} /></button>
                     <video ref={videoRef} muted autoPlay playsInline className={flip ? 'scale-x-[-1]' : ''} />
                     {(!active || !streamRef.current) && <div className="webrtc-stage-placeholder">{active ? '내 카메라 연결 중' : '카메라·마이크 시작 후 내 영상이 표시됩니다.'}</div>}
                   </div>
@@ -1587,9 +1596,8 @@ export default function WebRTCPage() {
               </section>
 
               <div className="webrtc-mobile-controls mt-3 rounded-xl border border-white/10 bg-[#10182b] p-3">
-                <div className="mb-3 flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate font-bold text-slate-200">{active || isStarting || isMatching ? displayStatus : t('카메라와 마이크를 준비하세요', 'Prepare your camera and microphone')}</span>
-                  <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold text-slate-300"><input type="checkbox" checked={flip} onChange={(event) => setFlip(event.target.checked)} className="h-3.5 w-3.5 accent-cyan-400" /> 좌우 반전</label>
+                <div className="mb-3 text-xs">
+                  <span className="block truncate font-bold text-slate-200">{active || isStarting || isMatching ? displayStatus : t('카메라와 마이크를 준비하세요', 'Prepare your camera and microphone')}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   {!active ? <button onClick={startMatchFromUi} disabled={isStarting || hasEnded} className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-lg bg-cyan-400 px-3 py-2 text-sm font-black text-slate-950 disabled:opacity-50"><PhoneCall size={16} /> LIVE CHAT 시작</button> : <button onClick={() => void endMatch()} disabled={hasEnded} className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-lg bg-red-500 px-3 py-2 text-sm font-black text-white disabled:opacity-40"><VideoOff size={16} /> 연결 종료</button>}
@@ -1624,7 +1632,7 @@ export default function WebRTCPage() {
                {chatError && <p role="alert" className="mt-2 text-xs font-bold text-rose-300">{chatError}</p>}
                {user && activeCallId && <><p className="mt-2 text-[10px] text-slate-500">채팅과 AI 답변은 통화방에 저장되어 양쪽에 표시됩니다.</p><form onSubmit={sendVideoChat} className="mt-2 flex gap-2"><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="메시지 또는 AI 질문..." className="min-w-0 flex-1 border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none" /><button type="button" onClick={() => void askSharedAi()} className="border border-violet-300/30 bg-violet-300/10 px-3 text-[11px] font-black text-violet-100">AI 함께</button><button className="bg-cyan-400 px-3 text-xs font-black text-slate-950">전송</button></form></>}
              </section>
-             <section className="rounded-[2rem] border border-white/10 bg-[#111a2d] p-5"><div className="mb-4 flex items-center justify-between"><span className="font-black">카메라 설정</span><span className="text-xs text-slate-500">상대 화면에도 적용</span></div><label className="flex cursor-pointer items-center justify-between rounded-xl bg-white/[0.04] p-3 text-sm font-bold"><span>내 화면 좌우 반전</span><input type="checkbox" checked={flip} onChange={(event) => setFlip(event.target.checked)} className="h-4 w-4 accent-cyan-400" /></label><div className="mt-4 flex items-start gap-2 text-xs leading-5 text-slate-500"><CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-300" />내 영상과 상대방에게 전송되는 영상 모두에 적용됩니다.</div></section>
+              <section className="rounded-[2rem] border border-white/10 bg-[#111a2d] p-5"><div className="mb-4 flex items-center justify-between"><span className="font-black">카메라 좌우 반전</span><span className="text-xs font-bold text-cyan-200">{flip ? '켜짐' : '꺼짐'}</span></div><div className="flex items-start gap-2 text-xs leading-5 text-slate-400"><CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-300" />내 카메라 영상 위의 좌우 화살표 아이콘으로 바꾸며, 상대에게 전송되는 영상에도 적용됩니다.</div></section>
              <section className="rounded-[2rem] border border-cyan-300/20 bg-[#111a2d] p-5"><div className="mb-4 flex items-center justify-between"><span className="font-black">LIVE CHAT 필터 / Filters</span><span className="text-xs font-bold text-cyan-300">18–60</span></div><label className="block text-xs font-bold text-slate-400">찾고 싶은 상대 / Gender<select value={genderPreference} onChange={(event) => setGenderPreference(event.target.value as GenderPreference)} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm font-bold text-white outline-none"><option value="any">모두 / Any</option><option value="male">남성 / Male</option><option value="female">여성 / Female</option></select></label><div className="mt-4 grid grid-cols-2 gap-2"><label className="text-xs font-bold text-slate-400">최소 나이 / Min<select value={ageMin} onChange={(event) => setAgeMin(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm font-bold text-white outline-none">{Array.from({ length: 43 }, (_, index) => index + 18).map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label className="text-xs font-bold text-slate-400">최대 나이 / Max<select value={ageMax} onChange={(event) => setAgeMax(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm font-bold text-white outline-none">{Array.from({ length: 43 }, (_, index) => index + 18).map((value) => <option key={value} value={value}>{value}</option>)}</select></label></div><p className="mt-3 text-xs leading-5 text-slate-500">랜덤 화상 매칭은 18–60세 범위에서만 연결합니다. 친구 통화는 서로 지정한 상대에게 직접 연결됩니다.</p></section>
              <section className="rounded-[2rem] border border-white/10 bg-[#111a2d] p-5 text-sm text-slate-400"><div className="mb-2 flex items-center gap-2 font-black text-white"><RefreshCcw size={16} className="text-cyan-300" /> 자동 연결 안내</div><p>연결이 끊기거나 상대가 나가면 연결 종료를 누르지 않아도 다음 인증 회원을 계속 찾습니다.</p></section>
            </aside>
