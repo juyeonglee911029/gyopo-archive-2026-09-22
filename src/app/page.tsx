@@ -89,7 +89,7 @@ export default function Home() {
       <Suspense fallback={null}><HomeFeedReadiness loading={feedStatus === 'loading'} error={feedStatus === 'error'} /></Suspense>
       <section className={styles.hero} aria-labelledby="home-heading">
         <div className={styles.intro}>
-          <span className={styles.eyebrow}>YOUR LOCAL CONNECTION</span>
+          <span className={styles.eyebrow}>YOUR GLOBAL CONNECTION</span>
           <h1 id="home-heading">세계 어디서나,<br />교민과 함께.</h1>
           <p className={styles.lead}>일자리부터 일상의 이야기까지.<br className={styles.mobileBreak} /> 우리 동네의 연결을 GYOPO에서 찾아보세요.</p>
           <form role="search" onSubmit={submitSmartSearch} className={styles.search}>
