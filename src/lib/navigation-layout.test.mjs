@@ -23,10 +23,10 @@ test('mobile navigation puts Search in the center and replaces Regions with Dire
   const directory = navigation.indexOf("href: '/directory', label: '업소록'");
   const search = navigation.indexOf("href: '/search', label: '검색'");
   const community = navigation.indexOf("label: '커뮤니티'");
-  const friends = navigation.indexOf("href: '/users', label: '친구 매칭'");
+  const friends = navigation.indexOf("href: '/users', label: '매칭'");
 
   assert.ok(home < directory && directory < search && search < community && community < friends);
-  assert.match(navigation, /Friend matching/);
+  assert.match(navigation, /english: 'Matching'/);
   assert.doesNotMatch(navigation, /href: '\/regions', label: '지역'/);
 });
 
@@ -35,8 +35,8 @@ test('friend matching is visible in the sidebar and opens the existing member fl
   const members = read('src/app/users/page.tsx');
   const discovery = read('src/components/friends/FriendDiscoveryDeck.tsx');
 
-  assert.match(sidebar, /id: 'friends', href: '\/users', label: '친구 매칭'/);
-  assert.match(members, /<h1[^>]*>\{t\('친구 매칭', 'Friend matching'\)\}<\/h1>/);
+  assert.match(sidebar, /id: 'friends', href: '\/users', label: '매칭'/);
+  assert.match(members, /<h1[^>]*>\{t\('매칭', 'Matching'\)\}<\/h1>/);
   assert.doesNotMatch(members, /friendMatchingDemo|demo-member-|159개 검수용/);
   assert.doesNotMatch(members, /랜덤 화상 매칭|online now|users-mobile-online/);
   assert.doesNotMatch(discovery, /demoMode|onEnterDemo|159개 검수용/);

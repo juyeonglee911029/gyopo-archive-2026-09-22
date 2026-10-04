@@ -41,11 +41,14 @@ test('page heartbeats only in the waiting branch, not for matched or active call
   assert.doesNotMatch(activeCallBranch, /heartbeatWebrtcQueue|mergeDocument\('webrtcQueue', user\.id, \{ lastSeenAt:/);
 });
 
-test('camera mirroring is toggled from both video tiles, and the homepage hero is search-only', () => {
+test('camera mirroring is toggled from both video tiles, and the homepage keeps its discovery controls', () => {
   assert.equal((page.match(/<ArrowLeftRight/g) || []).length, 2);
   assert.doesNotMatch(page, /type="checkbox" checked=\{flip\}/);
-  assert.match(home, /<section className=\{styles\.hero\} aria-label="홈페이지 검색">/);
+  assert.match(home, /<section className=\{styles\.hero\} aria-label="GYOPO 시작">/);
+  assert.match(home, /GlobalRegionSelectors/);
   assert.match(home, /<form role="search"/);
+  assert.match(home, /className=\{styles\.matchCard\}/);
+  assert.match(home, /<MarketTicker\s*\/>/);
   assert.doesNotMatch(home, /YOUR (?:GLOBAL|LOCAL) CONNECTION|세계 어디서나/);
 });
 

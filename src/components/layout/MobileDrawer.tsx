@@ -76,7 +76,7 @@ export default function MobileDrawer({ id, open, onOpenChange }: { id: string; o
           {isMasterUser(user) && <Link href="/master" onClick={close}>MASTER</Link>}
            <button type="button" onClick={() => { signOut(); setUser(null); close(); }}><LogOut size={18} aria-hidden="true" />{isKorean ? '로그아웃' : 'Log out'}</button>
          </> : <Link href="/login" onClick={close}><LogIn size={18} aria-hidden="true" />{isKorean ? '로그인' : 'Log in'}</Link>}
-          <button type="button" onClick={() => { close(); if (user) window.dispatchEvent(new Event('gyopo-friends-open')); else router.push('/users'); }}><MessageCircle size={18} aria-hidden="true" />{isKorean ? '친구 매칭' : 'Friend matching'}</button>
+           <button type="button" onClick={() => { close(); if (user) window.dispatchEvent(new Event('gyopo-friends-open')); else router.push('/users'); }}><MessageCircle size={18} aria-hidden="true" />{isKorean ? '친구' : 'Friends'}</button>
           {!isCallRoute && <button type="button" onClick={() => { close(); window.dispatchEvent(new Event('gyopo-open-global-chat')); }}><MessageCircle size={18} aria-hidden="true" />{isKorean ? '글로벌 라운지' : 'Global Lounge'}</button>}
         <TranslateMenu />
       </section>

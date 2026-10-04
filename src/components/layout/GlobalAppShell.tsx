@@ -90,7 +90,7 @@ export default function GlobalAppShell({ children, rightRail }: { children: Reac
       <Header menuOpen={drawerOpen} menuId={drawerId} onMenuOpen={() => setDrawerOpen(true)} />
     </div>
     <div className={`global-page-body${!isCompact && rightRail ? ' has-right-rail' : ''}`}>
-      {!isCompact && <aside className="global-sidebar" aria-label="주요 메뉴"><GlobalSidebar /></aside>}
+      {!isCompact && <aside className="global-sidebar" aria-label="주요 메뉴"><GlobalSidebar hideRegionSelectors={pathname === '/'} /></aside>}
       <main id="global-main" className="global-main min-w-0" tabIndex={-1}><RouteExperience><PageContainer>{children}</PageContainer></RouteExperience></main>
       {!isCompact && rightRail && <aside className="global-right-rail min-w-0" aria-label="추가 정보">{rightRail}</aside>}
     </div>
