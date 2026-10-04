@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Heart, MapPin, MessageCircle, PackageCheck, ShieldCheck, UserPlus, Users as UsersIcon, Video, X } from 'lucide-react';
+import { ArrowLeft, Heart, MapPin, MessageCircle, PackageCheck, Search, ShieldCheck, UserPlus, Users as UsersIcon, Video, X } from 'lucide-react';
 import { getDocument, getSessionToken, listEscrowOrdersForMember, listFriendConnections, listOnlineUsers, respondToFriendRequest, sendFriendRequest, type EscrowOrder, type FriendConnection, type OnlineUser, type PublicProfile } from '@/lib/firebase';
 import { canPhotoMatch, normalizeProfilePhotos } from '@/lib/profilePhotos';
 import { addMissingIncomingLikeCandidates, prioritizeIncomingLikes } from '@/lib/friendMatching';
@@ -48,6 +48,7 @@ export default function UsersPage() {
   const [friendships, setFriendships] = useState<FriendConnection[]>([]);
   const [incomingProfiles, setIncomingProfiles] = useState<Record<string, PublicProfile>>({});
   const [friendProfiles, setFriendProfiles] = useState<Record<string, Partial<PublicProfile>>>({});
+  const [friendSearch, setFriendSearch] = useState('');
   const [friendBusy, setFriendBusy] = useState('');
   const [friendError, setFriendError] = useState('');
   const selectionRequest = useRef(0);
@@ -150,6 +151,12 @@ export default function UsersPage() {
   });
   const allMatchingCandidates = addMissingIncomingLikeCandidates(onlineMatchingCandidates, offlineIncomingCandidates);
   const matchingCandidates = prioritizeIncomingLikes(allMatchingCandidates, friendships, user?.id);
+  const friendQuery = friendSearch.trim().toLocaleLowerCase();
+  const searchableFriendships = friendships.filter((connection) => {
+    const memberId = connection.requesterId === user?.id ? connection.addresseeId : connection.requesterId;
+    const name = onlineUsers.find((item) => item.id === memberId)?.name || friendProfiles[memberId]?.name || '친구 회원';
+    return name.toLocaleLowerCase().includes(friendQuery);
+  });
   const incomingLikeIds = user
     ? friendships.filter((connection) => connection.status === 'pending' && connection.addresseeId === user.id).map((connection) => connection.requesterId)
     : [];
@@ -254,21 +261,46 @@ export default function UsersPage() {
     <div className="category-page users-page min-h-[calc(100vh-64px)] bg-transparent px-4 py-8 md:py-12" data-mobile-tab={mobileTab}>
       <div className="users-mobile-bar">
         <Link href="/" className="users-mobile-action" aria-label={t('홈으로 돌아가기', 'Back to home')}><ArrowLeft size={19} aria-hidden="true" /></Link>
-         <div className="users-mobile-copy"><span>MATCHING</span><strong>{t('친구 매칭', 'Friend matching')}</strong><small>{t('서로 좋아요를 보내면 매칭돼요.', 'Like each other to match.')}</small></div>
+         <div className="users-mobile-copy"><span>MATCHING</span><strong>{t('매칭', 'Matching')}</strong><small>{t('서로 좋아요를 보내면 매칭돼요.', 'Like each other to match.')}</small></div>
       </div>
       <div className="category-shell mx-auto max-w-6xl">
         <header className="category-header">
           <div className="category-heading">
             <div className="mb-2 text-xs font-black uppercase tracking-[0.28em] text-indigo-500">MEMBER MATCHING</div>
-             <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">{t('친구 매칭', 'Friend matching')}</h1>
+              <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">{t('매칭', 'Matching')}</h1>
              <p className="mt-3 text-sm text-slate-500">{t('관심이 맞는 회원과 서로 동의하면 연결됩니다.', 'Meet members with shared interests when you both choose to connect.')}</p>
           </div>
         </header>
 
-        {user && !canPhotoMatch(user.profilePhotos) && <p className="users-profile-photo-note mb-6 border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-800">{t('친구 매칭을 이용하려면 공개 프로필 사진을 3장 이상 등록해주세요.', 'Add at least 3 public profile photos to use friend matching.')} <button type="button" className="underline" onClick={() => window.dispatchEvent(new Event('gyopo-profile-edit'))}>{t('사진 올리기', 'Add photos')}</button></p>}
+        {user && !canPhotoMatch(user.profilePhotos) && <p className="users-profile-photo-note mb-6 border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-800">{t('매칭을 이용하려면 공개 프로필 사진을 3장 이상 등록해주세요.', 'Add at least 3 public profile photos to use matching.')} <button type="button" className="underline" onClick={() => window.dispatchEvent(new Event('gyopo-profile-edit'))}>{t('사진 올리기', 'Add photos')}</button></p>}
         <FriendDiscoveryDeck viewerId={user?.id} canLike={canPhotoMatch(user?.profilePhotos)} candidates={matchingCandidates} incomingLikeIds={incomingLikeIds} busyId={friendBusy} error={friendError} onLike={likeCandidate} onPass={passCandidate} onProfile={showMember} onOpenChat={openFriendChat} />
 
-        {user && <section className="mb-8 rounded-[2rem] border border-indigo-100 bg-white p-5 shadow-sm"><div className="flex items-center justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">My network</div><h2 className="mt-1 text-xl font-black text-slate-950">친구 목록</h2><p className="mt-1 text-xs text-slate-500">친구를 선택해 바로 영상 통화를 시작하세요.</p></div><span className="shrink-0 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700">{friendships.filter((item) => item.status === 'accepted').length}명 친구</span></div><div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{friendships.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">아직 친구가 없습니다. 아래 회원 목록에서 친구 추가를 눌러보세요.</div> : friendships.map((connection) => { const memberId = connection.requesterId === user.id ? connection.addresseeId : connection.requesterId; const online = onlineUsers.find((item) => item.id === memberId); const profile = friendProfiles[memberId]; const name = online?.name || profile?.name || '친구 회원'; const image = online?.image || profile?.image; const incoming = connection.addresseeId === user.id && connection.status === 'pending'; return <div key={connection.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3"><div className="relative shrink-0">{image ? <img src={image} alt="" className="h-11 w-11 rounded-2xl object-cover" /> : <div className="grid h-11 w-11 place-items-center rounded-2xl bg-indigo-100 text-sm font-black text-indigo-700">{name.slice(0, 1)}</div>}{online && <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-black text-slate-900">{name}</div><div className="truncate text-[11px] text-slate-400">{online?.country || profile?.country || (online ? '온라인' : '오프라인')}</div></div>{connection.status === 'accepted' ? <Link href={`/webrtc?friend=${encodeURIComponent(memberId)}`} className="shrink-0 rounded-xl bg-indigo-600 px-2.5 py-2 text-[11px] font-black text-white">영상통화</Link> : incoming ? <button type="button" disabled={friendBusy === connection.id} onClick={() => void acceptFriend(connection)} className="shrink-0 rounded-xl bg-emerald-500 px-2.5 py-2 text-[11px] font-black text-slate-950 disabled:opacity-50">수락</button> : <span className="shrink-0 text-[10px] font-bold text-slate-400">대기 중</span>}</div>; })}</div></section>}
+        {user && <section id="friend-list" className="users-friend-list mb-8 rounded-[1.5rem] border border-indigo-100 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500">MY NETWORK</div><h2 className="mt-1 text-xl font-black text-slate-950">친구 목록</h2><p className="mt-1 text-xs text-slate-500">친구를 선택해 바로 영상 통화를 시작하세요.</p></div>
+            <span className="shrink-0 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700">{friendships.filter((item) => item.status === 'accepted').length}명 친구</span>
+            <label className="flex min-h-10 w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-slate-400 focus-within:border-indigo-300 sm:ml-auto sm:w-64">
+              <Search size={15} aria-hidden="true" />
+              <input type="search" value={friendSearch} onChange={(event) => setFriendSearch(event.target.value)} placeholder={t('친구 이름 검색', 'Search friends by name')} aria-label={t('친구 이름 검색', 'Search friends by name')} className="min-w-0 flex-1 border-0 bg-transparent py-2 text-xs text-slate-800 outline-none placeholder:text-slate-400" />
+              {friendSearch && <button type="button" onClick={() => setFriendSearch('')} aria-label={t('검색 지우기', 'Clear search')} className="text-slate-400 hover:text-slate-700"><X size={14} /></button>}
+            </label>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {friendships.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">아직 친구가 없습니다. 아래 회원 목록에서 친구 추가를 눌러보세요.</div> : searchableFriendships.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">{t('이름이 일치하는 친구가 없습니다.', 'No friends match that name.')}</div> : searchableFriendships.map((connection) => {
+              const memberId = connection.requesterId === user.id ? connection.addresseeId : connection.requesterId;
+              const online = onlineUsers.find((item) => item.id === memberId);
+              const profile = friendProfiles[memberId];
+              const name = online?.name || profile?.name || '친구 회원';
+              const image = online?.image || profile?.image;
+              const incoming = connection.addresseeId === user.id && connection.status === 'pending';
+              return <div key={connection.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="relative shrink-0">{image ? <img src={image} alt="" className="h-11 w-11 rounded-2xl object-cover" /> : <div className="grid h-11 w-11 place-items-center rounded-2xl bg-indigo-100 text-sm font-black text-indigo-700">{name.slice(0, 1)}</div>}{online && <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />}</div>
+                <div className="min-w-0 flex-1"><div className="truncate text-sm font-black text-slate-900">{name}</div><div className="truncate text-[11px] text-slate-400">{online?.country || profile?.country || (online ? '온라인' : '오프라인')}</div></div>
+                {connection.status === 'accepted' ? <Link href={`/webrtc?friend=${encodeURIComponent(memberId)}`} className="shrink-0 rounded-xl bg-indigo-600 px-2.5 py-2 text-[11px] font-black text-white">영상통화</Link> : incoming ? <button type="button" disabled={friendBusy === connection.id} onClick={() => void acceptFriend(connection)} className="shrink-0 rounded-xl bg-emerald-500 px-2.5 py-2 text-[11px] font-black text-slate-950 disabled:opacity-50">수락</button> : <span className="shrink-0 text-[10px] font-bold text-slate-400">대기 중</span>}
+              </div>;
+            })}
+          </div>
+        </section>}
 
         <details className="mt-8 rounded-[1.5rem] border border-white/10 bg-white/[.025]">
          <summary className="cursor-pointer px-5 py-4 text-sm font-black text-slate-200">{t('온라인 회원 전체 목록', 'All online members')} <span className="ml-1 text-xs text-slate-500">{isKorean ? `${onlineUsers.length}명` : onlineUsers.length}</span></summary>
