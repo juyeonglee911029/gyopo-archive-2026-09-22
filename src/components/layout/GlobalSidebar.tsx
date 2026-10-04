@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { BriefcaseBusiness, CalendarDays, ChevronDown, Film, Gamepad2, Home, MessageCircle, Music2, Newspaper, ShoppingBag, Store, UserRoundCheck, Video } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { BriefcaseBusiness, CalendarDays, Check, ChevronDown, Film, Gamepad2, Home, MessageCircle, Music2, Newspaper, Search, ShoppingBag, Store, UserRoundCheck, Video } from 'lucide-react';
 import { COUNTRY_ROUTES, cityHref, countryHref, countryForRegion, getCityRoute, getCountryRoute, getPublicServiceRoute, getRegionalCategory } from '@/lib/regionRoutes';
 import { REGIONS } from '@/lib/regions';
 import { PUBLIC_CATEGORIES } from '@/lib/publicCategories';
@@ -21,7 +21,7 @@ const navigationGroups = [
     { id: 'events', href: '/regions', label: '행사', english: 'Events', icon: CalendarDays },
   ] },
   { title: 'DISCOVER', korean: '둘러보기', links: [
-    { id: 'friends', href: '/users', label: '친구 매칭', english: 'Friend matching', icon: UserRoundCheck },
+    { id: 'friends', href: '/users', label: '매칭', english: 'Matching', icon: UserRoundCheck },
     { id: 'music', href: '/music', label: '음악', english: 'Music', icon: Music2 },
     { id: 'watch', href: '/watch', label: '영상', english: 'Watch', icon: Film },
     { id: 'games', href: '/games', label: '테트리스', english: 'Tetris', icon: Gamepad2 },
@@ -80,39 +80,103 @@ export function GlobalRegionSelectors({ compact = false, onNavigate }: { compact
   const language = useGlobalStore((state) => state.language);
   const { country, city } = getSidebarLocation(pathname, selectedCountry);
   const global = REGIONS[0];
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [openMenu, setOpenMenu] = useState<'country' | 'city' | null>(null);
+  const [locationQuery, setLocationQuery] = useState('');
+  const normalizedQuery = locationQuery.trim().toLocaleLowerCase();
+  const matchingCountries = COUNTRY_ROUTES.filter((item) => `${item.label} ${item.english} ${item.id} ${item.slug}`.toLocaleLowerCase().includes(normalizedQuery));
+  const matchingCities = (country?.cities || []).filter((item) => `${item.label} ${item.english} ${item.slug}`.toLocaleLowerCase().includes(normalizedQuery));
+  const globalLabel = language === 'ko' ? global.label : 'All regions';
 
-  return <div className={`global-region-selectors${compact ? ' is-compact' : ''}`}>
-    <label className="global-region-field">
+  useEffect(() => {
+    if (openMenu) searchRef.current?.focus();
+  }, [openMenu]);
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (pickerRef.current?.contains(event.target as Node)) return;
+      setOpenMenu(null);
+      setLocationQuery('');
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpenMenu(null);
+      setLocationQuery('');
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [openMenu]);
+
+  const toggleMenu = (menu: 'country' | 'city') => {
+    setLocationQuery('');
+    setOpenMenu((current) => current === menu ? null : menu);
+  };
+
+  const chooseCountry = (nextCountryId: string) => {
+    const next = getCountryRoute(nextCountryId);
+    const countryId = next?.id || global.id;
+    setSelectedCountry(countryId);
+    const href = getRegionSelectorHref(pathname, selectedCountry, countryId);
+    if (beginRoute(href)) router.push(href);
+    setOpenMenu(null);
+    setLocationQuery('');
+    onNavigate?.();
+  };
+
+  const chooseCity = (citySlug: string) => {
+    if (!country) return;
+    const next = getCityRoute(country.slug, citySlug);
+    setSelectedCountry(country.id);
+    const href = next ? cityHref(next) : countryHref(country.id);
+    if (beginRoute(href)) router.push(href);
+    setOpenMenu(null);
+    setLocationQuery('');
+    onNavigate?.();
+  };
+
+  return <div ref={pickerRef} className={`global-region-selectors global-region-picker${compact ? ' is-compact' : ''}`}>
+    <div className="global-location-field">
       <span className={compact ? 'sr-only' : 'global-region-label'}>{language === 'ko' ? '국가' : 'Country'}</span>
-      <select aria-label={language === 'ko' ? '국가 선택' : 'Select country'} value={country?.id || global.id} onChange={(event) => {
-        const next = getCountryRoute(event.target.value);
-        setSelectedCountry(next?.id || global.id);
-        const href = getRegionSelectorHref(pathname, selectedCountry, next?.id || global.id);
-        if (beginRoute(href)) router.push(href);
-        onNavigate?.();
-      }}>
-        <option value={global.id}>{global.flag} {language === 'ko' ? global.label : 'All regions'}</option>
-        {COUNTRY_ROUTES.map((item) => <option key={item.id} value={item.id}>{item.flag} {language === 'ko' ? item.label : item.english}</option>)}
-      </select>
-    </label>
-    {!compact && <label className="global-region-field">
+      <button type="button" className="global-location-trigger" aria-label={language === 'ko' ? '국가 선택' : 'Select country'} aria-expanded={openMenu === 'country'} aria-haspopup="listbox" aria-controls={openMenu === 'country' ? 'global-country-options' : undefined} onClick={() => toggleMenu('country')}>
+        <span className="global-location-flag" aria-hidden="true">{country?.flag || global.flag}</span>
+        <span className="global-location-value">{country ? (language === 'ko' ? country.label : country.english) : globalLabel}</span>
+        <ChevronDown size={14} aria-hidden="true" />
+      </button>
+      {openMenu === 'country' && <div className="global-location-popover">
+        <label className="global-location-search"><Search size={15} aria-hidden="true" /><input ref={searchRef} type="search" value={locationQuery} onChange={(event) => setLocationQuery(event.target.value)} placeholder={language === 'ko' ? '국가 이름 검색' : 'Search countries'} aria-label={language === 'ko' ? '국가 이름 검색' : 'Search countries'} /></label>
+        <div className="global-location-options" id="global-country-options" role="listbox" aria-label={language === 'ko' ? '국가 목록' : 'Country list'}>
+          {(!normalizedQuery || `${globalLabel} global all regions`.toLocaleLowerCase().includes(normalizedQuery)) && <button type="button" role="option" aria-selected={!country} className="global-location-option" onClick={() => chooseCountry(global.id)}><span className="global-location-flag" aria-hidden="true">{global.flag}</span><span>{globalLabel}</span>{!country && <Check size={14} aria-hidden="true" />}</button>}
+          {matchingCountries.map((item) => <button type="button" role="option" aria-selected={country?.id === item.id} key={item.id} className="global-location-option" onClick={() => chooseCountry(item.id)}><span className="global-location-flag" aria-hidden="true">{item.flag}</span><span>{language === 'ko' ? item.label : item.english}</span>{country?.id === item.id && <Check size={14} aria-hidden="true" />}</button>)}
+          {matchingCountries.length === 0 && normalizedQuery && <p className="global-location-empty">{language === 'ko' ? '일치하는 국가가 없습니다.' : 'No countries found.'}</p>}
+        </div>
+        <span className="global-location-count">{COUNTRY_ROUTES.length + 1} {language === 'ko' ? '개 지역' : 'locations'}</span>
+      </div>}
+    </div>
+    {!compact && <div className="global-location-field">
       <span className="global-region-label">{language === 'ko' ? '도시' : 'City'}</span>
-      <select aria-label={language === 'ko' ? '도시 선택' : 'Select city'} value={city?.slug || ''} disabled={!country || !country.cities.length} onChange={(event) => {
-        if (!country) return;
-        const next = getCityRoute(country.slug, event.target.value);
-        setSelectedCountry(country.id);
-        const href = next ? cityHref(next) : countryHref(country.id);
-        if (beginRoute(href)) router.push(href);
-        onNavigate?.();
-      }}>
-        <option value="">{language === 'ko' ? '전체 도시' : 'All cities'}</option>
-        {country?.cities.map((item) => <option key={item.slug} value={item.slug}>{language === 'ko' ? item.label : item.english}</option>)}
-      </select>
-    </label>}
+      <button type="button" className="global-location-trigger" aria-label={language === 'ko' ? '도시 선택' : 'Select city'} aria-expanded={openMenu === 'city'} aria-haspopup="listbox" aria-controls={openMenu === 'city' ? 'global-city-options' : undefined} disabled={!country || !country.cities.length} onClick={() => toggleMenu('city')}>
+        <span className="global-location-value">{city ? (language === 'ko' ? city.label : city.english) : language === 'ko' ? '전체 도시' : 'All cities'}</span>
+        <ChevronDown size={14} aria-hidden="true" />
+      </button>
+      {openMenu === 'city' && country && <div className="global-location-popover">
+        <label className="global-location-search"><Search size={15} aria-hidden="true" /><input ref={searchRef} type="search" value={locationQuery} onChange={(event) => setLocationQuery(event.target.value)} placeholder={language === 'ko' ? '도시 이름 검색' : 'Search cities'} aria-label={language === 'ko' ? '도시 이름 검색' : 'Search cities'} /></label>
+        <div className="global-location-options" id="global-city-options" role="listbox" aria-label={language === 'ko' ? '도시 목록' : 'City list'}>
+          {(!normalizedQuery || (language === 'ko' ? '전체 도시' : 'all cities').toLocaleLowerCase().includes(normalizedQuery)) && <button type="button" role="option" aria-selected={!city} className="global-location-option" onClick={() => chooseCity('')}><span>{language === 'ko' ? '전체 도시' : 'All cities'}</span>{!city && <Check size={14} aria-hidden="true" />}</button>}
+          {matchingCities.map((item) => <button type="button" role="option" aria-selected={city?.slug === item.slug} key={item.slug} className="global-location-option" onClick={() => chooseCity(item.slug)}><span>{language === 'ko' ? item.label : item.english}</span>{city?.slug === item.slug && <Check size={14} aria-hidden="true" />}</button>)}
+          {matchingCities.length === 0 && normalizedQuery && <p className="global-location-empty">{language === 'ko' ? '일치하는 도시가 없습니다.' : 'No cities found.'}</p>}
+        </div>
+      </div>}
+    </div>}
   </div>;
 }
 
-export default function GlobalSidebar({ onNavigate }: { onNavigate?: () => void }) {
+export default function GlobalSidebar({ onNavigate, hideRegionSelectors = false }: { onNavigate?: () => void; hideRegionSelectors?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const user = useGlobalStore((state) => state.user);
@@ -123,7 +187,7 @@ export default function GlobalSidebar({ onNavigate }: { onNavigate?: () => void 
   const renderedNavigationIds = new Set<string>();
 
   return <div className="global-sidebar-content">
-    <GlobalRegionSelectors onNavigate={onNavigate} />
+    {!hideRegionSelectors && <GlobalRegionSelectors onNavigate={onNavigate} />}
     {navigationGroups.map((group) => {
       const collapsed = Boolean(collapsedGroups[group.title]);
       const groupLabel = language === 'ko' ? group.korean : group.title;
@@ -153,6 +217,6 @@ export default function GlobalSidebar({ onNavigate }: { onNavigate?: () => void 
         }
         const anchor = window.matchMedia('(min-width: 769px)').matches ? { left: rect.left, top: rect.top, bottom: rect.bottom } : undefined;
         window.dispatchEvent(new CustomEvent('gyopo-friends-open', { detail: { anchor } }));
-       }}><UserRoundCheck size={18} aria-hidden="true" /><span>{language === 'ko' ? '친구 매칭' : 'Friend matching'}</span></button>
+        }}><UserRoundCheck size={18} aria-hidden="true" /><span>{language === 'ko' ? '친구' : 'Friends'}</span></button>
   </div>;
 }

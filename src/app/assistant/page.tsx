@@ -248,16 +248,12 @@ function AssistantExperience() {
 
   return (
     <div className="category-page assistant-page relative min-h-[calc(100dvh-4rem)] overflow-hidden bg-[radial-gradient(circle_at_75%_0%,rgba(45,212,191,.14),transparent_28%),radial-gradient(circle_at_10%_40%,rgba(56,189,248,.1),transparent_30%)] text-slate-100">
-      <div className="category-shell relative mx-auto flex min-h-[calc(100dvh-4rem)] max-w-[1440px] flex-col px-4 pb-10 pt-5 sm:px-6 lg:px-10">
-        <header className="category-header" aria-label="AI 검색 헤더">
-          <div className="category-heading">
-              <p className="font-display text-[10px] font-black uppercase tracking-[.25em] text-cyan-300">ASK · FIND · MOVE</p>
-              <h1 className="mt-3 text-3xl font-black leading-tight tracking-[-.04em] text-white">필요한 답을,<br /><span className="text-teal-200">다음 행동까지.</span></h1>
-              <p className="mt-4 text-sm leading-6 text-slate-400">지역 생활정보부터 학습, 여행, 업무까지 한국어로 질문해보세요. 답변이 필요한 만큼 충분히 설명해드립니다.</p>
-          </div>
+      <div className="category-shell relative mx-auto flex min-h-[calc(100dvh-4rem)] max-w-[1440px] flex-col px-4 pb-10 pt-3 sm:px-6 lg:px-10">
+        <header className="assistant-toolbar" aria-label="AI 검색">
+          <h1 className="sr-only">GYOPO AI 검색</h1>
           <div className="flex items-center gap-2">
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-2 text-[10px] font-black ${authState === 'signed-in' ? 'bg-emerald-300/10 text-emerald-200' : 'bg-white/[.06] text-slate-400'}`}><span className={`h-1.5 w-1.5 ${authState === 'signed-in' ? 'bg-emerald-300' : 'bg-slate-500'}`} />{statusLabel}</span>
-            <Link href="/" className="inline-flex items-center gap-1.5 px-2.5 py-2 text-xs font-black text-slate-300 transition hover:bg-white/[.07] hover:text-white"><ArrowLeft size={14} /> 포털 홈</Link>
+            <Link href="/" className="inline-flex items-center gap-1.5 px-2.5 py-2 text-xs font-black text-slate-300 transition hover:bg-white/[.07] hover:text-white"><ArrowLeft size={14} /> 홈</Link>
           </div>
         </header>
 
@@ -275,16 +271,8 @@ function AssistantExperience() {
         </details>
 
         <div className="assistant-workspace grid flex-1 gap-8 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-12">
-          <aside className="flex flex-col" aria-label="GYOPO AI 안내와 포털 이동">
-            <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center bg-gradient-to-br from-teal-300 to-cyan-300 text-slate-950 shadow-[0_0_28px_rgba(45,212,191,.25)]" aria-hidden="true"><Sparkles size={19} /></span>
-              <div>
-                <p className="font-display text-[10px] font-black uppercase tracking-[.25em] text-teal-200">GYOPO SMART SEARCH</p>
-                <p className="mt-1 text-xs text-slate-400">교민 생활과 일반 질문을 위한 AI 도우미</p>
-              </div>
-            </div>
-
-            <nav className="mt-8" aria-label="포털 바로가기">
+          <aside className="flex flex-col" aria-label="검색 관련 메뉴와 최근 질문">
+            <nav className="mt-2" aria-label="포털 바로가기">
               <p className="mb-3 text-[10px] font-black uppercase tracking-[.2em] text-slate-500">Portal areas</p>
               <div className="grid gap-1">
                 {PORTAL_LINKS.map(({ href, label, detail, icon: Icon }) => (
@@ -297,7 +285,7 @@ function AssistantExperience() {
               </div>
             </nav>
 
-            <section className="mt-8 pt-6 ring-1 ring-white/10 ring-inset" aria-labelledby="recent-questions-heading">
+            <section className="mt-6 pt-5 ring-1 ring-white/10 ring-inset" aria-labelledby="recent-questions-heading">
               <div className="flex items-center gap-2 px-2"><History size={14} className="text-cyan-200" /><h2 id="recent-questions-heading" className="text-[10px] font-black uppercase tracking-[.2em] text-slate-400">최근 질문</h2></div>
               {recentQueries.length > 0 ? (
                 <ul className="mt-3 grid gap-1">
@@ -311,9 +299,7 @@ function AssistantExperience() {
             {messages.length === 0 ? (
               <section className="flex flex-1 flex-col justify-center py-4 lg:min-h-[32rem]" aria-labelledby="assistant-heading">
                 <div className="max-w-3xl">
-                  <span className="inline-flex items-center gap-2 bg-teal-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-[.18em] text-teal-200"><Sparkles size={13} /> AI 생활 검색</span>
-                  <h2 id="assistant-heading" className="mt-5 max-w-2xl text-4xl font-black leading-[1.05] tracking-[-.06em] text-white sm:text-6xl">무엇을 도와드릴까요?</h2>
-                  <p className="mt-5 max-w-xl text-sm leading-7 text-slate-400 sm:text-base">질문을 한 문장으로 적어보세요. GYOPO AI가 핵심 답변과 현실적인 다음 단계를 함께 정리합니다.</p>
+                  <h2 id="assistant-heading" className="max-w-2xl text-4xl font-black leading-[1.05] tracking-[-.06em] text-white sm:text-6xl">무엇을 찾으세요?</h2>
                 </div>
                 <div className="mt-10 grid max-w-4xl gap-2 sm:grid-cols-2" aria-label="추천 질문">
                   {SUGGESTIONS.map(({ label, prompt, icon: Icon }) => <button key={label} type="button" onClick={() => { setInput(prompt); void askQuestion(prompt); }} className="group flex min-w-0 items-center gap-3 bg-white/[.045] px-4 py-4 text-left ring-1 ring-white/10 transition hover:bg-teal-300/[.08] hover:ring-teal-200/30"><span className="grid h-9 w-9 shrink-0 place-items-center bg-white/[.07] text-teal-200 group-hover:bg-teal-300/10"><Icon size={17} /></span><span className="min-w-0 flex-1"><b className="block text-sm font-black text-slate-200">{label}</b><small className="mt-1 block truncate text-xs text-slate-500">{prompt}</small></span><ArrowRight size={15} className="shrink-0 text-slate-600 transition group-hover:translate-x-1 group-hover:text-teal-200" /></button>)}

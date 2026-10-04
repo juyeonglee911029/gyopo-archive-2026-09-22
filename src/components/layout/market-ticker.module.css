@@ -1,0 +1,70 @@
+.panel { min-width: 0; overflow: hidden; border: 1px solid rgba(143, 188, 202, .16); border-radius: 17px; background: linear-gradient(125deg, rgba(10, 19, 32, .94), rgba(13, 19, 34, .94)); box-shadow: 0 18px 48px rgba(0, 0, 0, .14); }
+.header { display: flex; align-items: center; gap: 11px; padding: 15px 17px 13px; border-bottom: 1px solid rgba(160, 190, 205, .1); }
+.headerIcon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(113, 224, 211, .16); border-radius: 10px; background: rgba(75, 215, 195, .09); color: #83ead8; }
+.headingCopy { min-width: 0; }
+.headingCopy > span, .converterHeading > div > span { display: block; color: #7d9ba9; font-size: 8px; font-weight: 900; letter-spacing: .17em; }
+.headingCopy h2 { margin: 3px 0 0; color: #eff6f7; font-size: 15px; font-weight: 800; letter-spacing: -.035em; }
+.headerActions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.updated { color: #718697; font-size: 9px; white-space: nowrap; }
+.refresh, .swap { display: grid; flex: 0 0 auto; place-items: center; border: 1px solid rgba(155, 184, 198, .14); border-radius: 8px; background: rgba(255, 255, 255, .035); color: #9db1bf; cursor: pointer; transition: color .16s ease, background .16s ease, border-color .16s ease; }
+.refresh { width: 30px; height: 30px; }
+.refresh:hover, .swap:hover { border-color: rgba(119, 235, 216, .4); background: rgba(94, 234, 212, .09); color: #a9f7e7; }
+.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(225px, .8fr); gap: 15px; padding: 14px; }
+.coinGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-content: start; gap: 8px; min-width: 0; }
+.coin { display: grid; align-content: start; gap: 9px; min-width: 0; min-height: 99px; padding: 11px 10px; border: 1px solid rgba(150, 179, 196, .11); border-radius: 11px; background: linear-gradient(145deg, rgba(20, 31, 49, .74), rgba(11, 20, 34, .8)); }
+.coinTop { display: flex; align-items: center; justify-content: space-between; gap: 5px; min-width: 0; }
+.coinSymbol { color: #e7f0f2; font-size: 11px; font-weight: 900; letter-spacing: .04em; }
+.coinName { min-width: 0; overflow: hidden; color: #6f8798; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.coinPrice { overflow: hidden; color: #f2f7f8; font-size: clamp(12px, 1.15vw, 15px); font-variant-numeric: tabular-nums; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
+.change { display: inline-flex; align-items: center; gap: 2px; font-size: 9px; font-variant-numeric: tabular-nums; }
+.positive { color: #67ddbd; }
+.negative { color: #f49aab; }
+.changeUnavailable { color: #718697; }
+.marketStatus { display: flex; grid-column: 1 / -1; align-items: center; gap: 8px; min-height: 94px; padding: 12px; color: #879baa; font-size: 10px; line-height: 1.6; }
+
+.converter { display: grid; align-content: start; gap: 10px; min-width: 0; padding: 12px; border: 1px solid rgba(132, 161, 183, .13); border-radius: 12px; background: rgba(255, 255, 255, .025); }
+.converterHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.converterHeading > div > strong { display: block; margin-top: 4px; color: #e4edf1; font-size: 11px; font-weight: 800; }
+.swap { width: 29px; height: 29px; }
+.amountField { display: grid; gap: 5px; color: #718899; font-size: 8px; font-weight: 750; }
+.currencyField { display: grid; grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr); min-width: 0; border: 1px solid rgba(150, 179, 196, .13); border-radius: 8px; background: rgba(3, 9, 18, .47); }
+.currencyField input, .currencyField select, .resultTop select { min-width: 0; border: 0; outline: 0; background: transparent; color: #dce8ed; font: inherit; }
+.currencyField input { width: 100%; padding: 9px 8px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.currencyField select { padding: 8px 5px; border-left: 1px solid rgba(150, 179, 196, .13); color: #9eb6c2; font-size: 9px; }
+.currencyField option, .resultTop option { background: #0c1727; color: #e3edf0; }
+.resultField { display: grid; gap: 5px; min-height: 57px; padding: 9px 10px; border: 1px solid rgba(103, 222, 194, .16); border-radius: 9px; background: linear-gradient(120deg, rgba(39, 129, 117, .1), rgba(48, 46, 99, .1)); }
+.resultTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #729390; font-size: 8px; font-weight: 800; }
+.resultTop select { width: auto; max-width: 68%; color: #a3c5bf; font-size: 9px; text-align: right; }
+.resultField > strong { overflow: hidden; color: #c3ffe8; font-size: 16px; font-variant-numeric: tabular-nums; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
+.disclaimer { margin: -1px 0 0; color: #667d8a; font-size: 8px; line-height: 1.5; }
+
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .coinGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .converter { grid-template-columns: minmax(100px, .65fr) minmax(0, 1fr) minmax(0, 1fr); align-items: end; }
+  .converterHeading { grid-column: 1; grid-row: 1; }
+  .amountField { grid-column: 2; }
+  .resultField { grid-column: 3; }
+  .disclaimer { grid-column: 1 / -1; }
+}
+
+@media (max-width: 600px) {
+  .header { padding: 12px; }
+  .headingCopy h2 { font-size: 13px; }
+  .updated { font-size: 8px; }
+  .layout { gap: 10px; padding: 10px; }
+  .coinGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .coin { min-height: 92px; padding: 10px; }
+  .coinPrice { font-size: 14px; }
+  .converter { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+  .converterHeading, .amountField, .resultField, .disclaimer { grid-column: 1; }
+  .converterHeading { grid-row: auto; }
+  .currencyField { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .currencyField input { font-size: 13px; }
+  .resultField > strong { font-size: 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) { .refresh, .swap { transition: none; } .spinning { animation-duration: 5s; } }

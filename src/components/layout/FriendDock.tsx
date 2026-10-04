@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Ban, Check, FileText, MessageCircle, MoreHorizontal, Paperclip, PhoneCall, Send, UserMinus, UserPlus, UserRoundCheck, X } from 'lucide-react';
+import { Ban, Check, FileText, MessageCircle, MoreHorizontal, Paperclip, PhoneCall, Search, Send, UserMinus, UserPlus, UserRoundCheck, Video, X } from 'lucide-react';
 import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFreshSessionToken, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, listOnlineUsers, manageFriendConnection, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
 
@@ -41,6 +41,7 @@ export default function FriendDock() {
   const [open, setOpen] = useState(false);
   const [friends, setFriends] = useState<FriendMember[]>([]);
   const [friendsLoading, setFriendsLoading] = useState(false);
+  const [friendSearch, setFriendSearch] = useState('');
   const [onlineFriendIds, setOnlineFriendIds] = useState<Set<string> | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const [friendActionMenuId, setFriendActionMenuId] = useState('');
@@ -199,6 +200,7 @@ export default function FriendDock() {
     if (!user) {
       friendOwnerIdRef.current = '';
       setFriends([]);
+      setFriendSearch('');
       setSelectedId('');
       setVideoCall(null);
       setPendingCall(null);
@@ -209,6 +211,7 @@ export default function FriendDock() {
     if (friendOwnerIdRef.current !== user.id) {
       friendOwnerIdRef.current = user.id;
       setFriends([]);
+      setFriendSearch('');
       setSelectedId('');
       setOnlineFriendIds(null);
     }
@@ -527,6 +530,8 @@ export default function FriendDock() {
     }
   };
 
+  const visibleFriends = friends.filter((friend) => (friend.name || '').toLocaleLowerCase().includes(friendSearch.trim().toLocaleLowerCase()));
+
   if (!user) return null;
 
   return (
@@ -551,11 +556,16 @@ export default function FriendDock() {
               <div className="p-8 text-center"><UserRoundCheck size={28} className="mx-auto text-slate-600" /><p className="mt-3 text-sm font-bold text-slate-300">{isKorean ? '아직 매칭된 친구가 없습니다.' : 'No matches yet.'}</p><p className="mt-1 text-xs text-slate-500">{isKorean ? '받은 좋아요는 매칭 카드에 먼저 표시됩니다. 서로 좋아요를 보내면 대화할 수 있어요.' : 'Incoming likes appear first in matching. Like each other to start chatting.'}</p><Link href="/users" className="mt-4 inline-flex items-center gap-2 border border-cyan-200/25 bg-cyan-300/10 px-4 py-2.5 text-xs font-black text-cyan-100 transition hover:bg-cyan-300/20"><UserPlus size={14} />{isKorean ? '매칭 카드 보기' : 'Open matching'}</Link></div>
           ) : (
             <>
-              <div className="border-y border-white/10 px-3 py-2 text-[10px] font-black text-slate-400">
-                <span>{isKorean ? '친구 목록' : 'Friends'}</span>
-              </div>
-              <div className="friend-list max-h-40 space-y-1 overflow-y-auto px-2.5 py-2">
-                {friends.map((friend) => {
+               <div className="flex items-center justify-between border-y border-white/10 px-3 py-2 text-[10px] font-black text-slate-400">
+                 <span>{isKorean ? '친구 목록' : 'Friends'}</span><span>{friends.length}</span>
+               </div>
+               <label className="mx-3 mt-2 flex min-h-9 items-center gap-2 border border-white/10 bg-white/[.04] px-2.5 text-slate-500 focus-within:border-cyan-200/50">
+                 <Search size={14} aria-hidden="true" />
+                 <input type="search" value={friendSearch} onChange={(event) => setFriendSearch(event.target.value)} placeholder={t('친구 이름 검색', 'Search friends by name')} aria-label={t('친구 이름 검색', 'Search friends by name')} className="min-w-0 flex-1 border-0 bg-transparent py-2 text-xs text-white outline-none placeholder:text-slate-500" />
+                 {friendSearch && <button type="button" onClick={() => setFriendSearch('')} aria-label={t('검색 지우기', 'Clear search')} className="border-0 bg-transparent p-1 text-slate-400 hover:text-white"><X size={13} /></button>}
+               </label>
+               <div className="friend-list max-h-40 space-y-1 overflow-y-auto px-2.5 py-2">
+                 {visibleFriends.length === 0 ? <p className="px-2 py-5 text-center text-xs text-slate-500">{t('검색 결과가 없습니다.', 'No matching friends.')}</p> : visibleFriends.map((friend) => {
                   const online = onlineFriendIds?.has(friend.id) || false;
                   const statusLabel = onlineFriendIds === null
                     ? (isKorean ? '상태 확인 중' : 'Checking status')
@@ -574,7 +584,7 @@ export default function FriendDock() {
                       </button>
                       <span className="friend-row-actions">
                         <button type="button" onClick={() => setSelectedId(friend.id)} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '채팅 열기' : 'open chat'}`} title={isKorean ? '채팅 열기' : 'Open chat'} className="friend-row-action"><MessageCircle size={15} /></button>
-                        <button type="button" onClick={() => { setSelectedId(friend.id); void requestVideoCall(friend.id); }} disabled={Boolean(pendingCall || videoCall)} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '통화 요청' : 'call'}`} title={isKorean ? '통화 요청' : 'Call'} className="friend-row-action"><PhoneCall size={15} /></button>
+                        {online && <button type="button" onClick={() => { setSelectedId(friend.id); setFriendActionMenuId(''); void requestVideoCall(friend.id); }} disabled={Boolean(pendingCall || videoCall)} aria-label={t(`${friend.name || '친구'}에게 영상 통화 걸기`, `Video call ${friend.name || 'friend'}`)} title={t('영상 통화 걸기', 'Start video call')} className="friend-row-action"><Video size={15} /></button>}
                         <button type="button" disabled={pendingCall?.friendId === friend.id} onClick={() => setFriendActionMenuId((current) => current === friend.id ? '' : friend.id)} aria-label={t(`${friend.name || '친구'} 관리 메뉴`, `Manage ${friend.name || 'friend'}`)} aria-expanded={friendActionMenuId === friend.id} title={pendingCall?.friendId === friend.id ? t('통화 요청이 끝난 뒤 관리할 수 있습니다', 'Manage this friend after the call request ends') : t('친구 관리', 'Manage friend')} className="friend-row-action"><MoreHorizontal size={16} /></button>
                       </span>
                     </div>

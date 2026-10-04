@@ -59,13 +59,49 @@ test('page styles are route-owned, not persistent React stylesheet resources', (
 
 test('homepage panels use translucent backgrounds', () => {
   const home = read('src/app/home.module.css');
-  for (const name of ['intro', 'region', 'quickLinks', 'categories', 'feed', 'connect']) {
-    const block = home.match(new RegExp(`\\.${name} \\{([^}]*)\\}`))?.[1];
+  for (const name of ['quickLinks', 'categories', 'feed', 'connect']) {
+    const block = home.match(new RegExp(`(?:^|\\n)\\.${name} \\{([^}]*)\\}`))?.[1];
     assert.ok(block, `${name} panel exists`);
     assert.match(block, /#[\da-f]{8}/i, `${name} panel has an alpha color`);
   }
   assert.match(home, /\.search \{[^}]*background: #[\da-f]{8}/i);
-  assert.match(home, /\.regionSelect select \{[^}]*background: #[\da-f]{8}/i);
+});
+
+test('homepage hero makes search and online matching immediately visible', () => {
+  const page = read('src/app/page.tsx');
+  const hero = page.match(/<section className=\{styles\.hero\} aria-label="GYOPO 시작">([\s\S]*?)<\/section>/)?.[1];
+
+  assert.ok(hero, 'homepage discovery hero exists');
+  assert.match(hero, /<form role="search"[\s\S]*?className=\{styles\.search\}/);
+  assert.match(hero, /<h1>/);
+  assert.match(hero, /<Link href="\/users" className=\{styles\.matchCard\}/);
+  assert.match(hero, /매칭 시작/);
+  assert.doesNotMatch(hero, /WorldClock|styles\.region|styles\.searchLinks/);
+  assert.doesNotMatch(page, /세계 어디서나|YOUR GLOBAL CONNECTION/);
+  assert.match(page, /<MarketTicker\s*\/>/);
+});
+
+test('country and city selectors are searchable and close accessibly', () => {
+  const sidebar = read('src/components/layout/GlobalSidebar.tsx');
+  const styles = read('src/app/experience-refinements.css');
+  assert.match(sidebar, /placeholder=\{language === 'ko' \? '국가 이름 검색' : 'Search countries'\}/);
+  assert.match(sidebar, /placeholder=\{language === 'ko' \? '도시 이름 검색' : 'Search cities'\}/);
+  assert.match(sidebar, /matchingCountries\.map/);
+  assert.match(sidebar, /matchingCities\.map/);
+  assert.match(sidebar, /event\.key !== 'Escape'/);
+  assert.match(styles, /\.global-region-picker \.global-location-trigger/);
+  assert.match(styles, /\.global-location-options\s*\{[^}]*max-height: 250px;/s);
+});
+
+test('home market panel converts major coins to KRW without fabricating missing FX rates', () => {
+  const ticker = read('src/components/layout/MarketTicker.tsx');
+  assert.match(ticker, /new Set\(\['bitcoin', 'ethereum', 'ripple', 'solana'\]\)/);
+  assert.match(ticker, /formatCurrency\(priceKrw, 'KRW'\)/);
+  assert.match(ticker, /setFrom\(to\); setTo\(from\)/);
+  assert.match(ticker, /value === null \|\| !Number\.isFinite\(value\)\) return '--'/);
+  assert.match(ticker, /const changeValue = typeof asset\.change === 'number' && Number\.isFinite\(asset\.change\) \? asset\.change : null/);
+  assert.match(ticker, /typeof fromRate === 'number' && fromRate > 0/);
+  assert.doesNotMatch(ticker, /rates\[from\]\s*\|\|\s*1/);
 });
 
 test('superseded global CSS and Tailwind entry imports cannot return', () => {
@@ -129,13 +165,22 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(dock, /오프라인/);
   assert.match(dock, /friend-list max-h-40/);
   assert.match(dock, /friend-row-action/);
+  const rowActions = dock.match(/<span className="friend-row-actions">([\s\S]*?)<\/span>/)?.[1];
+  assert.ok(rowActions, 'friend row actions exist');
+  assert.equal((rowActions.match(/\{online && <button/g) || []).length, 1);
+  assert.match(rowActions, /void requestVideoCall\(friend\.id\)/);
+  assert.match(rowActions, /aria-label=\{t\(/);
+  assert.match(rowActions, /<Video size=\{15\} \/>/);
+  assert.doesNotMatch(rowActions, /<PhoneCall/);
   assert.match(dock, /void requestVideoCall\(friend\.id\)/);
   assert.doesNotMatch(dock, /requestVideoCall\(selected\.id\)/);
   assert.match(dock, /friend-message-bubble/);
   assert.match(dock, /friend-chat-thread h-48/);
   assert.match(dock, /friend-message-author/);
   assert.match(dock, /formatFriendMessageTime\(message\.createdAt, language\)/);
-  assert.match(sidebar, /<span>\{language === 'ko' \? '친구 매칭' : 'Friend matching'\}<\/span>/);
+  assert.match(sidebar, /<span>\{language === 'ko' \? '친구' : 'Friends'\}<\/span>/);
+  assert.match(sidebar, /placeholder=\{language === 'ko' \? '국가 이름 검색' : 'Search countries'\}/);
+  assert.match(dock, /placeholder=\{t\('친구 이름 검색', 'Search friends by name'\)\}/);
   assert.doesNotMatch(dock, /friend-dock-launch-control|id="friend-dock-launch"/);
   assert.doesNotMatch(dock, /friends\.length\}명|friends\.length\} friends/);
   assert.doesNotMatch(dock, /<b className="block text-\[9px\] opacity-65">\{message\.user\}<\/b>/);
@@ -228,15 +273,17 @@ test('matching, lounge, footer, and navigation labels stay clear in both languag
   const lounge = read('src/components/layout/GlobalChat.tsx');
   const footer = read('src/components/layout/footer.tsx');
 
-  assert.match(sidebar, /label: '친구 매칭', english: 'Friend matching'/);
+  assert.match(sidebar, /label: '매칭', english: 'Matching'/);
   assert.match(sidebar, /label: '라이브 룸', english: 'Live rooms'/);
-  assert.match(sidebar, /'친구 매칭' : 'Friend matching'/);
-  assert.match(mobileNav, /label: '친구 매칭', english: 'Friend matching'/);
-  assert.match(mobileDrawer, /'친구 매칭' : 'Friend matching'/);
+  assert.match(sidebar, /'친구' : 'Friends'/);
+  assert.match(mobileNav, /label: '매칭', english: 'Matching'/);
+  assert.match(mobileDrawer, /isKorean \? '친구' : 'Friends'/);
   assert.match(mobileDrawer, /'글로벌 라운지' : 'Global Lounge'/);
   assert.match(matching, /'좋아요를 보내세요\. 서로 좋아요를 누르면 매칭되어 채팅할 수 있어요\.'[\s\S]*?'Tap Like\. If they like you too, match and chat\.'/);
   assert.match(matching, /LIKE \/ 좋아요/);
   assert.match(users, /t\('서로 좋아요를 보내면 매칭돼요\.', 'Like each other to match\.'\)/);
+  assert.match(users, /t\('매칭', 'Matching'\)/);
+  assert.match(users, /placeholder=\{t\('친구 이름 검색', 'Search friends by name'\)\}/);
   assert.match(lounge, /'글로벌 라운지' : 'Global Lounge'/);
   assert.match(lounge, /'한국어와 English 모두 환영해요' : 'Korean and English are welcome'/);
   assert.match(footer, /'서로 좋아요를 누르면 매칭돼요\.' : 'Like each other to match and chat\.'/);
@@ -263,6 +310,8 @@ test('public routes reserve space only while the lounge is expanded and the dire
 test('mobile AI search keeps recent questions and its safety notice available', () => {
   const assistant = read('src/app/assistant/page.tsx');
   const styles = read('src/app/experience-refinements.css');
+  assert.match(assistant, /className="assistant-toolbar"/);
+  assert.doesNotMatch(assistant, /ASK · FIND · MOVE|필요한 답을,|GYOPO SMART SEARCH|교민 생활과 일반 질문을 위한 AI 도우미/);
   assert.match(assistant, /<details className="assistant-mobile-history hidden" aria-label="최근 질문">/);
   assert.match(assistant, /recentQueries\.map\(\(query\) => <li key=\{query\}>/);
   assert.match(assistant, /AI 답변은 참고용 정보입니다/);
