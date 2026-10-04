@@ -59,13 +59,22 @@ test('page styles are route-owned, not persistent React stylesheet resources', (
 
 test('homepage panels use translucent backgrounds', () => {
   const home = read('src/app/home.module.css');
-  for (const name of ['intro', 'region', 'quickLinks', 'categories', 'feed', 'connect']) {
+  for (const name of ['quickLinks', 'categories', 'feed', 'connect']) {
     const block = home.match(new RegExp(`\\.${name} \\{([^}]*)\\}`))?.[1];
     assert.ok(block, `${name} panel exists`);
     assert.match(block, /#[\da-f]{8}/i, `${name} panel has an alpha color`);
   }
   assert.match(home, /\.search \{[^}]*background: #[\da-f]{8}/i);
-  assert.match(home, /\.regionSelect select \{[^}]*background: #[\da-f]{8}/i);
+});
+
+test('homepage hero contains only the search form', () => {
+  const page = read('src/app/page.tsx');
+  const hero = page.match(/<section className=\{styles\.hero\} aria-label="홈페이지 검색">([\s\S]*?)<\/section>/)?.[1];
+
+  assert.ok(hero, 'homepage search hero exists');
+  assert.match(hero, /<form role="search"[\s\S]*?className=\{styles\.search\}/);
+  assert.doesNotMatch(hero, /<h1|<aside|WorldClock|styles\.region|styles\.searchLinks/);
+  assert.doesNotMatch(page, /세계 어디서나|YOUR GLOBAL CONNECTION/);
 });
 
 test('superseded global CSS and Tailwind entry imports cannot return', () => {
@@ -129,6 +138,13 @@ test('sidebar friends action keeps guest navigation and opens a left-aligned doc
   assert.match(dock, /오프라인/);
   assert.match(dock, /friend-list max-h-40/);
   assert.match(dock, /friend-row-action/);
+  const rowActions = dock.match(/<span className="friend-row-actions">([\s\S]*?)<\/span>/)?.[1];
+  assert.ok(rowActions, 'friend row actions exist');
+  assert.equal((rowActions.match(/\{online && <button/g) || []).length, 1);
+  assert.match(rowActions, /void requestVideoCall\(friend\.id\)/);
+  assert.match(rowActions, /aria-label=\{t\(/);
+  assert.match(rowActions, /<Video size=\{15\} \/>/);
+  assert.doesNotMatch(rowActions, /<PhoneCall/);
   assert.match(dock, /void requestVideoCall\(friend\.id\)/);
   assert.doesNotMatch(dock, /requestVideoCall\(selected\.id\)/);
   assert.match(dock, /friend-message-bubble/);

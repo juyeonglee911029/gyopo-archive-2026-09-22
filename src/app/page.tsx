@@ -3,9 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
-import { ArrowRight, ArrowUpRight, Gamepad2, MapPin, MessageCircle, Radio, Search, Video } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Gamepad2, MessageCircle, Radio, Search, Video } from 'lucide-react';
 import BannerAd from '@/components/ads/BannerAd';
-import WorldClock from '@/components/layout/WorldClock';
 import { beginRoute, useRouteReadiness } from '@/components/layout/RouteExperience';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/Primitives';
 import { listDocuments } from '@/lib/firebase';
@@ -13,7 +12,7 @@ import { serviceHref } from '@/lib/regionRoutes';
 import { PUBLIC_CATEGORIES, publicCategoryHref, publicCategoryRegion } from '@/lib/publicCategories';
 import type { PublicCategory } from '@/lib/publicCategories';
 import { isPublicArticle } from '@/lib/publicArticle';
-import { REGIONS, regionLabel } from '@/lib/regions';
+import { regionLabel } from '@/lib/regions';
 import { resolvePortalSearch } from '@/lib/searchRouting';
 import { trackSearch } from '@/lib/searchTracking';
 import { trackGrowth } from '@/lib/growthTracking';
@@ -33,7 +32,6 @@ function HomeFeedReadiness({ loading, error }: { loading: boolean; error: boolea
 export default function Home() {
   const router = useRouter();
   const selectedCountry = useGlobalStore((state) => state.selectedCountry);
-  const setSelectedCountry = useGlobalStore((state) => state.setSelectedCountry);
   const user = useGlobalStore((state) => state.user);
   const [posts, setPosts] = useState<HomePost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -87,25 +85,12 @@ export default function Home() {
   return (
     <div className={styles.home}>
       <Suspense fallback={null}><HomeFeedReadiness loading={feedStatus === 'loading'} error={feedStatus === 'error'} /></Suspense>
-      <section className={styles.hero} aria-labelledby="home-heading">
-        <div className={styles.intro}>
-          <span className={styles.eyebrow}>YOUR GLOBAL CONNECTION</span>
-          <h1 id="home-heading">세계 어디서나,<br />교민과 함께.</h1>
-          <p className={styles.lead}>일자리부터 일상의 이야기까지.<br className={styles.mobileBreak} /> 우리 동네의 연결을 GYOPO에서 찾아보세요.</p>
-          <form role="search" onSubmit={submitSmartSearch} className={styles.search}>
-            <Search size={20} aria-hidden="true" />
-            <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} aria-label="지역, 일자리, 업소 검색" placeholder="어떤 정보가 필요하세요?" />
-            <button type="submit">검색 <ArrowRight size={16} aria-hidden="true" /></button>
-          </form>
-          <div className={styles.searchLinks}><span>빠르게 찾기</span>{PUBLIC_CATEGORIES.filter((category) => ['jobs', 'housing', 'directory'].includes(category.id)).map((category) => <Link key={category.id} href={categoryHref(category)}>{category.title}<ArrowUpRight size={12} aria-hidden="true" /></Link>)}</div>
-        </div>
-        <aside className={styles.region} aria-label="내 지역과 시간">
-          <div className={styles.regionHeading}><MapPin size={18} aria-hidden="true" /><span>내가 보는 지역</span><Link href="/regions" aria-label="지역 둘러보기"><ArrowUpRight size={18} /></Link></div>
-          <h2>{regionName}</h2>
-          <label className={styles.regionSelect}><span className="sr-only">현재 지역</span><select value={selectedCountry} onChange={(event) => setSelectedCountry(event.target.value)} aria-label="현재 지역 선택">{REGIONS.map((region) => <option key={region.id} value={region.id}>{region.flag} {regionLabel(region.id)}</option>)}</select></label>
-          <div className={styles.clocks}><WorldClock showRegionSelector={false} /></div>
-          <Link className={styles.regionLink} href="/regions">다른 국가와 도시 둘러보기 <ArrowRight size={14} aria-hidden="true" /></Link>
-        </aside>
+      <section className={styles.hero} aria-label="홈페이지 검색">
+        <form role="search" onSubmit={submitSmartSearch} className={styles.search}>
+          <Search size={20} aria-hidden="true" />
+          <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} aria-label="지역, 일자리, 업소 검색" placeholder="어떤 정보가 필요하세요?" />
+          <button type="submit">검색 <ArrowRight size={16} aria-hidden="true" /></button>
+        </form>
       </section>
 
       <nav className={styles.quickLinks} aria-label="빠른 시작">

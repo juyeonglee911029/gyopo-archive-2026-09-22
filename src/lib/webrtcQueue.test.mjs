@@ -41,11 +41,12 @@ test('page heartbeats only in the waiting branch, not for matched or active call
   assert.doesNotMatch(activeCallBranch, /heartbeatWebrtcQueue|mergeDocument\('webrtcQueue', user\.id, \{ lastSeenAt:/);
 });
 
-test('camera mirroring is toggled from both video tiles, and homepage copy is global', () => {
+test('camera mirroring is toggled from both video tiles, and the homepage hero is search-only', () => {
   assert.equal((page.match(/<ArrowLeftRight/g) || []).length, 2);
   assert.doesNotMatch(page, /type="checkbox" checked=\{flip\}/);
-  assert.match(home, /YOUR GLOBAL CONNECTION/);
-  assert.doesNotMatch(home, /YOUR LOCAL CONNECTION/);
+  assert.match(home, /<section className=\{styles\.hero\} aria-label="홈페이지 검색">/);
+  assert.match(home, /<form role="search"/);
+  assert.doesNotMatch(home, /YOUR (?:GLOBAL|LOCAL) CONNECTION|세계 어디서나/);
 });
 
 test('waiting queue heartbeat conditionally updates only lastSeenAt', async () => {

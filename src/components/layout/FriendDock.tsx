@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Ban, Check, FileText, MessageCircle, MoreHorizontal, Paperclip, PhoneCall, Send, UserMinus, UserPlus, UserRoundCheck, X } from 'lucide-react';
+import { Ban, Check, FileText, MessageCircle, MoreHorizontal, Paperclip, PhoneCall, Send, UserMinus, UserPlus, UserRoundCheck, Video, X } from 'lucide-react';
 import { createDocument, createFriendCallRequest, getDocument, getFriendCallRequest, getFreshSessionToken, listFriendConnections, listFriendMessages, listIncomingFriendCallRequests, listOnlineUsers, manageFriendConnection, respondToFriendCallRequest, type FriendCallRequest, type PublicProfile } from '@/lib/firebase';
 import { useGlobalStore } from '@/store/useGlobalStore';
 
@@ -574,7 +574,7 @@ export default function FriendDock() {
                       </button>
                       <span className="friend-row-actions">
                         <button type="button" onClick={() => setSelectedId(friend.id)} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '채팅 열기' : 'open chat'}`} title={isKorean ? '채팅 열기' : 'Open chat'} className="friend-row-action"><MessageCircle size={15} /></button>
-                        <button type="button" onClick={() => { setSelectedId(friend.id); void requestVideoCall(friend.id); }} disabled={Boolean(pendingCall || videoCall)} aria-label={`${friend.name || (isKorean ? '친구' : 'Friend')} ${isKorean ? '통화 요청' : 'call'}`} title={isKorean ? '통화 요청' : 'Call'} className="friend-row-action"><PhoneCall size={15} /></button>
+                        {online && <button type="button" onClick={() => { setSelectedId(friend.id); setFriendActionMenuId(''); void requestVideoCall(friend.id); }} disabled={Boolean(pendingCall || videoCall)} aria-label={t(`${friend.name || '친구'}에게 영상 통화 걸기`, `Video call ${friend.name || 'friend'}`)} title={t('영상 통화 걸기', 'Start video call')} className="friend-row-action"><Video size={15} /></button>}
                         <button type="button" disabled={pendingCall?.friendId === friend.id} onClick={() => setFriendActionMenuId((current) => current === friend.id ? '' : friend.id)} aria-label={t(`${friend.name || '친구'} 관리 메뉴`, `Manage ${friend.name || 'friend'}`)} aria-expanded={friendActionMenuId === friend.id} title={pendingCall?.friendId === friend.id ? t('통화 요청이 끝난 뒤 관리할 수 있습니다', 'Manage this friend after the call request ends') : t('친구 관리', 'Manage friend')} className="friend-row-action"><MoreHorizontal size={16} /></button>
                       </span>
                     </div>
