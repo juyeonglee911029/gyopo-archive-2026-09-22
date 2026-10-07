@@ -393,7 +393,8 @@ export async function uploadStorageFile(file: Blob, path: string, token?: string
   const send = (requestToken: string) => fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${requestToken}`,
+      // Firebase Storage uses this scheme, unlike Firestore's Bearer header.
+      Authorization: `Firebase ${requestToken}`,
       'Content-Type': file.type || 'application/octet-stream',
     },
     body: file,

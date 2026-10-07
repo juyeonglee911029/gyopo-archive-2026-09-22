@@ -146,7 +146,7 @@ test('storage upload refreshes an expired owner token once and rejects another o
       return Response.json({ id_token: freshToken, refresh_token: 'next-refresh-token' });
     }
     if (!url.startsWith('https://firebasestorage.googleapis.com/')) throw new Error(`Unexpected request: ${url}`);
-    if (init.headers.Authorization === `Bearer ${oldToken}`) {
+    if (init.headers.Authorization === `Firebase ${oldToken}`) {
       return Response.json({ error: { message: 'Unauthenticated' } }, { status: 403 });
     }
     return Response.json({ name: objectName, downloadTokens: 'download-token' });
@@ -156,7 +156,8 @@ test('storage upload refreshes an expired owner token once and rejects another o
     const url = await uploadStorageFile(file, objectName, oldToken);
     assert.match(url, /token=download-token$/);
     assert.equal(requests.length, 3);
-    assert.equal(requests[2].init.headers.Authorization, `Bearer ${freshToken}`);
+    assert.equal(requests[0].init.headers.Authorization, `Firebase ${oldToken}`);
+    assert.equal(requests[2].init.headers.Authorization, `Firebase ${freshToken}`);
     await assert.rejects(uploadStorageFile(file, objectName.replace('/alice/', '/bob/'), oldToken), /계정과 파일 저장 경로가 일치하지 않습니다/);
     assert.equal(requests.length, 3, 'wrong-owner paths are rejected without a request');
   } finally {
