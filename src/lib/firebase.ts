@@ -1346,6 +1346,7 @@ const friendCallRequestCollection = 'friendCallRequests';
 
 export async function createFriendCallRequest(calleeId: string, caller: Pick<PortalUser, 'id' | 'name' | 'image'>, token = getSessionToken()): Promise<string> {
   if (!token || !caller.id || !calleeId || caller.id === calleeId) throw new Error('통화 요청 대상을 확인해주세요.');
+  if (getTokenUserId(token) !== caller.id) throw new Error('통화 요청 계정과 로그인 정보가 일치하지 않습니다. 다시 로그인해주세요.');
   const id = `call-request-${caller.id}-${calleeId}-${crypto.randomUUID()}`;
   const createdAt = new Date();
   const request = {
